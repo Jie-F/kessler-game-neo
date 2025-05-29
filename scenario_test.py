@@ -1,32 +1,22 @@
 import time
 import random
-from hardcoded_test_controller import Smith
-from src.baby_neo_controller import BabyNeoController
-from benchmark_controller import BenchmarkController
 import numpy as np
 import cProfile
 import sys
-from r_controller import RController
-from null_controller import NullController
-from test_controller import TestController
-from scenarios import *
-from adversarial_scenarios_for_jie import *
+from scenarios.xfc_2021_scenarios import *
+from scenarios.xfc_2024_scenarios import *
+from scenarios.xfc_2023_replica_scenarios import *
+from scenarios.custom_scenarios import *
 import argparse
-#from controller_0 import ReplayController0
-#from controller_1 import ReplayController1
-from src.xfc2024_neo_controller import NeoController as XFC2024NeoController
 
 from ctypes import windll
 windll.shcore.SetProcessDpiAwareness(1) # Fixes blurriness when a scale factor is used in Windows
 
 ASTEROID_COUNT_LOOKUP = (0, 1, 4, 13, 40)
 
-#from xfc_2023_replica_scenarios import *
-from custom_scenarios import *
-
 from src.kesslergame import Scenario, KesslerGame, GraphicsType
 from src.kesslergame.controller_gamepad import GamepadController
-#from examples.test_controller import TestController
+from src.neo_controller import NeoController
 
 parser = argparse.ArgumentParser(description='Run Kessler Game with optional CLI flags.')
 parser.add_argument('-invisible', action='store_true', help='Use NoGraphics for the game visualization.')
@@ -40,13 +30,6 @@ parser.add_argument('-index', type=int, help='Pick the starting index of the por
 parser.add_argument('-once', action='store_true', help='Only do one iteration.')
 
 args = parser.parse_args()
-
-if args.interp:
-    from neo_controller import NeoController
-else:
-    from src.neo_controller import NeoController
-    #from src.neo_controller_explanations import NeoController
-    #from src.neo_controller_training import NeoController
 
 
 global color_text
@@ -415,7 +398,7 @@ while True:
         #state = 
         #random.seed(randseed)
          # [ReplayController0(), ReplayController1()] GamepadController()])#, NeoController()])#, TestController()])GamepadController NeoController Neo
-        #controllers_used = [NeoController(), NeoController()]
+        controllers_used = [NeoController(), NeoController()]
         #random.setstate(state)
         #print(f"RNG State: {random.getstate()}")
         #score, perf_data = game.run(scenario=ex_adv_four_corners_pt1, controllers=controllers_used)

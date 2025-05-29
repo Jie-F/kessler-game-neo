@@ -83,6 +83,7 @@ import gc
 import math
 import random
 import time
+from immutabledict import immutabledict
 from collections import deque
 from functools import lru_cache
 from itertools import chain
@@ -98,14 +99,10 @@ from skfuzzy import control, trimf  # type: ignore[import-untyped]
 #from src.kesslergame import KesslerController  # type: ignore[import-untyped]
 #from kesslergame import KesslerController  # type: ignore[import-untyped]
 
-#gc.set_debug(gc.DEBUG_STATS)
-gc.set_threshold(50000)
-#gc.disable()
-
 # IMPORTANT: if multiple scenarios are run back-to-back, this controller doesn't get freshly initialized in the subsequent runs.
 # If any global variables are changed during execution, make sure to reset them when the timestep is 0.
 
-BUILD_NUMBER: Final = "2024-06-17 Neo - Jie Fan (jie.f@pm.me)"
+#BUILD_NUMBER: Final = "2024-06-17 Neo - Jie Fan (jie.f@pm.me)"
 
 # Output config
 DEBUG_MODE: Final[bool] = False
@@ -5052,14 +5049,14 @@ class NeoController(KesslerController):
 
     @property
     def custom_sprite_path(self) -> str:
-        return "neo.png"
+        return "Neo.png"
 
     def get_total_sim_ts(self) -> i64:  # REMOVE_FOR_COMPETITION
         return total_sim_timesteps  # REMOVE_FOR_COMPETITION
 
     def __init__(self, chromosome: Optional[tuple[float, float, float, float, float, float, float, float, float]] = None) -> None:
-        print(BUILD_NUMBER)
-        print(__file__)
+        #print(BUILD_NUMBER)
+        #print(__file__)
         self.reset(chromosome)
         #self.ship_id: int = -1 # Dangerous!
         #self._ship_id: int = -1
@@ -6031,16 +6028,8 @@ class NeoController(KesslerController):
                 if heuristic_maneuver:
                     # Make sure we don't do any more than one heuristic maneuver!
                     heuristic_maneuver = False
-        # gc.enable()
-        # gc.collect()
 
-    def actions(self, ship_state_dict: dict[str, Any], game_state_dict: dict[str, Any]) -> tuple[float, float, bool, bool]:
-        #global unwrap_cache_misses
-        #global unwrap_cache_hits
-        #if self.current_timestep % 3 == 0:
-        #    global unwrap_cache
-        #    unwrap_cache.clear()
-        #print(f"Cache hits: {unwrap_cache_hits}, misses: {unwrap_cache_misses}")
+    def actions(self, ship_state_dict: dict[str, Any], game_state_dict: dict[str, Any] | immutabledict[str, Any]) -> tuple[float, float, bool, bool]:
         # Method processed each time step by this controller.
 
         if RESEED_RNG:
