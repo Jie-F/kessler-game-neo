@@ -52,7 +52,7 @@ class GraphicsTK(KesslerGraphics):
         self.game_width = round(scenario.map_size[0] * SCALE)
         self.game_height = round(scenario.map_size[1] * SCALE)
         self.max_time = scenario.time_limit
-        self.score_width = round(385 * SCALE)
+        self.score_width = round(485 * SCALE)
         self.window_width = self.game_width + self.score_width
         ship_radius: int = int((scenario.ships()[0].radius * 2 - 5) * SCALE)
 
