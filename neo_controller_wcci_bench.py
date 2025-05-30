@@ -111,7 +111,7 @@ gc.set_threshold(50000)
 BUILD_NUMBER: Final = "2024-06-17 Neo - Jie Fan (jie.f@pm.me)"
 
 # Output config
-DEBUG_MODE: Final[bool] = False
+DEBUG_MODE: Final[bool] = True
 PRINT_EXPLANATIONS: Final[bool] = False
 EXPLANATION_MESSAGE_SILENCE_INTERVAL_S: Final[float] = 2.0  # Repeated messages within this time window get silenced
 

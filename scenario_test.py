@@ -16,7 +16,9 @@ ASTEROID_COUNT_LOOKUP = (0, 1, 4, 13, 40)
 
 from src.kesslergame import Scenario, KesslerGame, GraphicsType
 from src.kesslergame.controller_gamepad import GamepadController
+from examples.test_controller import TestController
 from src.neo_controller import NeoController
+
 
 parser = argparse.ArgumentParser(description='Run Kessler Game with optional CLI flags.')
 parser.add_argument('-invisible', action='store_true', help='Use NoGraphics for the game visualization.')
@@ -398,7 +400,7 @@ while True:
         #state = 
         #random.seed(randseed)
          # [ReplayController0(), ReplayController1()] GamepadController()])#, NeoController()])#, TestController()])GamepadController NeoController Neo
-        controllers_used = [NeoController(), NeoController()]
+        controllers_used = [NeoController(), TestController()]
         #random.setstate(state)
         #print(f"RNG State: {random.getstate()}")
         #score, perf_data = game.run(scenario=ex_adv_four_corners_pt1, controllers=controllers_used)

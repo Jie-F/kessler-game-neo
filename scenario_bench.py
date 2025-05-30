@@ -16,7 +16,8 @@ ASTEROID_COUNT_LOOKUP = (0, 1, 4, 13, 40)
 
 from src.kesslergame import Scenario, KesslerGame, GraphicsType
 from src.kesslergame.controller_gamepad import GamepadController
-from src.neo_controller import NeoController
+#from src.neo_controller import NeoController
+from neo_controller_wcci_bench import NeoController
 
 global color_text
 color_text = True

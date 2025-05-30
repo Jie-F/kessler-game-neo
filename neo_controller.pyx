@@ -115,7 +115,7 @@ from skfuzzy import control, trimf  # type: ignore[import-untyped]
 #BUILD_NUMBER: Final = "2024-06-17 Neo - Jie Fan (jie.f@pm.me)"
 
 # Output config
-DEBUG_MODE: Final[bool] = False
+DEBUG_MODE: Final[bool] = True
 PRINT_EXPLANATIONS: Final[bool] = False
 EXPLANATION_MESSAGE_SILENCE_INTERVAL_S: Final[float] = 2.0  # Repeated messages within this time window get silenced
 
@@ -2231,7 +2231,7 @@ def analyze_gamestate_for_heuristic_maneuver(game_state: GameState, ship_state: 
     for ship in other_ships:
         # Fake ships as asteroids
         #asteroids.append({'position': ship.position, 'velocity': (0, 0), 'radius': ship.radius, 'size': -1, 'mass': -1.0})
-        asteroids.append(Asteroid(x=ship.px, y=ship.py, vx=0.0, vy=0.0, radius=ship.radius, size=-1, mass=-1.0))
+        asteroids.append(Asteroid(px=ship.px, py=ship.py, vx=0.0, vy=0.0, radius=ship.radius, size=-1, mass=-1.0))
     ship_pos_x, ship_pos_y, ship_vel_x, ship_vel_y = ship_state.px, ship_state.py, ship_state.vx, ship_state.vy
     most_imminent_collision_time_s = INFINITY
     most_imminent_asteroid = None
@@ -3729,8 +3729,11 @@ class Matrix():
                 invert_ship_affinity = False
             for other_ship in self.other_ships:
                 # It's assume there's only one ship, so this returns after the first ship is checked
-                other_ship_pos_x, other_ship_pos_y = other_ship.position
-                other_ship_vel_x, other_ship_vel_y = other_ship.velocity
+                other_ship_pos_x = other_ship.px
+                other_ship_pos_y = other_ship.py
+                other_ship_vel_x = other_ship.vx
+                other_ship_vel_y = other_ship.vy
+
                 other_ship_speed = sqrt(other_ship_vel_x*other_ship_vel_x + other_ship_vel_y*other_ship_vel_y)
                 # prox_score_speed_mul = min(1, other_ship_speed/100)*0.7 + 0.3
                 # This multiplier effectively decreases the distance between the ships, at least when the fitness function considers it
