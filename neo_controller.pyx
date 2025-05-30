@@ -135,7 +135,7 @@ VALIDATE_ALL_SIMULATED_STATES: Final[bool] = False  # Super meticulous check for
 # FALSE FOR COMPETITION, major performance hit
 VERIFY_AST_TRACKING: Final[bool] = False  # I'm using a very error prone way to track asteroids, where I very easily get the time of the asteroid wrong. This will check to make sure the times aren't mismatched, by checking whether the asteroid we're looking for appears in the wrong timestep.
 
-RESEED_RNG: Final[bool] = True # If the random seed was set outside of Neo, this will reseed the RNG to ensure good randomness
+RESEED_RNG: Final[bool] = False # If the random seed was set outside of Neo, this will reseed the RNG to ensure good randomness
 
 # Strategic variables
 END_OF_SCENARIO_DONT_CARE_TIMESTEPS: Final[int] = 8
@@ -180,7 +180,7 @@ RANDOM_WALK_SCHEDULE_LENGTH: Final[int] = 3 # However many shots to plan out the
 # Also my logic is that if I always make sure I have enough time, then I’ll actually be within budget. Because say I take 10 time to do something. Well if I have 10 time left, I do it, but anything from 9 to 0 time left, I don’t. So on average, I leave out 10/2 time on the table. So that’s why I set the fudge multiplier to 0.5, so things average out to me being exactly on budget.
 PERFORMANCE_CONTROLLER_PUSHING_THE_ENVELOPE_FUDGE_MULTIPLIER: Final[float] = 0.55
 MINIMUM_DELTA_TIME_FRACTION_BUDGET: Final[float] = 0.55 # One frametime is 1.0. If we give the other ship half of the time, then we should set this to 0.5. If we want non-realtime performance, we can change this to be >1
-ENABLE_PERFORMANCE_CONTROLLER: Final[bool] = True  # The performance controller uses realtime, so it's nondeterministic. For debugging and using set random seeds, turn this off so the controller is determinstic again
+ENABLE_PERFORMANCE_CONTROLLER: Final[bool] = False  # The performance controller uses realtime, so it's nondeterministic. For debugging and using set random seeds, turn this off so the controller is determinstic again
 
 # For the tuples below, the index is the number of lives Neo has left while going into the move
 # Index 0 in the tuples is not used, but to be safe I put a sane number there
@@ -2666,12 +2666,11 @@ def forecast_asteroid_bullet_splits_from_heading(a: Asteroid, timesteps_until_ap
     return forecast_asteroid_splits(a, timesteps_until_appearance, vfx, vfy, v, 15.0, game_state)
 
 
-def forecast_instantaneous_asteroid_bullet_splits_from_velocity(a: Asteroid, bullet_velocity: tuple[float, float], game_state: GameState) -> list[Asteroid]:
+def forecast_instantaneous_asteroid_bullet_splits_from_velocity(a: Asteroid, bullet_velocity_x: float, bullet_velocity_y: float, game_state: GameState) -> list[Asteroid]:
     # assert a.size != 1 # Asteroids of size 1 don't split  # REMOVE_FOR_COMPETITION
     # Look at asteroid.py in the Kessler game's code
-    bullet_vel_x, bullet_vel_y = bullet_velocity
-    vfx = (1/(BULLET_MASS + a.mass))*(BULLET_MASS*bullet_vel_x + a.mass*a.vx)
-    vfy = (1/(BULLET_MASS + a.mass))*(BULLET_MASS*bullet_vel_y + a.mass*a.vy)
+    vfx = (1/(BULLET_MASS + a.mass))*(BULLET_MASS*bullet_velocity_x + a.mass*a.vx)
+    vfy = (1/(BULLET_MASS + a.mass))*(BULLET_MASS*bullet_velocity_y + a.mass*a.vy)
     v = sqrt(vfx*vfx + vfy*vfy)
     return forecast_asteroid_splits(a, 0, vfx, vfy, v, 15.0, game_state)
 
@@ -2884,7 +2883,7 @@ def get_simulated_ship_max_range(max_cruise_seconds: float) -> tuple[float, int]
     max_ship_range_test.cruise(round(max_cruise_seconds*FPS))
     max_ship_range_test.accelerate(0)
     state_sequence = max_ship_range_test.get_state_sequence()
-    ship_random_range = dist(state_sequence[0].ship_state.position, state_sequence[-1].ship_state.position)
+    ship_random_range = dist(state_sequence[0].ship_state.px, state_sequence[0].ship_state.py, state_sequence[-1].ship_state.px, state_sequence[-1].ship_state.py)
     ship_random_max_maneuver_length = len(state_sequence)
     return ship_random_range, ship_random_max_maneuver_length
 
@@ -3233,7 +3232,9 @@ def track_asteroid_we_shot_at(asteroids_pending_death: dict[int, list[Asteroid]]
     # Make a copy of the asteroid so we don't mess up the original object
     asteroid = original_asteroid.copy()
     # Wrap asteroid position
-    asteroid.position = (asteroid.px % game_state.map_size_0, asteroid.py % game_state.map_size_1)
+    asteroid.px = asteroid.px % game_state.map_size_0
+    asteroid.py = asteroid.py % game_state.map_size_1
+
     # Project the asteroid into the future, to where it would be on the timestep of its death
 
     for future_timesteps in range(0, bullet_travel_timesteps + 1):
@@ -3252,7 +3253,9 @@ def track_asteroid_we_shot_at(asteroids_pending_death: dict[int, list[Asteroid]]
         # Advance the asteroid to the next position
         if future_timesteps != bullet_travel_timesteps:
             # Skip this operation on the last for loop iteration
-            asteroid.position = ((asteroid.px + asteroid.vx*DELTA_TIME) % game_state.map_size_0, (asteroid.py + asteroid.vy*DELTA_TIME) % game_state.map_size_1)
+            asteroid.px = (asteroid.px + asteroid.vx*DELTA_TIME) % game_state.map_size_0
+            asteroid.py = (asteroid.py + asteroid.vy*DELTA_TIME) % game_state.map_size_1
+
     #asteroid_tracking_total_time += time.perf_counter() - start_time
 
 
@@ -3319,8 +3322,10 @@ def time_travel_asteroid_s(asteroid: Asteroid, time: float, game_state: GameStat
         #print("WARNING: Time travelling asteroid by 0 timesteps! If this is rare, it's no cause for concern")
         #return asteroid.copy()
     return Asteroid(
-        position=((asteroid.px + time*asteroid.vx) % game_state.map_size_0, (asteroid.py + time*asteroid.vy) % game_state.map_size_1),
-        velocity=asteroid.velocity,
+        px = (asteroid.px + time*asteroid.vx) % game_state.map_size_0,
+        py = (asteroid.py + time*asteroid.vy) % game_state.map_size_1,
+        vx = asteroid.vx,
+        vy = asteroid.vy,
         size=asteroid.size,
         mass=asteroid.mass,
         radius=asteroid.radius,
@@ -3624,7 +3629,7 @@ class Matrix():
                     # next_extrapolated_mine_collision_time = max(0, min(3, next_extrapolated_mine_collision_time))
                     if ENABLE_SANITY_CHECKS:  # REMOVE_FOR_COMPETITION
                         assert -EPS <= mine_collision_time <= MINE_FUSE_TIME + EPS  # REMOVE_FOR_COMPETITION
-                    dist_to_ground_zero = dist(self.ship_state.position, mine_pos)
+                    dist_to_ground_zero = dist(self.ship_state.px, self.ship_state.py, mine_pos[0], mine_pos[1])
                     # This is a linear function that is maximum when I'm right over the mine, and minimum at 0 when I'm just touching the blast radius of it
                     # This will penalize being at ground zero more than penalizing being right at the edge of the blast, where it's easier to get out
                     mine_ground_zero_fudge = linear(dist_to_ground_zero, (0.0, 1.0), (MINE_BLAST_RADIUS + SHIP_RADIUS, 0.6))
@@ -3817,7 +3822,7 @@ class Matrix():
         else:
             # Regular maneuver
             #self_ship_positions = [states[len(states)//2]['ship_state'].position, states[len(states)*3//4]['ship_state'].position, ship_end_position]
-            self_ship_positions = [s.ship_state.position for s in states]
+            self_ship_positions = [(s.ship_state.px, s.ship_state.py) for s in states]
             # This assertion won't hold when the ship takes a long time to rotate at the start
             # assert not (isclose(ship_start_px, self_ship_positions[0][0]) and isclose(ship_start_py, self_ship_positions[0][1])), f"Ship states: {[s['ship_state'] for s in states]}"
 
@@ -4542,10 +4547,12 @@ class Matrix():
                     bullet_sim_ship_state.heading %= 360.0
                     # Use speed magnitude to get velocity vector
                     rad_heading = radians(bullet_sim_ship_state.heading)
-                    bullet_sim_ship_state.velocity = (cos(rad_heading)*bullet_sim_ship_state.speed, sin(rad_heading)*bullet_sim_ship_state.speed)
+                    bullet_sim_ship_state.vx = cos(rad_heading)*bullet_sim_ship_state.speed
+                    bullet_sim_ship_state.vy = sin(rad_heading)*bullet_sim_ship_state.speed
                     # Update the position based off the velocities
                     # Do the wrap in the same operation
-                    bullet_sim_ship_state.position = ((bullet_sim_ship_state.px + bullet_sim_ship_state.vx*DELTA_TIME) % self.game_state.map_size_0, (bullet_sim_ship_state.py + bullet_sim_ship_state.vy*DELTA_TIME) % self.game_state.map_size_1)
+                    bullet_sim_ship_state.px = (bullet_sim_ship_state.px + bullet_sim_ship_state.vx*DELTA_TIME) % self.game_state.map_size_0
+                    bullet_sim_ship_state.py = (bullet_sim_ship_state.py + bullet_sim_ship_state.vy*DELTA_TIME) % self.game_state.map_size_1
 
             # Check bullet/asteroid collisions
             bullet_remove_idxs = []
@@ -4569,7 +4576,7 @@ class Matrix():
                             bullet_remove_idxs.append(b_idx)
                             # Create asteroid splits and mark it for removal
                             if a.size != 1:
-                                asteroids.extend(forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.velocity, self.game_state))
+                                asteroids.extend(forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, self.game_state))
                             asteroid_remove_idxs.add(a_idx)
                             # Stop checking this bullet
                             break
@@ -5155,7 +5162,7 @@ class Matrix():
                         fuse_time=MINE_FUSE_TIME,
                         remaining_time=MINE_FUSE_TIME
                     )
-                    self.mine_positions_placed.add(self.ship_state.position) # Track where we placed our mine
+                    self.mine_positions_placed.add((self.ship_state.px, self.ship_state.py)) # Track where we placed our mine
                     self.game_state.mines.append(new_mine)
                     self.ship_state.mines_remaining -= 1
                     if ENABLE_SANITY_CHECKS:  # REMOVE_FOR_COMPETITION
@@ -5217,17 +5224,18 @@ class Matrix():
         # Check bullet/asteroid collisions
         bullet_remove_idxs = []
         for b_idx, b in enumerate(self.game_state.bullets):
-            b_tail = (b.px + b.tail_delta[0], b.py + b.tail_delta[1])
+            b_tail_x = b.px + b.tail_delta[0]
+            b_tail_y = b.py + b.tail_delta[1]
             for a_idx, a in enumerate(self.game_state.asteroids):
                 if a_idx in asteroid_remove_idxs:
                     continue
                 # If collision occurs
-                if asteroid_bullet_collision(b.position, b_tail, a.position, a.radius):
+                if asteroid_bullet_collision(b.px, b.py, b_tail_x, b_tail_y, a.px, a.py, a.radius):
                     # Mark bullet for removal
                     bullet_remove_idxs.append(b_idx)
                     # Create asteroid splits and mark it for removal
                     if a.size != 1:
-                        self.game_state.asteroids.extend(forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.velocity, self.game_state))
+                        self.game_state.asteroids.extend(forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, self.game_state))
                     asteroid_remove_idxs.add(a_idx)
                     # Stop checking this bullet
                     break
@@ -5270,7 +5278,8 @@ class Matrix():
                             self.ship_state.lives_remaining -= 1
                             self.ship_state.is_respawning = True
                             self.ship_state.speed = 0.0
-                            self.ship_state.velocity = (0.0, 0.0)
+                            self.ship_state.vx = 0.0
+                            self.ship_state.vy = 0.0
                             self.respawn_timer = 3.0
                     elif self.respawn_maneuver_pass_number == 1:
                         # Record the last timestep getting hit by a mine
