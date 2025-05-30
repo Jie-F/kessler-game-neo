@@ -112,7 +112,7 @@ BUILD_NUMBER: Final = "2024-06-17 Neo - Jie Fan (jie.f@pm.me)"
 
 # Output config
 DEBUG_MODE: Final[bool] = True
-PRINT_EXPLANATIONS: Final[bool] = False
+PRINT_EXPLANATIONS: Final[bool] = True
 EXPLANATION_MESSAGE_SILENCE_INTERVAL_S: Final[float] = 2.0  # Repeated messages within this time window get silenced
 
 # These can trade off to get better performance at the expense of safety
@@ -2949,6 +2949,7 @@ class Matrix():
         self.fire_first_timestep: bool = fire_first_timestep
         self.game_state_plotter: Optional[GameStatePlotter] = game_state_plotter
         self.sim_id = random.randint(1, 100000)
+        print(f"{self.sim_id=}")
         #if self.sim_id in [15869, 73186]:
         #    print(f"Starting sim {self.sim_id} with ship state {ship_state}")
         self.explanation_messages: list[str] = []
@@ -2980,7 +2981,9 @@ class Matrix():
         # Define the random walks for shooting while maneuvering
         # If we just do a random walk (bias = 0.5), we get a normal distribution. If we do a uniformly distributed bias, then the final random walk will also be uniformly distributed!
         bias = random.random()
+        print(f"{bias=}")
         self.random_walk_schedule: list[bool] = [random.random() < bias for _ in range(RANDOM_WALK_SCHEDULE_LENGTH)] # True means left, False means right. For shot number n, self.random_walk_schedule[n] tells us which direction we need to do the turning to make the shot in.
+        print(self.random_walk_schedule)
 
     def get_last_timestep_colliding(self) -> i64:
         return self.last_timestep_colliding
@@ -3822,7 +3825,9 @@ class Matrix():
                 self.explanation_messages.append("There's nothing I can feasibly shoot at!")
                 # Pick a direction to turn the ship anyway, just to better line it up with more shots
                 if asteroids_still_exist:
-                    if random.randint(1, 10) == 1:
+                    rand_decision = random.randint(1, 10)
+                    print(f"{rand_decision=}")
+                    if rand_decision == 1:
                         self.explanation_messages.append("Asteroids exist but we can't hit them. Moving around a bit randomly.")
                         # Setting this to -1 is a signal to set the asteroid fitness really low, so hopefully we'll choose actions that'll move around
                         self.asteroids_shot -= 1
@@ -3875,7 +3880,9 @@ class Matrix():
             # print("We can't hit anything this timestep.")
             if asteroids_still_exist:
                 # print('asteroids still exist')
-                if random.randint(1, 10) == 1:
+                rand_decision = random.randint(1, 10)
+                print(f"{rand_decision=}")
+                if rand_decision == 1:
                     self.explanation_messages.append("Asteroids exist but we can't hit them. Moving around a bit randomly.")
                     # Setting this to -1 is a signal to set the asteroid fitness really low, so hopefully we'll choose actions that'll move around
                     self.asteroids_shot -= 1
@@ -4254,8 +4261,9 @@ class Matrix():
         #if fire is not None and not wait_out_mines:
         #    print(f"Calling update in sim {self.sim_id} on future ts {self.future_timesteps} with fire {fire}")
         #global sim_update_total_time, sim_cull_total_time
-        if ENABLE_BAD_LUCK_EXCEPTION and random.random() < BAD_LUCK_EXCEPTION_PROBABILITY:  # REMOVE_FOR_COMPETITION
-            raise Exception("Bad luck exception!")  # REMOVE_FOR_COMPETITION
+        if ENABLE_BAD_LUCK_EXCEPTION:  # REMOVE_FOR_COMPETITION
+            if random.random() < BAD_LUCK_EXCEPTION_PROBABILITY:  # REMOVE_FOR_COMPETITION
+                raise Exception("Bad luck exception!")  # REMOVE_FOR_COMPETITION
         #start_time = time.perf_counter()
         # This should exactly match what kessler_game.py does.
         # Being even one timestep off is the difference between life and death!!!
@@ -5200,7 +5208,9 @@ class NeoController(KesslerController):
             else:
                 # In deterministic mode, just never do additional iterations. This will also test that the minimum iterations are sufficient for a baseline level of strategic performance.
                 # return False
-                if random.random() < 0.0:
+                decision = random.random()
+                print(f"{decision=}")
+                if decision < 0.0:
                     return True
                 else:
                     return False
@@ -5495,7 +5505,9 @@ class NeoController(KesslerController):
             explanation_messages = best_action_sim.get_explanations()
             for explanation in explanation_messages:
                 print_explanation(explanation, self.current_timestep)
-            if random.random() < 0.1:
+            decision = random.random()
+            print(f"{decision=}")
+            if decision < 0.1:
                 # Only periodically print this explanation, as I don't want it to spam the screen too much
                 print_explanation(f"I currently feel {weighted_average(overall_fitness_record):.0%} safe, considering how long I can stay here without being hit by asteroids or mines, and my proximity to the other ship.", self.current_timestep)
         # end_state = sim_ship.get_state_sequence()[-1]
@@ -5679,6 +5691,7 @@ class NeoController(KesslerController):
                     ship_cruise_speed = SHIP_MAX_SPEED*random.choice([-1, 1])
                     ship_cruise_turn_rate = 0.0
                     ship_cruise_timesteps = random.randint(0, round(MAX_CRUISE_SECONDS*FPS))
+                    print(f"{random_ship_heading_angle=}, {ship_accel_turn_rate=}, {ship_cruise_speed=}, {ship_cruise_turn_rate=}, {ship_cruise_timesteps=}")
                 if ENABLE_SANITY_CHECKS and not (bool(self.game_state_to_base_planning['ship_respawn_timer']) == self.game_state_to_base_planning['ship_state'].is_respawning):  # REMOVE_FOR_COMPETITION
                     print(f"BAD, self.game_state_to_base_planning['ship_respawn_timer']: {self.game_state_to_base_planning['ship_respawn_timer']}, self.game_state_to_base_planning['ship_state'].is_respawning: {self.game_state_to_base_planning['ship_state'].is_respawning}")  # REMOVE_FOR_COMPETITION
                 # TODO: There's a hardcoded false in the arguments to the following sim. Investigate!!!
@@ -5941,7 +5954,7 @@ class NeoController(KesslerController):
                         ship_cruise_timesteps = random.randint(0, round(MAX_CRUISE_TIMESTEPS))
                     else:
                         ship_cruise_timesteps = floor(random.triangular(0.0, MAX_CRUISE_TIMESTEPS, ship_cruise_timesteps_mode))
-
+                    print(f"{random_ship_heading_angle=}, {ship_accel_turn_rate=}, {ship_cruise_speed=}, {ship_cruise_turn_rate=}, {ship_cruise_timesteps=}")
                     '''
                     random_ship_heading_angle = random.triangular(-6.0*10.0, 6.0*10.0, 0)
                     ship_accel_turn_rate = random.triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)
@@ -6047,7 +6060,8 @@ class NeoController(KesslerController):
         # Method processed each time step by this controller.
 
         if RESEED_RNG:
-            random.seed()
+            pass
+            #random.seed()
         self.current_timestep += 1
         recovering_from_crash = False
         #print(f"Calling Neo's actions() on timestep {game_state_dict['sim_frame']}, and Neo thinks it's timestep {self.current_timestep}")
