@@ -279,7 +279,7 @@ benchmark_scenario = Scenario(name="Benchmark Scenario",
                                 ],
                                 map_size=(width, height),
                                 seed=0,
-                                time_limit=120.0)
+                                time_limit=15.0)
 
 scenario_to_run = benchmark_scenario
 

@@ -24,7 +24,7 @@ setup(
         extensions,
         language_level=3,
         annotate=True,
-        compiler_directives={"boundscheck": False, "wraparound": True}
+        compiler_directives={"boundscheck": True, "wraparound": True, "overflowcheck": True}
     ),
     zip_safe=False,
 )

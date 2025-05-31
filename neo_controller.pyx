@@ -407,15 +407,15 @@ cdef class Asteroid:
 
     def __hash__(self):
         cdef double combined = self.px + 0.4266548291679171 * self.py + 0.8164926348982552 * self.vx + 0.8397584399461026 * self.vy
-        return <int>(combined * 1_000_000_000) + self.size
+        return <int64_t>(combined * 1_000_000_000) + self.size
 
     # If you want pure C-API versions of the hash helpers:
     cdef double float_hash(self):
         return self.px + 0.4266548291679171 * self.py + 0.8164926348982552 * self.vx + 0.8397584399461026 * self.vy
 
-    cdef int int_hash(self):
+    cdef int64_t int_hash(self):
         cdef double combined = self.px + 0.4266548291679171 * self.py + 0.8164926348982552 * self.vx + 0.8397584399461026 * self.vy
-        return <int>(1_000_000_000 * combined)
+        return <int64_t>(1_000_000_000 * combined)
 
 '''
 class Asteroid:
@@ -505,7 +505,7 @@ cdef class Ship:
     def copy(self): return self.fastcopy()
 
     def __str__(self):
-        return f'Ship(is_respawning={self.is_respawning}, position=({self.px}, {self.py}), velocity=({self.vx}, {self.vy}), speed={self.speed}, heading={self.heading}, mass={self.mass}, radius={self.radius}, id={self.id}, team="{self.team}", lives_remaining={self.lives_remaining}, bullets_remaining={self.bullets_remaining}, mines_remaining={self.mines_remaining}, can_fire={self.can_fire}, fire_rate={self.fire_rate}, can_deploy_mine={self.can_deploy_mine}, mine_deploy_rate={self.mine_deploy_rate}, thrust_range=({self.thrust_range0},{self.thrust_range1}), turn_rate_range=({self.turn_rate_range0},{self.turn_rate_range1}), max_speed={self.max_speed}, drag={self.drag})'
+        return f'Ship(is_respawning={self.is_respawning}, position=({self.px}, {self.py}), velocity=({self.vx}, {self.vy}), speed={self.speed}, heading={self.heading}, mass={self.mass}, radius={self.radius}, id={self.id}, team="{self.team}", lives_remaining={self.lives_remaining}, bullets_remaining={self.bullets_remaining}, mines_remaining={self.mines_remaining}, can_fire={self.can_fire}, fire_rate={self.fire_rate}, can_deploy_mine={self.can_deploy_mine}, mine_deploy_rate={self.mine_deploy_rate}, thrust_range=({self.thrust_range0}, {self.thrust_range1}), turn_rate_range=({self.turn_rate_range0}, {self.turn_rate_range1}), max_speed={self.max_speed}, drag={self.drag})'
 
     def __repr__(self): return self.__str__()
 
@@ -697,12 +697,19 @@ cdef class Bullet:
     cdef public double px, py, vx, vy, heading, mass, tail_dx, tail_dy
 
     def __cinit__(self, double px=0.0, double py=0.0, double vx=0.0, double vy=0.0, double heading=0.0, double mass=BULLET_MASS, tail_delta=None):
-        self.px = px; self.py = py; self.vx = vx; self.vy = vy; self.heading = heading; self.mass = mass
+        self.px = px
+        self.py = py
+        self.vx = vx
+        self.vy = vy
+        self.heading = heading
+        self.mass = mass
+
         if tail_delta is not None:
             self.tail_dx = tail_delta[0]; self.tail_dy = tail_delta[1]
         else:
             angle_rad = heading * (pi / 180.0)
-            self.tail_dx = -BULLET_LENGTH * cos(angle_rad); self.tail_dy = -BULLET_LENGTH * sin(angle_rad)
+            self.tail_dx = -BULLET_LENGTH * cos(angle_rad)
+            self.tail_dy = -BULLET_LENGTH * sin(angle_rad)
 
     property position:
         def __get__(self): return (self.px, self.py)
@@ -721,7 +728,14 @@ cdef class Bullet:
 
     cdef Bullet fastcopy(self):
         cdef Bullet b = Bullet.__new__(Bullet)
-        b.px = self.px; b.py = self.py; b.vx = self.vx; b.vy = self.vy; b.heading = self.heading; b.mass = self.mass; b.tail_dx = self.tail_dx; b.tail_dy = self.tail_dy
+        b.px = self.px
+        b.py = self.py
+        b.vx = self.vx
+        b.vy = self.vy
+        b.heading = self.heading
+        b.mass = self.mass
+        b.tail_dx = self.tail_dx
+        b.tail_dy = self.tail_dy
         return b
 
     def copy(self): return self.fastcopy()
@@ -3370,7 +3384,7 @@ class Matrix():
         self.fire_first_timestep: bool = fire_first_timestep
         self.game_state_plotter: Optional[GameStatePlotter] = game_state_plotter
         self.sim_id = random.randint(1, 100000)
-        print(f"{self.sim_id=}")
+        #print(f"{self.sim_id=}")
         #if self.sim_id in [15869, 73186]:
         #    print(f"Starting sim {self.sim_id} with ship state {ship_state}")
         self.explanation_messages: list[str] = []
@@ -3402,9 +3416,9 @@ class Matrix():
         # Define the random walks for shooting while maneuvering
         # If we just do a random walk (bias = 0.5), we get a normal distribution. If we do a uniformly distributed bias, then the final random walk will also be uniformly distributed!
         bias = random.random()
-        print(f"{bias=}")
+        #print(f"{bias=}")
         self.random_walk_schedule: list[bool] = [random.random() < bias for _ in range(RANDOM_WALK_SCHEDULE_LENGTH)] # True means left, False means right. For shot number n, self.random_walk_schedule[n] tells us which direction we need to do the turning to make the shot in.
-        print(self.random_walk_schedule)
+        #print(self.random_walk_schedule)
 
     def get_last_timestep_colliding(self) -> int:
         return self.last_timestep_colliding
@@ -3442,6 +3456,7 @@ class Matrix():
 
     def set_fire_next_timestep_flag(self, fire_next_timestep_flag: bool) -> None:
         self.fire_next_timestep_flag = fire_next_timestep_flag
+        #print(f"Set flag to {self.fire_next_timestep_flag=}")
 
     def get_asteroids_pending_death(self) -> dict[int, list[Asteroid]]:
         return self.asteroids_pending_death
@@ -3561,7 +3576,7 @@ class Matrix():
 
     def get_fitness(self) -> float:
         #if self.sim_id in [15869, 73186]:
-        #    print(f"Getting fitness in sim id {self.sim_id} and the move sequence is:", self.get_move_sequence(), 'and the ship state is:', self.get_ship_state(), 'and the ship crashed is', self.ship_crashed)
+        #print(f"Getting fitness in sim id {self.sim_id} and the move sequence is:", self.get_move_sequence(), 'and the ship state is:', self.get_ship_state(), 'and the ship crashed is', self.ship_crashed)
         if self.fitness_breakdown:
             raise Exception("Do not call get_fitness twice!")
         # This is meant to be the last method called from this class. This is rather destructive!
@@ -4257,7 +4272,7 @@ class Matrix():
                 # Pick a direction to turn the ship anyway, just to better line it up with more shots
                 if asteroids_still_exist:
                     rand_decision = random.randint(1, 10)
-                    print(f"{rand_decision=}")
+                    #print(f"{rand_decision=}")
                     if rand_decision == 1:
                         self.explanation_messages.append("Asteroids exist but we can't hit them. Moving around a bit randomly.")
                         # Setting this to -1 is a signal to set the asteroid fitness really low, so hopefully we'll choose actions that'll move around
@@ -4312,7 +4327,7 @@ class Matrix():
             if asteroids_still_exist:
                 # print('asteroids still exist')
                 rand_decision = random.randint(1, 10)
-                print(f"{rand_decision=}")
+                #print(f"{rand_decision=}")
                 if rand_decision == 1:
                     self.explanation_messages.append("Asteroids exist but we can't hit them. Moving around a bit randomly.")
                     # Setting this to -1 is a signal to set the asteroid fitness really low, so hopefully we'll choose actions that'll move around
@@ -5670,7 +5685,7 @@ class NeoController(KesslerController):
                 # In deterministic mode, just never do additional iterations. This will also test that the minimum iterations are sufficient for a baseline level of strategic performance.
                 # return False
                 decision = random.random()
-                print(f"{decision=}")
+                #print(f"{decision=}")
                 if decision < 0.0:
                     return True
                 else:
@@ -5715,6 +5730,7 @@ class NeoController(KesslerController):
         # print('Going through sorted sims list to pick the best action')
         best_action_sim: Matrix
         if self.sims_this_planning_period[self.best_fitness_this_planning_period_index]['state_type'] == 'predicted':
+            #print("Should not be in here if alone LMAO")
             # Since the game is non-deterministic, we need to apply our simulated moves onto the actual corrected state, so errors don't build up
             best_action_sim_predicted: Matrix = self.sims_this_planning_period[self.best_fitness_this_planning_period_index]['sim']
             #print('pred sim id', best_action_sim_predicted.get_sim_id())
@@ -5859,6 +5875,7 @@ class NeoController(KesslerController):
             # The state we based planning off of is exact
             assert self.sims_this_planning_period[self.best_fitness_this_planning_period_index]['state_type'] == 'exact'  # REMOVE_FOR_COMPETITION
             if self.game_state_to_base_planning['respawning']:
+                #print("Respawn maneuver")
                 # If we did a respawn maneuver, we still have to run a second pass of it so we can get more shots in at the end, and hopefully eek out a bit more fitness score
                 best_action_sim_respawn_first_pass: Matrix = self.sims_this_planning_period[self.best_fitness_this_planning_period_index]['sim']
                 best_action_sim_respawn_first_pass_fitness: float = self.sims_this_planning_period[self.best_fitness_this_planning_period_index]['fitness']
@@ -5880,6 +5897,7 @@ class NeoController(KesslerController):
                                          last_timestep_colliding=best_action_sim_respawn_first_pass.get_last_timestep_colliding(), # This is the secret sauce!
                                          game_state_plotter=self.game_state_plotter)
                 best_action_sim_respawn_first_pass_move_sequence = best_action_sim_respawn_first_pass.get_intended_move_sequence()
+                #print(best_action_sim_respawn_first_pass_move_sequence)
                 best_action_sim.apply_move_sequence(best_action_sim_respawn_first_pass_move_sequence, True)
                 best_action_sim.set_fire_next_timestep_flag(best_respawn_first_pass_sim_fire_next_timestep_flag)
                 best_action_fitness = best_action_sim.get_fitness()
@@ -5895,6 +5913,7 @@ class NeoController(KesslerController):
                     best_action_maneuver_tuple = self.sims_this_planning_period[self.best_fitness_this_planning_period_index]['maneuver_tuple']
             else:
                 # Exact planning, and this isn't a respawn maneuver so we just do the one-pass simulation method and call it a day
+                #print("Exact planning")
                 best_action_sim = self.sims_this_planning_period[self.best_fitness_this_planning_period_index]['sim']
                 best_action_fitness = self.sims_this_planning_period[self.best_fitness_this_planning_period_index]['fitness']
                 best_action_fitness_breakdown = self.sims_this_planning_period[self.best_fitness_this_planning_period_index]['fitness_breakdown']
@@ -5967,7 +5986,7 @@ class NeoController(KesslerController):
             for explanation in explanation_messages:
                 print_explanation(explanation, self.current_timestep)
             decision = random.random()
-            print(f"{decision=}")
+            #print(f"{decision=}")
             if decision < 0.1:
                 # Only periodically print this explanation, as I don't want it to spam the screen too much
                 print_explanation(f"I currently feel {weighted_average(overall_fitness_record):.0%} safe, considering how long I can stay here without being hit by asteroids or mines, and my proximity to the other ship.", self.current_timestep)
@@ -6152,7 +6171,7 @@ class NeoController(KesslerController):
                     ship_cruise_speed = SHIP_MAX_SPEED*random.choice([-1, 1])
                     ship_cruise_turn_rate = 0.0
                     ship_cruise_timesteps = random.randint(0, round(MAX_CRUISE_SECONDS*FPS))
-                    print(f"{random_ship_heading_angle=}, {ship_accel_turn_rate=}, {ship_cruise_speed=}, {ship_cruise_turn_rate=}, {ship_cruise_timesteps=}")
+                    #print(f"{random_ship_heading_angle=}, {ship_accel_turn_rate=}, {ship_cruise_speed=}, {ship_cruise_turn_rate=}, {ship_cruise_timesteps=}")
                 if ENABLE_SANITY_CHECKS and not (bool(self.game_state_to_base_planning['ship_respawn_timer']) == self.game_state_to_base_planning['ship_state'].is_respawning):  # REMOVE_FOR_COMPETITION
                     print(f"BAD, self.game_state_to_base_planning['ship_respawn_timer']: {self.game_state_to_base_planning['ship_respawn_timer']}, self.game_state_to_base_planning['ship_state'].is_respawning: {self.game_state_to_base_planning['ship_state'].is_respawning}")  # REMOVE_FOR_COMPETITION
                 # TODO: There's a hardcoded false in the arguments to the following sim. Investigate!!!
@@ -6415,7 +6434,7 @@ class NeoController(KesslerController):
                         ship_cruise_timesteps = random.randint(0, round(MAX_CRUISE_TIMESTEPS))
                     else:
                         ship_cruise_timesteps = floor(random.triangular(0.0, MAX_CRUISE_TIMESTEPS, ship_cruise_timesteps_mode))
-                    print(f"{random_ship_heading_angle=}, {ship_accel_turn_rate=}, {ship_cruise_speed=}, {ship_cruise_turn_rate=}, {ship_cruise_timesteps=}")
+                    #}, {ship_accel_turn_rate=}, {ship_cruise_speed=}, {ship_cruise_turn_rate=}, {ship_cruise_timesteps=}")
                     '''
                     random_ship_heading_angle = random.triangular(-6.0*10.0, 6.0*10.0, 0)
                     ship_accel_turn_rate = random.triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)
