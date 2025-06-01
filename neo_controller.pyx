@@ -82,6 +82,8 @@ from libc.math cimport sin, cos, sqrt, fabs, atan2, acos, asin, pi, NAN, INFINIT
 from cython.operator cimport dereference as deref
 from math import ceil, floor
 from libc.stdint cimport int64_t
+from libcpp.vector cimport vector
+from libcpp.set cimport set
 ctypedef double float64_t
 import math
 cimport cython
@@ -3441,7 +3443,7 @@ cdef class Matrix:
                 assert not self.fire_first_timestep
         bias = random.random()
         self.random_walk_schedule = [random.random() < bias for _ in range(RANDOM_WALK_SCHEDULE_LENGTH)]
-
+        '''
         print("Matrix init:")
         print("  initial_timestep =", self.initial_timestep)
         print("  future_timesteps =", self.future_timesteps)
@@ -3476,7 +3478,7 @@ cdef class Matrix:
         print("  last_timestep_colliding =", self.last_timestep_colliding)
         print("  respawn_maneuver_pass_number =", self.respawn_maneuver_pass_number)
         print("  random_walk_schedule =", self.random_walk_schedule)
-
+        '''
 
 
 
@@ -4785,7 +4787,7 @@ cdef class Matrix:
     cpdef bint update(self, double thrust=0.0, double turn_rate=0.0, object fire=None, object drop_mine=None, object whole_move_sequence=None, bint wait_out_mines=False):
         # This method is only called internally
         cdef int b_ind, idx, b_idx, idx_mine, a_idx, ast_idx, timesteps_until_can_fire, len_asteroids, bullet_sim_timestep_limit, timesteps_until_bullet_hit_asteroid
-        cdef float bullet_x, bullet_y, bvx, bvy, altered_turn_command, separation, drag_amount, rad_heading, cos_heading, sin_heading, ship_pred_speed, ship_speed_ts, ship_predicted_pos_x, ship_predicted_pos_y
+        cdef double bullet_x, bullet_y, bvx, bvy, altered_turn_command, separation, drag_amount, rad_heading, cos_heading, sin_heading, ship_pred_speed, ship_speed_ts, ship_predicted_pos_x, ship_predicted_pos_y
         cdef double ship_heading_rad, shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, second_min_shot_heading_error_rad, min_shot_heading_error_rad, min_positive_shot_heading_error_rad, second_min_positive_shot_heading_error_rad, min_negative_shot_heading_error_rad, second_min_negative_shot_heading_error_rad, asteroid_least_shot_heading_error_deg, asteroid_least_shot_heading_tolerance_deg, shot_heading_error_deg, shot_heading_tolerance_deg, max_interception_time, delta_x, delta_y, next_target_heading_error, min_shot_heading_error_deg
         cdef bint fire_this_timestep = False, drop_mine_this_timestep = False, feasible_targets_exist = False, locked_in = False, avoid_targeting_this_asteroid = False, check_next_asteroid = False
         cdef object current_set_of_moves_from_list = None, actual_asteroid_hit = None, actual_asteroid_hit_at_fire_time = None
@@ -4800,11 +4802,13 @@ cdef class Matrix:
 
         global total_sim_timesteps  # REMOVE_FOR_COMPETITION
         total_sim_timesteps += 1  # REMOVE_FOR_COMPETITION
-
+        #if fire is not None and not wait_out_mines:
+        #    print(f"Calling update in sim {self.sim_id} on future ts {self.future_timesteps} with fire {fire}")
+        #global sim_update_total_time, sim_cull_total_time
         if ENABLE_BAD_LUCK_EXCEPTION:  # REMOVE_FOR_COMPETITION
             if random.random() < BAD_LUCK_EXCEPTION_PROBABILITY:  # REMOVE_FOR_COMPETITION
                 raise Exception("Bad luck exception!")  # REMOVE_FOR_COMPETITION
-
+        #start_time = time.perf_counter()
         # This should exactly match what kessler_game.py does.
         # Being even one timestep off is the difference between life and death!!!
         # return_value: Optional[bool] = None
@@ -4817,9 +4821,11 @@ cdef class Matrix:
         '''
         if not wait_out_mines:
             if PRUNE_SIM_STATE_SEQUENCE and self.future_timesteps != 0:
+                # Create a super lightweight state that omits unnecessary stuff
                 self.state_sequence.append(SimState(
                     timestep=self.initial_timestep + self.future_timesteps,
                     ship_state=self.ship_state.copy(),
+                    # Assuming game_state and other attributes are optional or have default values in SimState definition
                 ))
             else:
                 self.state_sequence.append(SimState(
@@ -4829,17 +4835,35 @@ cdef class Matrix:
                     asteroids_pending_death=dict(self.asteroids_pending_death),
                     forecasted_asteroid_splits=[a.copy() for a in self.forecasted_asteroid_splits]
                 ))
-
+        # The simulation starts by evaluating actions and dynamics of the current present timestep, and then steps into the future
+        # The game state we're given is actually what we had at the end of the previous timestep
+        # The game will take the previous state, and apply current actions and then update to get the result of this timestep
         if whole_move_sequence and ENABLE_SANITY_CHECKS:  # REMOVE_FOR_COMPETITION
             current_set_of_moves_from_list = whole_move_sequence[self.future_timesteps]  # REMOVE_FOR_COMPETITION
             assert current_set_of_moves_from_list.thrust == thrust  # REMOVE_FOR_COMPETITION
             assert current_set_of_moves_from_list.turn_rate == turn_rate  # REMOVE_FOR_COMPETITION
+        # Simulation order:
+        # Ships are given the game state from after the previous timestep. Ships then decide the inputs.
+        # Update bullets/mines/asteroids.
+        # Ship has inputs applied and updated. Any new bullets and mines that the ship creates is added to the list.
+        # Bullets past the map edge get culled
+        # Ships and asteroids beyond the map edge get wrapped
+        # Check for bullet/asteroid collisions. Checked for each bullet in list order, check for each asteroid in list order. Bullets and asteroids are removed here, and any new asteroids created are added to the list now.
+        # Check mine collisions with asteroids/ships. For each mine in list order, check whether it is detonating and if it collides with first asteroids in list order (and add new asteroids to list), and then ships.
+        # Check for asteroid/ship collisions. For each ship in list order, check collisions with each asteroid in list order. New asteroids are added now. Ships and asteroids get culled if they collide.
+        # Check ship/ship collisions and cull them.
 
         if self.plot_this_sim and self.game_state_plotter is not None:  # REMOVE_FOR_COMPETITION
+            # print(self.game_state.asteroids)  # REMOVE_FOR_COMPETITION
             flattened_asteroids_pending_death = [ast for ast_list in self.asteroids_pending_death.values() for ast in ast_list]  # REMOVE_FOR_COMPETITION
             self.game_state_plotter.update_plot(self.game_state.asteroids, self.ship_state, self.game_state.bullets, [], [], flattened_asteroids_pending_death, self.forecasted_asteroid_splits, self.game_state.mines, True, 0.1, f'SIM UPDATE TS {self.initial_timestep + self.future_timesteps}')  # REMOVE_FOR_COMPETITION
 
         asteroid_remove_idxs = set()
+
+        # Simulate dynamics of bullets
+        # Kessler will move bullets and cull them in different steps, but we combine them in one operation here
+        # So we need to detect when the bullets are crossing the boundary, and delete them if they try to
+        # Enumerate and track indices to delete
         bullet_remove_idxs = []
         for b_ind, b in enumerate(self.game_state.bullets):
             new_bullet_pos = (b.px + b.vx*DELTA_TIME, b.py + b.vy*DELTA_TIME)
@@ -4850,11 +4874,15 @@ cdef class Matrix:
         if bullet_remove_idxs:
             self.game_state.bullets = [bullet for idx, bullet in enumerate(self.game_state.bullets) if idx not in bullet_remove_idxs]
 
+        # Update mines
         for m in self.game_state.mines:
             if ENABLE_SANITY_CHECKS:  # REMOVE_FOR_COMPETITION
                 assert m.remaining_time > EPS - DELTA_TIME  # REMOVE_FOR_COMPETITION
             m.remaining_time -= DELTA_TIME
-
+            # If the timer is below eps, it'll detonate this timestep
+        # Simulate dynamics of asteroids
+        # Wrap the asteroid positions in the same operation
+        # Between when the asteroids get moved and when the future timesteps gets incremented, these asteroids exist at time (self.initial_timestep + self.future_timesteps + 1) instead of (self.initial_timestep + self.future_timesteps)!
         for a in self.game_state.asteroids:
             a.px = (a.px + a.vx*DELTA_TIME) % self.game_state.map_size_0
             a.py = (a.py + a.vy*DELTA_TIME) % self.game_state.map_size_1
@@ -4868,10 +4896,11 @@ cdef class Matrix:
             if self.ship_state.bullets_remaining != 0:
                 if self.fire_first_timestep and self.future_timesteps == 0:
                     assert self.respawn_maneuver_pass_number == 0 or (self.respawn_maneuver_pass_number == 2 and self.initial_timestep + self.future_timesteps > self.last_timestep_colliding), f"WTH, {self.respawn_maneuver_pass_number=}, {self.last_timestep_colliding=}, {(self.initial_timestep + self.future_timesteps)=}"  # REMOVE_FOR_COMPETITION
+                    # In theory we should be able to hit the target, however if we're in multiagent mode, the other ship could muddle with things in this time making me miss my shot, so let's just confirm that it's going to land before we fire for real!
                     # if len(self.other_ships) != 0:
                     if self.verify_first_shot:
                         actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, ship_was_safe = self.bullet_sim(None, False, 0, True, self.future_timesteps, whole_move_sequence)
-                        # In theory we should be able to hit the target, however if we're in multiagent mode, the other ship could muddle with things in this time making me miss my shot, so let's just confirm that it's going to land before we fire for real!
+                        # I think this assertion doesn't work right after a ship dies, because their bullet can still be travelling in the air
                         # if len(self.other_ships) == 0:
                         #    assert actual_asteroid_hit is not None
                         if actual_asteroid_hit is None:
@@ -4884,8 +4913,11 @@ cdef class Matrix:
                     else:
                         fire_this_timestep = True
                 elif fire is None:
-                    # We're not prescribing a fire (by replaying a list of moves or something). So we let this sim decide whether we want to freely shoot or not.
+                    #global update_ts_zero_count
+                    # We're able to decide whether we want to fire any convenient shots we can get
                     timesteps_until_can_fire = max(0, FIRE_COOLDOWN_TS - (self.initial_timestep + self.future_timesteps - self.last_timestep_fired))
+                    #if self.sim_id == 88227:
+                    #    print(f'HELLO were on future ts {self.future_timesteps} in sim 88227 and fire is None. {self.halt_shooting=} {self.respawn_maneuver_pass_number=}, ts until can fire: {timesteps_until_can_fire}, The prescribed thrust and turn rate are {thrust} {turn_rate}')
                     fire_this_timestep = False
                     ship_heading_rad = radians(self.ship_state.heading)
                     if not self.halt_shooting or (self.respawn_maneuver_pass_number == 2 and self.initial_timestep + self.future_timesteps > self.last_timestep_colliding):
@@ -4915,7 +4947,7 @@ cdef class Matrix:
                                             #project_asteroid_by_timesteps_num = round(m.remaining_time*FPS)
                                             #asteroid_when_mine_explodes = time_travel_asteroid(asteroid, project_asteroid_by_timesteps_num, self.game_state)
                                             asteroid_when_mine_explodes = time_travel_asteroid_s(asteroid, m.remaining_time, self.game_state)
-                                            #if check_collision(asteroid_when_mine_explodes.position[0], asteroid_when_mine_explodes.position[1], asteroid_when_mine_explodes.radius, m.position[0], m.position[1], MINE_BLAST_RADIUS):
+                                            #if check_collision(asteroid_when_mine_explodes.px, asteroid_when_mine_explodes.py, asteroid_when_mine_explodes.radius, m.px, m.py, MINE_BLAST_RADIUS):
                                             delta_x = asteroid_when_mine_explodes.px - m.px
                                             delta_y = asteroid_when_mine_explodes.py - m.py
                                             separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS
@@ -4925,7 +4957,7 @@ cdef class Matrix:
                                 if avoid_targeting_this_asteroid:
                                     continue
                                 if ast_idx < len_asteroids:
-                                    #ast_angle = super_fast_atan2(asteroid.position[1] - self.ship_state.position[1], asteroid.position[0] - self.ship_state.position[0])
+                                    #ast_angle = super_fast_atan2(asteroid.py - self.ship_state.py, asteroid.px - self.ship_state.px)
                                     #if abs(angle_difference_deg(degrees(ast_angle), self.ship_state.heading)) <= MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF:
                                     if heading_diff_within_threshold(ship_heading_rad, asteroid.px - self.ship_state.px, asteroid.py - self.ship_state.py, MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF_COSINE):
                                         # We also want to add the surrounding asteroids into the bullet sim, just in case any of them aren't added later in the feasible shots
@@ -4938,7 +4970,7 @@ cdef class Matrix:
                                         if check_next_asteroid:
                                             break
                                         # Since we need to find the minimum shot heading errors, we can't break out of this loop early. We should just go through them all.
-                                        #unwrapped_ast_angle = super_fast_atan2(a.position[1] - self.ship_state.position[1], a.position[0] - self.ship_state.position[0])
+                                        #unwrapped_ast_angle = super_fast_atan2(a.py - self.ship_state.py, a.px - self.ship_state.px)
                                         #if abs(angle_difference_deg(degrees(unwrapped_ast_angle), self.ship_state.heading)) > MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF:
                                         if not heading_diff_within_threshold(ship_heading_rad, a.px - self.ship_state.px, a.py - self.ship_state.py, MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF_COSINE):
                                             continue
@@ -4997,7 +5029,7 @@ cdef class Matrix:
                                 #if not culled_targets_for_simulation:
                                 #    print("WARNING: culled_targets_for_simulation is empty, so I think this means we're purely shooting at forecasted asteroid splits. Doing the full sim with all the bullets without the culling.")
                                     #raise Exception()
-                                bullet_sim_timestep_limit = ceil(max_interception_time*FPS)+1
+                                bullet_sim_timestep_limit = ceil(max_interception_time*FPS) + 1 # TODO: Might not need +1, but maybe it's safer to have it anyway at the cost of a tiny bit of performance
                                 actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, ship_was_safe = self.bullet_sim(None, False, 0, True, self.future_timesteps, whole_move_sequence, bullet_sim_timestep_limit, culled_targets_for_simulation if (culled_targets_for_simulation and not self.game_state.mines) else None)
                                 if actual_asteroid_hit is not None and ship_was_safe:
                                     # Confirmed that the shot will land
@@ -5014,16 +5046,17 @@ cdef class Matrix:
                                             self.forecasted_asteroid_splits.extend(forecast_asteroid_bullet_splits_from_heading(actual_asteroid_hit_at_fire_time, timesteps_until_bullet_hit_asteroid, self.ship_state.heading, self.game_state))
                                         # The reason we add one to the timestep we track on, is that once we updated the asteroids' position in the update loop, it's technically the asteroid positions in the game state of the next timestep that gets passed to the controllers!
                                         # So the asteroid positions at a certain timestep is before their positions get updated. After updating, it's the next timestep.
-                                        #if is_close(-10.0, actual_asteroid_hit_at_fire_time.velocity[0]):
+                                        #if is_close(-10.0, actual_asteroid_hit_at_fire_time.vx):
                                         #    print(f"\nSHOT AT THE ASTEROID IN UPDATE in sim {self.sim_id} on timestep {self.initial_timestep + self.future_timesteps + 1}, {self.initial_timestep=} {self.future_timesteps=} and this shot will take this many ts: {timesteps_until_bullet_hit_asteroid}")
                                         track_asteroid_we_shot_at(self.asteroids_pending_death, self.initial_timestep + self.future_timesteps + 1, self.game_state, timesteps_until_bullet_hit_asteroid, actual_asteroid_hit_at_fire_time)
                                     if fire_this_timestep and not isinf(self.game_state.time_limit) and self.initial_timestep + self.future_timesteps + timesteps_until_bullet_hit_asteroid > floor(FPS*self.game_state.time_limit):
                                         # Added one to the timesteps to prevent off by one :P
+                                        # The scenario is ending, so we withhold the shot. No point.
                                         #print(f'WITHHOLDING SHOT BECAUSE SCENARIO IS ENDING, self.initial_timestep + self.future_timesteps + timesteps_until_bullet_hit_asteroid + 1 = {self.initial_timestep + self.future_timesteps + timesteps_until_bullet_hit_asteroid + 1}, {self.game_state.time_limit=}, {FPS*self.game_state.time_limit=}')
                                         fire_this_timestep = False
                                         self.asteroids_shot -= 1
                             assert self.asteroids_shot >= 0  # REMOVE_FOR_COMPETITION
-                            if self.respawn_maneuver_pass_number == 0 and (self.future_timesteps >= MANEUVER_SIM_DISALLOW_TARGETING_FOR_START_TIMESTEPS_AMOUNT):
+                            if self.respawn_maneuver_pass_number == 0 and (self.future_timesteps >= MANEUVER_SIM_DISALLOW_TARGETING_FOR_START_TIMESTEPS_AMOUNT):# or not fire_this_timestep):
                                 # Might as well start turning toward our next target!
                                 if self.asteroids_shot >= RANDOM_WALK_SCHEDULE_LENGTH:
                                     # Can turn either left or right
@@ -5046,9 +5079,9 @@ cdef class Matrix:
                                     second_min_shot_heading_error_rad = second_min_negative_shot_heading_error_rad
                                 if not fire_this_timestep and not isinf(min_shot_heading_error_rad):
                                     # We didn't fire this timestep, so we can use the min shot heading error rad to turn toward the same target and try again on the next timestep
-                                    next_target_heading_error = min_shot_heading_error_rad
+                                    next_target_heading_error = min_shot_heading_error_rad  # This is where we're aiming for the next timestep!
                                 elif fire_this_timestep and not isinf(second_min_shot_heading_error_rad):
-                                    next_target_heading_error = second_min_shot_heading_error_rad
+                                    next_target_heading_error = second_min_shot_heading_error_rad  # This is where we're aiming for the next timestep!
                                 else:
                                     next_target_heading_error = NAN
                                 # The assumption is that the target that was hit wasn't the second smallest heading diff. THIS IS NOT TRUE IN GENERAL. This can be wrong! But whatever, it's not a big deal and probably not worth fixing/taking the extra compute to track this.
@@ -5098,7 +5131,7 @@ cdef class Matrix:
                                             #project_asteroid_by_timesteps_num = round(m.remaining_time*FPS)
                                             #asteroid_when_mine_explodes = time_travel_asteroid(asteroid, project_asteroid_by_timesteps_num, self.game_state)
                                             asteroid_when_mine_explodes = time_travel_asteroid_s(asteroid, m.remaining_time, self.game_state)
-                                            #if check_collision(asteroid_when_mine_explodes.position[0], asteroid_when_mine_explodes.position[1], asteroid_when_mine_explodes.radius, m.position[0], m.position[1], MINE_BLAST_RADIUS):
+                                            #if check_collision(asteroid_when_mine_explodes.px, asteroid_when_mine_explodes.py, asteroid_when_mine_explodes.radius, m.px, m.py, MINE_BLAST_RADIUS):
                                             delta_x = asteroid_when_mine_explodes.px - m.px
                                             delta_y = asteroid_when_mine_explodes.py - m.py
                                             separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS
@@ -5111,7 +5144,7 @@ cdef class Matrix:
                                     for a in unwrap_asteroid(asteroid, self.game_state.map_size_0, self.game_state.map_size_1, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON, True):
                                         if locked_in:
                                             break
-                                        #unwrapped_ast_angle = super_fast_atan2(a.position[1] - self.ship_state.position[1], a.position[0] - self.ship_state.position[0])
+                                        #unwrapped_ast_angle = super_fast_atan2(a.py - self.ship_state.py, a.px - self.ship_state.px)
                                         #if abs(angle_difference_deg(degrees(unwrapped_ast_angle), self.ship_state.heading)) > MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF:
                                         if not heading_diff_within_threshold(ship_heading_rad, a.px - self.ship_state.px, a.py - self.ship_state.py, MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF_COSINE):
                                             continue
@@ -5415,21 +5448,21 @@ cdef class Matrix:
         
         if not wait_out_mines:
             # Checking collisions with the other ship isn't a great idea since this isn't 100% sure. This models the other ship as stationary, which probably won't be true, unless their controller is the null controller.
-            
-            ## Check ship/ship collisions
-            #if not self.ship_state.is_respawning:
-            #    if ENABLE_ASSERTIONS:
-            #        assert return_value is None
-            #    if self.get_instantaneous_ship_collision():
-            #        print(f"COLLISION WITH OTHER SHIP!!!")
-            #        return_value = False
-            #        self.ship_crashed = True
-            #        self.ship_state.lives_remaining -= 1
-            #        self.ship_state.is_respawning = True
-            #        self.ship_state.speed = 0.0
-            #        self.ship_state.velocity = (0.0, 0.0)
-            #        self.respawn_timer = 3.0
-            
+            '''
+            # Check ship/ship collisions
+            if not self.ship_state.is_respawning:
+                if ENABLE_ASSERTIONS:
+                    assert return_value is None
+                if self.get_instantaneous_ship_collision():
+                    print(f"COLLISION WITH OTHER SHIP!!!")
+                    return_value = False
+                    self.ship_crashed = True
+                    self.ship_state.lives_remaining -= 1
+                    self.ship_state.is_respawning = True
+                    self.ship_state.speed = 0.0
+                    self.ship_state.velocity = (0.0, 0.0)
+                    self.respawn_timer = 3.0
+            '''
             self.future_timesteps += 1
             self.game_state.sim_frame += 1
         #sim_update_total_time += time.perf_counter() - start_time
@@ -5437,6 +5470,7 @@ cdef class Matrix:
             return True
         else:
             return return_value
+
 
     '''
         def update(self, thrust: float = 0.0, turn_rate: float = 0.0, fire: Optional[bool] = None, drop_mine: Optional[bool] = None, whole_move_sequence: Optional[list[Action]] = None, wait_out_mines: bool = False) -> bool:
