@@ -83,7 +83,7 @@ from cython.operator cimport dereference as deref
 from math import ceil, floor
 from libc.stdint cimport int64_t
 from libcpp.vector cimport vector
-from libcpp.set cimport set
+from libcpp.set cimport set as cppset
 ctypedef double float64_t
 import math
 cimport cython
@@ -4864,6 +4864,11 @@ cdef class Matrix:
         # Kessler will move bullets and cull them in different steps, but we combine them in one operation here
         # So we need to detect when the bullets are crossing the boundary, and delete them if they try to
         # Enumerate and track indices to delete
+        #cdef vector[int] bullet_remove_idxs
+        #cdef int i, n = self.game_state.bullets.size()
+        #cdef Bullet* b
+        #cdef double new_px, new_py
+
         bullet_remove_idxs = []
         for b_ind, b in enumerate(self.game_state.bullets):
             new_bullet_pos = (b.px + b.vx*DELTA_TIME, b.py + b.vy*DELTA_TIME)
@@ -4873,7 +4878,7 @@ cdef class Matrix:
                 bullet_remove_idxs.append(b_ind)
         if bullet_remove_idxs:
             self.game_state.bullets = [bullet for idx, bullet in enumerate(self.game_state.bullets) if idx not in bullet_remove_idxs]
-
+        
         # Update mines
         for m in self.game_state.mines:
             if ENABLE_SANITY_CHECKS:  # REMOVE_FOR_COMPETITION
