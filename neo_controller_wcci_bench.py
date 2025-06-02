@@ -2917,7 +2917,10 @@ class Matrix():
     # Has built-in controllers to do stationary targeting, maneuvers, and respawn maneuvers
     # Has fitness function to evaluate the set of moves, along with the end state
     # Can then extract the maneuver along with the future state, to execute the maneuver, and begin planning based on the future state before we actually get there
-    def __init__(self, game_state: GameState, ship_state: Ship, initial_timestep: i64, respawn_timer: float = 0.0, asteroids_pending_death: Optional[dict[i64, list[Asteroid]]] = None, forecasted_asteroid_splits: Optional[list[Asteroid]] = None, last_timestep_fired: i64 = INT_NEG_INF, last_timestep_mined: i64 = INT_NEG_INF, mine_positions_placed: Optional[set[tuple[float, float]]] = None, halt_shooting: bool = False, fire_first_timestep: bool = False, verify_first_shot: bool = False, verify_maneuver_shots: bool = True, last_timestep_colliding: i64 = -1, game_state_plotter: Optional[GameStatePlotter] = None) -> None:
+    def __init__(self, game_state: GameState, ship_state: Ship, initial_timestep: i64, respawn_timer: float = 0.0, asteroids_pending_death: Optional[dict[i64, list[Asteroid]]] = None,
+                 forecasted_asteroid_splits: Optional[list[Asteroid]] = None, last_timestep_fired: i64 = INT_NEG_INF, last_timestep_mined: i64 = INT_NEG_INF,
+                 mine_positions_placed: Optional[set[tuple[float, float]]] = None, halt_shooting: bool = False, fire_first_timestep: bool = False,
+                 verify_first_shot: bool = False, verify_maneuver_shots: bool = True, last_timestep_colliding: i64 = -1, game_state_plotter: Optional[GameStatePlotter] = None) -> None:
         #if not is_close_to_zero(ship_state.speed):
         #    print(f"WARNING: The ship speed when starting the sim is not zero! It's {ship_state.speed=}, {ship_state.velocity=}")
         if asteroids_pending_death is None:
