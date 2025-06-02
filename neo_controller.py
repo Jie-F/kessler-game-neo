@@ -2928,6 +2928,7 @@ class Matrix():
             forecasted_asteroid_splits = []
         self.initial_timestep = initial_timestep
         self.future_timesteps: i64 = 0
+        #print(f"Setting last timestep fired to {last_timestep_fired}")
         self.last_timestep_fired = last_timestep_fired
         self.last_timestep_mined = last_timestep_mined
         if ENABLE_SANITY_CHECKS:  # REMOVE_FOR_COMPETITION
@@ -2956,6 +2957,7 @@ class Matrix():
         self.explanation_messages: list[str] = []
         self.safety_messages: list[str] = []
         self.respawn_timer: float = respawn_timer
+        self.respawn_timer_history: list[float] = []
         self.plot_this_sim = False #( and GAMESTATE_PLOTTING)# or (self.sim_id in [2238])
         self.ship_crashed = False
         self.backed_up_game_state_before_post_mutation: Optional[GameState] = None
@@ -3004,6 +3006,12 @@ class Matrix():
 
     def get_respawn_timer(self) -> float:
         return self.respawn_timer
+
+    def get_respawn_timer_history(self) -> dict[int, float]:
+        respawn_timer_history_dict = {}
+        for i, timer in enumerate(self.respawn_timer_history):
+            respawn_timer_history_dict[self.initial_timestep + i + 1] = timer
+        return respawn_timer_history_dict
 
     def get_ship_state(self) -> Ship:
         return self.ship_state.copy()
@@ -4906,6 +4914,9 @@ class Matrix():
             self.future_timesteps += 1
             self.game_state.sim_frame += 1
         #sim_update_total_time += time.perf_counter() - start_time
+
+        self.respawn_timer_history.append(self.respawn_timer)
+
         if return_value is None:
             return True
         else:
@@ -5085,6 +5096,11 @@ class NeoController(KesslerController):
         self.second_best_fitness_this_planning_period_index: i64 = INT_NEG_INF
         self.stationary_targetting_sim_index: i64 = INT_NEG_INF
         self.current_sequence_fitness: float = -inf # The fitness of the current sequence of actions we're performing
+        self.respawn_timer_history: dict[i64, float] = {}
+        self.last_timestep_fired_history: dict[i64, i64] = {-1: INT_NEG_INF, 0: INT_NEG_INF} # Just pretend, to make the code simpler
+        self.last_timestep_mined_history: dict[i64, i64] = {-1: INT_NEG_INF, 0: INT_NEG_INF}
+        self.fire_next_timestep_schedule: set[i64] = set()
+
         self.game_state_to_base_planning: Optional[BasePlanningGameState] = None
         self.base_gamestate_analysis: Optional[tuple[float, float, float, float, i64, float, i64, i64]] = None
         self.set_of_base_gamestate_timesteps: set[i64] = set()
@@ -5212,7 +5228,10 @@ class NeoController(KesslerController):
             return True
 
     def decide_next_action_continuous(self, game_state: GameState, ship_state: Ship, force_decision: bool) -> bool:
+        global unwrap_cache
+        print(f"Calling decide next action continuous on timestep {game_state.sim_frame}, and {force_decision=}")
         assert self.game_state_to_base_planning is not None
+        #print(self.game_state_to_base_planning)
         assert self.best_fitness_this_planning_period_index != INT_NEG_INF  # REMOVE_FOR_COMPETITION
         debug_print(f"\nDeciding next action! We're picking out of {len(self.sims_this_planning_period)} total sims")
         debug_print(sorted([round(x['fitness'], 2) for x in self.sims_this_planning_period]))
@@ -5290,7 +5309,9 @@ class NeoController(KesslerController):
         if not force_decision:
             if best_action_fitness >= self.current_sequence_fitness:
                 # Wipe the current move sequence and switch to the new better sequence!
+                print(f"Wipe the current move sequence and switch to the new better sequence! Current action seq fitness is {self.current_sequence_fitness} but we can do {best_action_fitness}")
                 self.action_queue.clear()
+                self.actioned_timesteps.clear()  # REMOVE_FOR_COMPETITION
             else:
                 # It ain't better, so don't switch over to this sequence and continue on our existing one
                 self.sims_this_planning_period.clear()
@@ -5431,6 +5452,7 @@ class NeoController(KesslerController):
             # assert not (self.game_state_to_base_planning['respawning'] or new_fire_next_timestep_flag)  # REMOVE_FOR_COMPETITION
         # print(f"{new_ship_state.lives_remaining=}, {str(self.lives_remaining_that_we_did_respawn_maneuver_for)=}, {new_ship_state.is_respawning=}")
         # debug_print(f"Deciding next action on ts {self.current_timestep}! The new planning ship speed is {new_ship_state.speed} and the move sequence we're executing is REDACTED best_move_sequence, type is {self.sims_this_planning_period[self.best_fitness_this_planning_period_index]['action_type']}")
+        '''
         self.game_state_to_base_planning = {
             'timestep': best_action_sim_last_state.timestep,
             'respawning': new_ship_state.lives_remaining not in self.lives_remaining_that_we_did_respawn_maneuver_for and new_ship_state.is_respawning,
@@ -5444,6 +5466,13 @@ class NeoController(KesslerController):
             'mine_positions_placed': best_action_sim.get_mine_positions_placed(),
             'fire_next_timestep_flag': new_fire_next_timestep_flag,
         }
+        '''
+        self.respawn_timer_history = best_action_sim.get_respawn_timer_history()
+        last_timestep_fired = best_action_sim.get_last_timestep_fired()
+        if new_fire_next_timestep_flag:
+            # Remember that we want to shoot the next frame!
+            self.fire_next_timestep_schedule.add(best_move_sequence[-1].timestep + 1)
+        #print(f"Got the respawn timer history: {self.respawn_timer_history}")
         #print('New base gamestate:')
         #print(next_base_game_state)
         #print('New base shipstate:')
@@ -5479,7 +5508,14 @@ class NeoController(KesslerController):
                 assert sim_state.game_state is not None  # REMOVE_FOR_COMPETITION
                 flattened_asteroids_pending_death = [ast for ast_list in sim_state.asteroids_pending_death.values() for ast in ast_list]  # REMOVE_FOR_COMPETITION
                 self.game_state_plotter.update_plot(sim_state.game_state.asteroids, sim_state.ship_state, sim_state.game_state.bullets, [], [], flattened_asteroids_pending_death, sim_state.forecasted_asteroid_splits, sim_state.game_state.mines, True, 0.1, f"MANEUVER SIMULATION PREVIEW TIMESTEP {self.current_timestep}")  # REMOVE_FOR_COMPETITION
-        # print(f"Best move sequence:", best_move_sequence)
+        #print(f"Best move sequence about to be enqueued:", best_move_sequence)
+        assert len(self.action_queue) == 0
+        if CONTINUOUS_LOOKAHEAD_PLANNING:
+            # Keep track of this stuff
+            #self.last_timestep_fired_history.clear()
+            #self.last_timestep_mined_history.clear()
+            assert best_move_sequence[0].timestep == game_state.sim_frame
+            #assert last_timestep_fired == self.last_timestep_fired_history[best_move_sequence[0].timestep - 1], f"{last_timestep_fired=}, {self.last_timestep_fired_history[best_move_sequence[0].timestep - 1]=}"
         for move in best_move_sequence:
             if ENABLE_SANITY_CHECKS:  # REMOVE_FOR_COMPETITION
                 if not move.timestep not in self.actioned_timesteps:  # REMOVE_FOR_COMPETITION
@@ -5489,7 +5525,28 @@ class NeoController(KesslerController):
                 assert move.timestep not in self.actioned_timesteps, "DUPLICATE TIMESTEPS IN ENQUEUED MOVES"  # REMOVE_FOR_COMPETITION
                 self.actioned_timesteps.add(move.timestep)  # REMOVE_FOR_COMPETITION
             self.enqueue_action(move.timestep, move.thrust, move.turn_rate, move.fire, move.drop_mine)
-        
+            if CONTINUOUS_LOOKAHEAD_PLANNING:
+                # Keep track of this stuff
+                if move.fire:
+                    self.last_timestep_fired_history[move.timestep + 1] = move.timestep
+                else:
+                    self.last_timestep_fired_history[move.timestep + 1] = self.last_timestep_fired_history[move.timestep]
+                if move.drop_mine:
+                    self.last_timestep_mined_history[move.timestep + 1] = move.timestep
+                else:
+                    self.last_timestep_mined_history[move.timestep + 1] = self.last_timestep_mined_history[move.timestep]
+        if CONTINUOUS_LOOKAHEAD_PLANNING:
+            if not self.last_timestep_fired_history[best_move_sequence[-1].timestep + 1] == last_timestep_fired:
+                print(best_action_sim.get_last_timestep_fired())
+                print(best_action_sim.get_move_sequence())
+                print(best_action_sim.get_intended_move_sequence())
+            assert self.last_timestep_fired_history[best_move_sequence[-1].timestep + 1] == last_timestep_fired, f"{self.last_timestep_fired_history=}, {last_timestep_fired=}, {new_fire_next_timestep_flag=}"
+            #if new_fire_next_timestep_flag:
+            #    self.last_timestep_fired_history[best_move_sequence[-1].timestep + 1] = best_move_sequence[-1].timestep + 1
+            #else:
+            #    self.last_timestep_fired_history[best_move_sequence[-1].timestep + 1] = self.last_timestep_fired_history[best_move_sequence[-1].timestep]
+            #self.last_timestep_mined_history[best_move_sequence[-1].timestep + 1] = self.last_timestep_mined_history[best_move_sequence[-1].timestep]
+        #print(f"Queue after encoding: {self.action_queue}")
         # Record down the fitness of the sequence of actions we just decided on, so we know if we ever have a better fitness and can abandon this one!
         self.current_sequence_fitness = best_action_fitness
         
@@ -5500,7 +5557,7 @@ class NeoController(KesslerController):
         self.second_best_fitness_this_planning_period_index = INT_NEG_INF
         self.stationary_targetting_sim_index = INT_NEG_INF
         self.base_gamestate_analysis = None
-        global unwrap_cache
+        
         unwrap_cache.clear()
         return True
 
@@ -6595,16 +6652,17 @@ class NeoController(KesslerController):
             # Amid running the scenario, the action queue is desynced with our timestep. This may be caused by an exception that was raised in Neo which was caught by Kessler, so the actions for this timestep were never consumed.
             action_queue_desync: bool = len(self.action_queue) > 0 and self.action_queue[0][0] != self.current_timestep
             planning_base_state_outdated: bool = self.game_state_to_base_planning is not None and self.game_state_to_base_planning['timestep'] < self.current_timestep
-            if timestep_mismatch or (STATE_CONSISTENCY_CHECK_AND_RECOVERY and (action_queue_desync or planning_base_state_outdated)):
-                if timestep_mismatch and not (action_queue_desync or planning_base_state_outdated):
+            if timestep_mismatch or (STATE_CONSISTENCY_CHECK_AND_RECOVERY and (action_queue_desync or (planning_base_state_outdated and not CONTINUOUS_LOOKAHEAD_PLANNING))):
+                if timestep_mismatch and not (action_queue_desync or (planning_base_state_outdated and not CONTINUOUS_LOOKAHEAD_PLANNING)):
                     debug_print("This was not a fresh run of the controller! I'll try cleaning up the previous run and reset the state.")
                 elif timestep_mismatch:
                     debug_print(f"Neo didn't start from time 0. Was there a controller exception? Setting timestep to match the passed-in game state's nonzero starting timestep of: {game_state.sim_frame}")
                 self.reset()
                 self.current_timestep += 1
-                if STATE_CONSISTENCY_CHECK_AND_RECOVERY and (action_queue_desync or planning_base_state_outdated):
+                if STATE_CONSISTENCY_CHECK_AND_RECOVERY and (action_queue_desync or (planning_base_state_outdated and not CONTINUOUS_LOOKAHEAD_PLANNING)):
                     debug_print("Neo probably crashed or something because the internal state is all messed up. Welp, let's try this again.")
                     recovering_from_crash = True
+                    #raise Exception()
                 if timestep_mismatch:
                     self.current_timestep = game_state.sim_frame
 
@@ -6628,20 +6686,21 @@ class NeoController(KesslerController):
                 # No other ships exist, we're deterministically planning the future
                 # Always set the latest state to the base state!
                 # TODO: Use more accurate stuff for the carryover info!
+                #print(self.last_timestep_fired_history)
                 self.game_state_to_base_planning = {
                     'timestep': self.current_timestep,
                     'respawning': ship_state.is_respawning,
                     'ship_state': ship_state,
                     'game_state': game_state,
-                    'ship_respawn_timer': 0,
+                    'ship_respawn_timer': 0.0 if self.current_timestep == 0 else self.respawn_timer_history[self.current_timestep],
                     'asteroids_pending_death': {},
                     'forecasted_asteroid_splits': [],
-                    'last_timestep_fired': INT_NEG_INF if not recovering_from_crash else self.current_timestep - 1,  # self.current_timestep - 1, # TODO: CHECK EDGECASE, may need to restore to larger number to be safe
-                    'last_timestep_mined': INT_NEG_INF if not recovering_from_crash else self.current_timestep - 1, # The reason we set this to the last timestep, is to be conservative in the case that we're recovering from a controller crash, and we don't know when we last shot
+                    'last_timestep_fired': (INT_NEG_INF if self.current_timestep == 0 else self.last_timestep_fired_history[self.current_timestep]) if not recovering_from_crash else self.current_timestep - 1,  # self.current_timestep - 1, # TODO: CHECK EDGECASE, may need to restore to larger number to be safe
+                    'last_timestep_mined': (INT_NEG_INF if self.current_timestep == 0 else self.last_timestep_mined_history[self.current_timestep]) if not recovering_from_crash else self.current_timestep - 1, # The reason we set this to the last timestep, is to be conservative in the case that we're recovering from a controller crash, and we don't know when we last shot
                     'mine_positions_placed': set(),
-                    'fire_next_timestep_flag': False,
+                    'fire_next_timestep_flag': self.current_timestep in self.fire_next_timestep_schedule,
                 }
-                
+                #print(f"The action queue on frame {game_state.sim_frame} is {self.action_queue}")
                 if not self.action_queue:
                     # Only when we're at the end of our sequence, do we run the stationary targeting sim once. Basically we just keep doing stationary targeting unless we have a better maneuver found
                     self.plan_action_continuous(other_ships_exist=False, base_state_is_exact=True, iterations_boost=iterations_boost, plan_stationary=True)
@@ -6674,6 +6733,7 @@ class NeoController(KesslerController):
                     print_explanation(f"Ouch, I died in the middle of a maneuver where I expected to survive, due to other ships being present!", self.current_timestep)
                     #debug_print(f"I have {ship_state.lives_remaining} lives left, and here's the set of lives left we did respawn maneuvers for: {self.lives_remaining_that_we_did_respawn_maneuver_for}")  # REMOVE_FOR_COMPETITION
                     # Clear the move queue, since previous moves have been invalidated by us taking damage
+                    print("CLEAARING ACTION QUEUE")
                     self.action_queue.clear()
                     self.actioned_timesteps.clear()  # If we don't clear it, we'll have duplicated moves since we have to overwrite our planned moves to get to safety, which means enqueuing moves on timesteps we already enqueued moves for.
                     self.fire_next_timestep_flag = False  # If we were planning on shooting this timestep but we unexpectedly got hit, DO NOT SHOOT! Actually even if we didn't reset this variable here, we'd only shoot after the respawn maneuver is done and then we'd miss a shot. And yes that was a bug that I fixed lmao
@@ -6701,6 +6761,7 @@ class NeoController(KesslerController):
                     # assert not self.last_timestep_ship_is_respawning
                     print_explanation(f"\nI thought I would die, but the other ship saved me!!!", self.current_timestep)
                     # Clear the move queue, since previous moves have been invalidated by us taking damage
+                    print("CLEAARING ACTION QUEUE")
                     self.action_queue.clear()
                     self.actioned_timesteps.clear()  # If we don't clear it, we'll have duplicated moves since we have to overwrite our planned moves to get to safety, which means enqueuing moves on timesteps we already enqueued moves for.
                     self.fire_next_timestep_flag = False  # This should be false anyway!
@@ -6879,6 +6940,7 @@ class NeoController(KesslerController):
         # Execute the actions in the queue for this timestep
         if self.action_queue and self.action_queue[0][0] == self.current_timestep:
             _, thrust, turn_rate, fire, drop_mine = self.action_queue.popleft()
+            #print(f"Action queue after popping: {self.action_queue}")
         else:
             raise Exception(f"Sequence error on timestep {self.current_timestep}!")
             thrust, turn_rate, fire, drop_mine = 0.0, 0.0, False, False

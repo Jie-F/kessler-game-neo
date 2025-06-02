@@ -17,6 +17,7 @@ ASTEROID_COUNT_LOOKUP = (0, 1, 4, 13, 40)
 from src.kesslergame import Scenario, KesslerGame, GraphicsType
 from src.kesslergame.controller_gamepad import GamepadController
 from src.neo_controller import NeoController
+#from neo_controller import NeoController
 #from src.neo_controller_wcci_bench import NeoController
 
 global color_text
@@ -281,7 +282,7 @@ benchmark_scenario = Scenario(name="Benchmark Scenario",
                                 seed=0,
                                 time_limit=120.0)
 
-scenario_to_run = benchmark_scenario
+scenario_to_run = falling_leaves_scenario
 
 pre = time.perf_counter()
 if scenario_to_run is not None:
