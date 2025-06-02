@@ -91,6 +91,7 @@ from functools import lru_cache
 from itertools import chain
 from math import acos, asin, atan2, ceil, cos, exp, floor, inf, isinf, isnan, nan, pi, sin, sqrt, copysign
 from typing import Any, Final, Optional, Sequence, TypedDict, cast
+from copy import deepcopy
 
 import matplotlib.patches as patches  # type: ignore[import-untyped]
 import matplotlib.pyplot as plt  # type: ignore[import-untyped]
@@ -2946,6 +2947,7 @@ class Matrix():
         self.state_sequence: list[SimState] = []
         self.asteroids_shot: i64 = 0
         self.asteroids_pending_death: dict[i64, list[Asteroid]] = {timestep: list(l) for timestep, l in asteroids_pending_death.items()}
+        self.asteroids_pending_death_history: dict[i64, dict[i64, list[Asteroid]]] = {}
         self.forecasted_asteroid_splits: list[Asteroid] = [a.copy() for a in forecasted_asteroid_splits]
         self.halt_shooting: bool = halt_shooting # This probably means we're doing a respawn maneuver
         self.fire_next_timestep_flag: bool = False
@@ -3031,6 +3033,19 @@ class Matrix():
 
     def get_asteroids_pending_death(self) -> dict[i64, list[Asteroid]]:
         return self.asteroids_pending_death
+    
+    def get_asteroids_pending_death_history(self) -> dict[i64, dict[i64, list[Asteroid]]]:
+        # This is a doozy. First of all, if we never shot any asteroids during this sim, then this history dict will be empty!
+        # But each time we shoot an asteroid, we add to this dict the timestep the thing was updated, but we plop down the PREVIOUS version!
+        # For example we have versions A and B. 0:A, 1:A, 2:A, 3:B, 4:B is how the thing changes. So the dict would say: {3: A}. And then B is held in the variable.
+        latest_version = self.asteroids_pending_death
+        asteroids_pending_death_history_dict: dict[i64, dict[i64, list[Asteroid]]] = {}
+        # TODO: Make sure there's no off-by-one error in these bounds and indices!
+        for t in range(self.initial_timestep + self.future_timesteps + 1, self.initial_timestep, -1):
+            asteroids_pending_death_history_dict[t] = latest_version
+            if t in self.asteroids_pending_death_history:
+                latest_version = self.asteroids_pending_death_history[t]
+        return asteroids_pending_death_history_dict
 
     def get_forecasted_asteroid_splits(self) -> list[Asteroid]:
         return self.forecasted_asteroid_splits
@@ -3953,6 +3968,7 @@ class Matrix():
                 assert future_ts_backup + len(aiming_move_sequence) == self.future_timesteps  # REMOVE_FOR_COMPETITION
                 #if is_close(-10.0, actual_asteroid_hit_when_firing.velocity[0]):
                 #    print(f"\nSHOT AT THE ASTEROID IN TARGET SELECTION on timestep {self.initial_timestep=} {self.future_timesteps=}")
+                self.asteroids_pending_death_history[self.initial_timestep + self.future_timesteps] = self.asteroids_pending_death.deepcopy()
                 track_asteroid_we_shot_at(self.asteroids_pending_death, self.initial_timestep + self.future_timesteps, self.game_state, timesteps_until_bullet_hit_asteroid - len(aiming_move_sequence), actual_asteroid_hit_when_firing)
                 # print(f"self.asteroids_pending_death updated to {self.asteroids_pending_death[100]}")
                 # print(self.asteroids_pending_death)
@@ -4505,6 +4521,7 @@ class Matrix():
                                         # So the asteroid positions at a certain timestep is before their positions get updated. After updating, it's the next timestep.
                                         #if is_close(-10.0, actual_asteroid_hit_at_fire_time.velocity[0]):
                                         #    print(f"\nSHOT AT THE ASTEROID IN UPDATE in sim {self.sim_id} on timestep {self.initial_timestep + self.future_timesteps + 1}, {self.initial_timestep=} {self.future_timesteps=} and this shot will take this many ts: {timesteps_until_bullet_hit_asteroid}")
+                                        self.asteroids_pending_death_history[self.initial_timestep + self.future_timesteps + 1] = self.asteroids_pending_death.deepcopy()
                                         track_asteroid_we_shot_at(self.asteroids_pending_death, self.initial_timestep + self.future_timesteps + 1, self.game_state, timesteps_until_bullet_hit_asteroid, actual_asteroid_hit_at_fire_time)
                                     if fire_this_timestep and not isinf(self.game_state.time_limit) and self.initial_timestep + self.future_timesteps + timesteps_until_bullet_hit_asteroid > floor(FPS*self.game_state.time_limit):
                                         # Added one to the timesteps to prevent off by one :P
@@ -5097,9 +5114,12 @@ class NeoController(KesslerController):
         self.stationary_targetting_sim_index: i64 = INT_NEG_INF
         self.current_sequence_fitness: float = -inf # The fitness of the current sequence of actions we're performing
         self.respawn_timer_history: dict[i64, float] = {}
-        self.last_timestep_fired_history: dict[i64, i64] = {-1: INT_NEG_INF, 0: INT_NEG_INF} # Just pretend, to make the code simpler
-        self.last_timestep_mined_history: dict[i64, i64] = {-1: INT_NEG_INF, 0: INT_NEG_INF}
-        self.fire_next_timestep_schedule: set[i64] = set()
+        self.last_timestep_fired_schedule: dict[i64, i64] = {-1: INT_NEG_INF, 0: INT_NEG_INF} # Just pretend, to make the code simpler
+        self.last_timestep_mined_schedule: dict[i64, i64] = {-1: INT_NEG_INF, 0: INT_NEG_INF}
+        self.fire_next_timestep_schedule: set[i64] = set() # If a timestep is in the set, the bool value is True. Otherwise, it's false.
+        self.asteroids_pending_death_schedule: dict[i64, dict[i64, list[Asteroid]]] = {}
+        self.forecasted_asteroid_splits_schedule: dict[i64, list[Asteroid]] = {}
+        self.mine_positions_placed_schedule: dict[i64, set[tuple[float, float]]] = {}
 
         self.game_state_to_base_planning: Optional[BasePlanningGameState] = None
         self.base_gamestate_analysis: Optional[tuple[float, float, float, float, i64, float, i64, i64]] = None
@@ -5468,6 +5488,9 @@ class NeoController(KesslerController):
         }
         '''
         self.respawn_timer_history = best_action_sim.get_respawn_timer_history()
+        self.asteroids_pending_death_schedule = best_action_sim.get_asteroids_pending_death_history()
+        self.forecasted_asteroid_splits_schedule = best_action_sim.get_forecasted_asteroid_splits_history()
+        self.mine_positions_placed_schedule = best_action_sim.get_mine_positions_placed_history()
         last_timestep_fired = best_action_sim.get_last_timestep_fired()
         if new_fire_next_timestep_flag:
             # Remember that we want to shoot the next frame!
@@ -5528,19 +5551,19 @@ class NeoController(KesslerController):
             if CONTINUOUS_LOOKAHEAD_PLANNING:
                 # Keep track of this stuff
                 if move.fire:
-                    self.last_timestep_fired_history[move.timestep + 1] = move.timestep
+                    self.last_timestep_fired_schedule[move.timestep + 1] = move.timestep
                 else:
-                    self.last_timestep_fired_history[move.timestep + 1] = self.last_timestep_fired_history[move.timestep]
+                    self.last_timestep_fired_schedule[move.timestep + 1] = self.last_timestep_fired_schedule[move.timestep]
                 if move.drop_mine:
-                    self.last_timestep_mined_history[move.timestep + 1] = move.timestep
+                    self.last_timestep_mined_schedule[move.timestep + 1] = move.timestep
                 else:
-                    self.last_timestep_mined_history[move.timestep + 1] = self.last_timestep_mined_history[move.timestep]
+                    self.last_timestep_mined_schedule[move.timestep + 1] = self.last_timestep_mined_schedule[move.timestep]
         if CONTINUOUS_LOOKAHEAD_PLANNING:
-            if not self.last_timestep_fired_history[best_move_sequence[-1].timestep + 1] == last_timestep_fired:
+            if not self.last_timestep_fired_schedule[best_move_sequence[-1].timestep + 1] == last_timestep_fired:
                 print(best_action_sim.get_last_timestep_fired())
                 print(best_action_sim.get_move_sequence())
                 print(best_action_sim.get_intended_move_sequence())
-            assert self.last_timestep_fired_history[best_move_sequence[-1].timestep + 1] == last_timestep_fired, f"{self.last_timestep_fired_history=}, {last_timestep_fired=}, {new_fire_next_timestep_flag=}"
+            assert self.last_timestep_fired_schedule[best_move_sequence[-1].timestep + 1] == last_timestep_fired, f"{self.last_timestep_fired_schedule=}, {last_timestep_fired=}, {new_fire_next_timestep_flag=}"
             #if new_fire_next_timestep_flag:
             #    self.last_timestep_fired_history[best_move_sequence[-1].timestep + 1] = best_move_sequence[-1].timestep + 1
             #else:
@@ -6693,11 +6716,11 @@ class NeoController(KesslerController):
                     'ship_state': ship_state,
                     'game_state': game_state,
                     'ship_respawn_timer': 0.0 if self.current_timestep == 0 else self.respawn_timer_history[self.current_timestep],
-                    'asteroids_pending_death': {},
-                    'forecasted_asteroid_splits': [],
-                    'last_timestep_fired': (INT_NEG_INF if self.current_timestep == 0 else self.last_timestep_fired_history[self.current_timestep]) if not recovering_from_crash else self.current_timestep - 1,  # self.current_timestep - 1, # TODO: CHECK EDGECASE, may need to restore to larger number to be safe
-                    'last_timestep_mined': (INT_NEG_INF if self.current_timestep == 0 else self.last_timestep_mined_history[self.current_timestep]) if not recovering_from_crash else self.current_timestep - 1, # The reason we set this to the last timestep, is to be conservative in the case that we're recovering from a controller crash, and we don't know when we last shot
-                    'mine_positions_placed': set(),
+                    'asteroids_pending_death': {} if not self.current_timestep in self.asteroids_pending_death_schedule else self.asteroids_pending_death_schedule[self.current_timestep],
+                    'forecasted_asteroid_splits': [] if not self.current_timestep in self.forecasted_asteroid_splits_schedule else self.forecasted_asteroid_splits_schedule[self.current_timestep],
+                    'last_timestep_fired': (INT_NEG_INF if self.current_timestep == 0 else self.last_timestep_fired_schedule[self.current_timestep]) if not recovering_from_crash else self.current_timestep - 1,  # self.current_timestep - 1, # TODO: CHECK EDGECASE, may need to restore to larger number to be safe
+                    'last_timestep_mined': (INT_NEG_INF if self.current_timestep == 0 else self.last_timestep_mined_schedule[self.current_timestep]) if not recovering_from_crash else self.current_timestep - 1, # The reason we set this to the last timestep, is to be conservative in the case that we're recovering from a controller crash, and we don't know when we last shot
+                    'mine_positions_placed': set() if not self.current_timestep in self.mine_positions_placed_schedule else self.mine_positions_placed_schedule[self.current_timestep],
                     'fire_next_timestep_flag': self.current_timestep in self.fire_next_timestep_schedule,
                 }
                 #print(f"The action queue on frame {game_state.sim_frame} is {self.action_queue}")
