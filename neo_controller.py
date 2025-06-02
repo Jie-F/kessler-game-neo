@@ -108,7 +108,7 @@ gc.set_threshold(50000)
 # IMPORTANT: if multiple scenarios are run back-to-back, this controller doesn't get freshly initialized in the subsequent runs.
 # If any global variables are changed during execution, make sure to reset them when the timestep is 0.
 
-BUILD_NUMBER: Final = "2024-06-17 Neo - Jie Fan (jie.f@pm.me)"
+BUILD_NUMBER: Final = "2025-06-01 Neo - Jie Fan (jie.f@pm.me)"
 
 # Output config
 DEBUG_MODE: Final[bool] = False
@@ -5064,8 +5064,6 @@ class NeoController(KesslerController):
         print(BUILD_NUMBER)
         print(__file__)
         self.reset(chromosome)
-        #self.ship_id: int = -1 # Dangerous!
-        #self._ship_id: int = -1
 
     def reset(self, chromosome: Optional[tuple[float, float, float, float, float, float, float, float, float]] = None) -> None:
         self.init_done = False
@@ -5073,7 +5071,7 @@ class NeoController(KesslerController):
         # DO NOT OVERWRITE self.ship_id. That will cause the controller to break, since Kessler manages that itself. If we want to track our ship id, use a different variable name.
         self.ship_id_internal: i64 = -1
         self.current_timestep: i64 = -1
-        self.action_queue: deque[tuple[i64, float, float, bool, bool]] = deque()
+        self.action_queue: deque[tuple[i64, float, float, bool, bool]] = deque() # (timestep, thrust, turn_rate, fire, drop_mine)
         self.game_state_plotter: Optional[GameStatePlotter] = None
         self.actioned_timesteps: set[i64] = set()
         self.sims_this_planning_period: list[CompletedSimulation] = []  # The first sim in the list is stationary targetting, and the rest is maneuvers
@@ -6219,7 +6217,7 @@ class NeoController(KesslerController):
                 assert bool(self.game_state_to_base_planning['ship_respawn_timer']) == self.game_state_to_base_planning['ship_state'].is_respawning  # REMOVE_FOR_COMPETITION
 
             if self.action_queue:
-                self.plan_action(self.other_ships_exist, False, iterations_boost, False)
+                self.plan_action(other_ships_exist=self.other_ships_exist, base_state_is_exact=False, iterations_boost=iterations_boost, plan_stationary=False)
             else:
                 # Refresh the base state now that we have the true base state!
                 # debug_print('REFRESHING BASE STATE FOR STATIONARY ON TS', self.current_timestep)
@@ -6234,26 +6232,24 @@ class NeoController(KesslerController):
                 # if len(get_other_ships(game_state, self.ship_id_internal)) == 0:
                 #    debug_print("\n\nWe're alone already. Injecting the following game state:")
                 #    debug_print(game_state)
-                self.plan_action(self.other_ships_exist, True, iterations_boost, True)
+                self.plan_action(other_ships_exist=self.other_ships_exist, base_state_is_exact=True, iterations_boost=iterations_boost, plan_stationary=True)
                 assert self.best_fitness_this_planning_period_index != INT_NEG_INF  # REMOVE_FOR_COMPETITION
                 #index_according_to_lives_remaining = min(3, self.game_state_to_base_planning['ship_state'].lives_remaining)
                 while len(self.sims_this_planning_period) < (get_min_maneuver_per_period_search_iterations_if_will_die(self.game_state_to_base_planning['ship_state'].lives_remaining, weighted_average(overall_fitness_record)) if self.sims_this_planning_period[self.best_fitness_this_planning_period_index]['fitness_breakdown'][5] == 0.0 else (get_min_respawn_per_period_search_iterations(self.game_state_to_base_planning['ship_state'].lives_remaining, weighted_average(overall_fitness_record)) if self.game_state_to_base_planning['respawning'] else get_min_maneuver_per_period_search_iterations(self.game_state_to_base_planning['ship_state'].lives_remaining, weighted_average(overall_fitness_record)))):
                     # Planning extra iterations to reach minimum threshold!
                     # print(f"Planning extra iterations to reach minimum threshold! {len(self.sims_this_planning_period)}")
-                    self.plan_action(self.other_ships_exist, True, False, False)
+                    self.plan_action(other_ships_exist=self.other_ships_exist, base_state_is_exact=True, iterations_boost=False, plan_stationary=False)
                 assert self.current_timestep == self.game_state_to_base_planning['timestep']  # REMOVE_FOR_COMPETITION
-                #extra_planning_loop_count: i64 = 0
                 if not self.decide_next_action(game_state, ship_state):  # Since other ships exist and this is non-deterministic, we constantly feed in the updated reality
                     # Most of the time we won't go into this part at all
                     # This is only for if the decide next action fails due to non-determinism injected by the other ship.
                     # If the other ship makes our action bad, then we'll do extra search iterations to find something good and to put on a good show
                     for _ in range(60):
-                        self.plan_action(self.other_ships_exist, True, False, False)
+                        self.plan_action(other_ships_exist=self.other_ships_exist, base_state_is_exact=True, iterations_boost=False, plan_stationary=False)
                         if self.second_best_fitness_this_planning_period > 0.93:
                             # Good enough, early exit
                             break
                     #debug_print(f"Going back to do more searching to find a good move. We have {len(self.sims_this_planning_period)} sims so far!")
-                    #extra_planning_loop_count += 1
                     success = self.decide_next_action(game_state, ship_state)
                     assert success  # REMOVE_FOR_COMPETITION
                 if len(get_other_ships(game_state, self.ship_id_internal)) == 0:
@@ -6273,26 +6269,27 @@ class NeoController(KesslerController):
                     iterations_boost = True
                 self.game_state_to_base_planning = {
                     'timestep': self.current_timestep,
-                    'respawning': False,  # On the first timestep 0, the is_respawning flag is ALWAYS false, even if we spawn inside asteroids.
+                    'respawning': False,  # On the first timestep 0, the is_respawning flag is ALWAYS false, even if we spawned inside asteroids!
                     'ship_state': ship_state,
                     'game_state': game_state,
                     'ship_respawn_timer': 0,
                     'asteroids_pending_death': {},
                     'forecasted_asteroid_splits': [],
                     'last_timestep_fired': INT_NEG_INF if not recovering_from_crash else self.current_timestep - 1,  # self.current_timestep - 1, # TODO: CHECK EDGECASE, may need to restore to larger number to be safe
-                    'last_timestep_mined': INT_NEG_INF if not recovering_from_crash else self.current_timestep - 1,
+                    'last_timestep_mined': INT_NEG_INF if not recovering_from_crash else self.current_timestep - 1, # The reason we set this to the last timestep, is to be conservative in the case that we're recovering from a controller crash, and we don't know when we last shot
                     'mine_positions_placed': set(),
                     'fire_next_timestep_flag': False,
                 }
                 if recovering_from_crash:
                     print_explanation(f"Recovering from crash! Setting the base gamestate. The timestep is {self.current_timestep}", self.current_timestep)
                 assert bool(self.game_state_to_base_planning['ship_respawn_timer']) == self.game_state_to_base_planning['ship_state'].is_respawning, f"{self.game_state_to_base_planning['ship_respawn_timer']=} {self.game_state_to_base_planning['ship_state'].is_respawning=}"  # REMOVE_FOR_COMPETITION
+            
             # No matter what, spend some time evaluating the best action from the next predicted state
             # When no ships are around, the stationary targetting is the first thing done
             if not self.sims_this_planning_period:
-                self.plan_action(self.other_ships_exist, True, iterations_boost, True)
+                self.plan_action(other_ships_exist=self.other_ships_exist, base_state_is_exact=True, iterations_boost=iterations_boost, plan_stationary=True)
             else:
-                self.plan_action(self.other_ships_exist, True, iterations_boost, False)
+                self.plan_action(other_ships_exist=self.other_ships_exist, base_state_is_exact=True, iterations_boost=iterations_boost, plan_stationary=False)
             if not self.action_queue:
                 assert self.best_fitness_this_planning_period_index != INT_NEG_INF  # REMOVE_FOR_COMPETITION
                 #index_according_to_lives_remaining = min(3, self.game_state_to_base_planning['ship_state'].lives_remaining)
