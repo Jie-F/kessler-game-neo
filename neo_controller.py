@@ -543,7 +543,7 @@ class Bullet:
         '''
 
     def __str__(self) -> str:
-        return f'Bullet(position=({self.x}, {self.y}), velocity=({self.vx}, {self.vy}), heading={self.heading}, mass={self.mass}, tail_delta={self.tail_delta})'
+        return f'Bullet(position=({self.x}, {self.y}), velocity=({self.vx}, {self.vy}), heading={self.heading}, mass={self.mass}, tail_delta=({self.tail_delta_x}, {self.tail_delta_y}))'
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -574,22 +574,22 @@ class Bullet:
 
 
 class GameState:
-    __slots__ = ('asteroids', 'ships', 'bullets', 'mines', 'map_size', 'time', 'delta_time', 'sim_frame', 'time_limit')
+    __slots__ = ('asteroids', 'ships', 'bullets', 'mines', 'map_size_x', 'map_size_y', 'time', 'delta_time', 'sim_frame', 'time_limit')
 
-    def __init__(self, asteroids: list[Asteroid], ships: list[Ship], bullets: list[Bullet], mines: list[Mine], map_size: tuple[float, float] = (0.0, 0.0), time: float = 0.0, delta_time: float = 0.0, sim_frame: i64 = 0, time_limit: float = 0.0) -> None:
+    def __init__(self, asteroids: list[Asteroid], ships: list[Ship], bullets: list[Bullet], mines: list[Mine], map_size_x: float = 0.0, map_size_y: float = 0.0, time: float = 0.0, delta_time: float = 0.0, sim_frame: i64 = 0, time_limit: float = 0.0) -> None:
         self.asteroids = asteroids
         self.ships = ships
         self.bullets = bullets
         self.mines = mines
-        self.map_size_x = map_size[0]
-        self.map_size_y = map_size[1]
+        self.map_size_x = map_size_x
+        self.map_size_y = map_size_y
         self.time = time
         self.delta_time = delta_time
         self.sim_frame = sim_frame
         self.time_limit = time_limit
 
     def __str__(self) -> str:
-        return f'GameState(asteroids={self.asteroids}, ships={self.ships}, bullets={self.bullets}, mines={self.mines}, map_size={self.map_size}, time={self.time}, delta_time={self.delta_time}, sim_frame={self.sim_frame}, time_limit={self.time_limit})'
+        return f'GameState(asteroids={self.asteroids}, ships={self.ships}, bullets={self.bullets}, mines={self.mines}, map_size=({self.map_size_x}, {self.map_size_y}), time={self.time}, delta_time={self.delta_time}, sim_frame={self.sim_frame}, time_limit={self.time_limit})'
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -600,7 +600,8 @@ class GameState:
             ships=[ship.copy() for ship in self.ships], 
             bullets=[bullet.copy() for bullet in self.bullets], 
             mines=[mine.copy() for mine in self.mines], 
-            map_size=self.map_size, 
+            map_size_x=self.map_size_x,
+            map_size_y=self.map_size_y,
             time=self.time, 
             delta_time=self.delta_time, 
             sim_frame=self.sim_frame,
@@ -765,7 +766,9 @@ class ShipDict(TypedDict, total=False):
     bullets_remaining: i64
     mines_remaining: i64
     can_fire: bool
+    can_deploy_mine: bool
     fire_rate: float
+    mine_deploy_rate: float
     thrust_range: tuple[float, float]
     turn_rate_range: tuple[float, float]
     max_speed: float
@@ -822,7 +825,7 @@ class CompletedSimulation(TypedDict, total=False):
     state_type: str
     maneuver_tuple: Optional[tuple[float, float, float, i64, float]]
 
-
+'''
 def create_game_state_from_dict_OLD(game_state_dict: GameStateDict) -> GameState:
     asteroids = [Asteroid(**asteroid) for asteroid in game_state_dict['asteroids']]
     ships = [Ship(**ship) for ship in game_state_dict['ships']]
@@ -834,6 +837,8 @@ def create_game_state_from_dict_OLD(game_state_dict: GameStateDict) -> GameState
     sim_frame = game_state_dict['sim_frame']
     time_limit = game_state_dict['time_limit']
     return GameState(asteroids=asteroids, ships=ships, bullets=bullets, mines=mines, map_size=map_size, time=time, delta_time=delta_time, sim_frame=sim_frame, time_limit=time_limit)
+'''
+
 
 def create_asteroid_from_dict(d: AsteroidDict) -> Asteroid:
     x, y = d['position']
@@ -846,7 +851,7 @@ def create_asteroid_from_dict(d: AsteroidDict) -> Asteroid:
         size=d['size'],
         mass=d['mass'],
         radius=d['radius'],
-        timesteps_until_appearance=d.get('timesteps_until_appearance', 0)
+        #timesteps_until_appearance=d['timesteps_until_appearance']
     )
 
 def create_ship_from_dict(d: ShipDict) -> Ship:
@@ -872,7 +877,7 @@ def create_ship_from_dict(d: ShipDict) -> Ship:
         can_fire=d.get('can_fire', True),
         fire_rate=d.get('fire_rate', 0.0),
         can_deploy_mine=d.get('can_deploy_mine', True),
-        mine_deploy_rate=d.get('mine_deploy_rate'),
+        mine_deploy_rate=d.get('mine_deploy_rate', 0.0),
         thrust_range=thrust_range,
         turn_rate_range=turn_rate_range,
         max_speed=d.get('max_speed', SHIP_MAX_SPEED),
@@ -908,12 +913,13 @@ def create_game_state_from_dict(game_state_dict: GameStateDict) -> GameState:
     ships = [create_ship_from_dict(ship) for ship in game_state_dict['ships']]
     bullets = [create_bullet_from_dict(bullet) for bullet in game_state_dict['bullets']]
     mines = [create_mine_from_dict(mine) for mine in game_state_dict['mines']]
-    map_size = game_state_dict['map_size']
+    map_size_x = game_state_dict['map_size'][0]
+    map_size_y = game_state_dict['map_size'][1]
     time = game_state_dict['time']
     delta_time = game_state_dict['delta_time']
     sim_frame = game_state_dict['sim_frame']
     time_limit = game_state_dict['time_limit']
-    return GameState(asteroids=asteroids, ships=ships, bullets=bullets, mines=mines, map_size=map_size, time=time, delta_time=delta_time, sim_frame=sim_frame, time_limit=time_limit)
+    return GameState(asteroids=asteroids, ships=ships, bullets=bullets, mines=mines, map_size_x=map_size_x, map_size_y=map_size_y, time=time, delta_time=delta_time, sim_frame=sim_frame, time_limit=time_limit)
 
 
 def degrees(x: float) -> float:
@@ -1522,8 +1528,8 @@ def weighted_harmonic_mean(numbers: Sequence[float], weights: Optional[Sequence[
 
 def preprocess_bullets(bullets: list[Bullet]) -> list[Bullet]:
     for b in bullets:
-        bullet_tail_delta = (-BULLET_LENGTH*cos(b.heading*DEG_TO_RAD), -BULLET_LENGTH*sin(b.heading*DEG_TO_RAD))
-        b.tail_delta = bullet_tail_delta
+        b.tail_delta_x = -BULLET_LENGTH*cos(b.heading*DEG_TO_RAD)
+        b.tail_delta_y = -BULLET_LENGTH*sin(b.heading*DEG_TO_RAD)
     return bullets
 
 
@@ -1590,9 +1596,8 @@ def inspect_scenario(game_state: GameState, ship_state: Ship) -> None:
         total_x_velocity = 0.0
         total_y_velocity = 0.0
         for a in asteroids:
-            ast_vel: tuple[float, float] = a.velocity
-            total_x_velocity += ast_vel[0]
-            total_y_velocity += ast_vel[1]
+            total_x_velocity += a.vx
+            total_y_velocity += a.vy
         num_asteroids = len(asteroids)
         if num_asteroids == 0:
             return (0, 0)
@@ -1683,26 +1688,26 @@ class GameStatePlotter:
         # Draw asteroids and their velocities
         for a in asteroids:
             if a:
-                asteroid_circle = patches.Circle(a.position, a.radius, color='gray', fill=True)
+                asteroid_circle = patches.Circle((a.x, a.y), a.radius, color='gray', fill=True)
                 self.ax.add_patch(asteroid_circle)
                 self.ax.arrow(a.x, a.y, a.vx*DELTA_TIME, a.vy*DELTA_TIME, head_width=3, head_length=5, fc='white', ec='white')
         for a in ghost_asteroids:
             if a:
-                asteroid_circle = patches.Circle(a.position, a.radius, color='#333333', fill=True, zorder=-100)
+                asteroid_circle = patches.Circle((a.x, a.y), a.radius, color='#333333', fill=True, zorder=-100)
                 self.ax.add_patch(asteroid_circle)
                 # self.ax.arrow(a.x, a.y, a.vx*delta_time, a.vy*delta_time, head_width=3, head_length=5, fc='white', ec='white')
         for a in forecasted_asteroids:
             if a:
-                asteroid_circle = patches.Circle(a.position, a.radius, color='#440000', fill=True, zorder=100, alpha=0.4)
+                asteroid_circle = patches.Circle((a.x, a.y), a.radius, color='#440000', fill=True, zorder=100, alpha=0.4)
                 self.ax.add_patch(asteroid_circle)
         for a in circled_asteroids:
             if a:
-                highlight_circle = patches.Circle(a.position, a.radius + 5, color='orange', fill=False)
+                highlight_circle = patches.Circle((a.x, a.y), a.radius + 5, color='orange', fill=False)
                 self.ax.add_patch(highlight_circle)
 
         for m in mines:
             if m:
-                highlight_circle = patches.Circle(m.position, MINE_BLAST_RADIUS, color=self.fuse_time_to_color(m.remaining_time), fill=False)
+                highlight_circle = patches.Circle((m.x, m.y), MINE_BLAST_RADIUS, color=self.fuse_time_to_color(m.remaining_time), fill=False)
                 self.ax.add_patch(highlight_circle)
 
         # Hard code a circle so I can see what a coordinate on screen is for debugging
@@ -1716,7 +1721,7 @@ class GameStatePlotter:
             ship_size_base = SHIP_RADIUS
             ship_size_tip = SHIP_RADIUS
             ship_heading = ship_state.heading
-            ship_position = ship_state.position
+            ship_position = (ship_state.x, ship_state.y)
             angle_rad = ship_heading*DEG_TO_RAD
             ship_vertices = [
                 (ship_position[0] + ship_size_tip*cos(angle_rad), ship_position[1] + ship_size_tip*sin(angle_rad)),
@@ -1868,9 +1873,8 @@ def analyze_gamestate_for_heuristic_maneuver(game_state: GameState, ship_state: 
         total_x_velocity = 0.0
         total_y_velocity = 0.0
         for a in asteroids:
-            ast_vel: tuple[float, float] = a.velocity
-            total_x_velocity += ast_vel[0]
-            total_y_velocity += ast_vel[1]
+            total_x_velocity += a.vx
+            total_y_velocity += a.vy
         num_asteroids = len(asteroids)
         if num_asteroids == 0.0:
             return (0, 0)
@@ -1945,7 +1949,7 @@ def analyze_gamestate_for_heuristic_maneuver(game_state: GameState, ship_state: 
     for ship in other_ships:
         # Fake ships as asteroids
         #asteroids.append({'position': ship.position, 'velocity': (0, 0), 'radius': ship.radius, 'size': -1, 'mass': -1.0})
-        asteroids.append(Asteroid(position=ship.position, velocity=(0.0, 0.0), radius=ship.radius, size=-1, mass=-1.0))
+        asteroids.append(Asteroid(x=ship.x, y=ship.y, vx=0.0, vy=0.0, radius=ship.radius, size=-1, mass=-1.0))
     ship_pos_x, ship_pos_y, ship_vel_x, ship_vel_y = ship_state.x, ship_state.y, ship_state.vx, ship_state.vy
     most_imminent_collision_time_s = inf
     most_imminent_asteroid = None
@@ -2242,8 +2246,10 @@ def unwrap_asteroid(asteroid: Asteroid, max_x: float, max_y: float, time_horizon
         #unwrapped_asteroid.position = (unwrapped_asteroid.x + dx, unwrapped_asteroid.y + dy)
         #unwrapped_asteroids.append(unwrapped_asteroid)
         unwrapped_asteroids.append(Asteroid(
-            position=(asteroid.x + dx, asteroid.y + dy),
-            velocity=asteroid.velocity,
+            x=asteroid.x + dx,
+            y=asteroid.y + dy,
+            vx=asteroid.vx,
+            vy=asteroid.vy,
             size=asteroid.size,
             mass=asteroid.mass,
             radius=asteroid.radius,
@@ -2447,7 +2453,8 @@ def forecast_asteroid_splits(a: Asteroid, timesteps_until_appearance: i64, vfx: 
             Asteroid(
                 x=(a.x + a.vx*DELTA_TIME*float(timesteps_until_appearance) - float(timesteps_until_appearance)*cos(angle)*v*DELTA_TIME) % game_state.map_size_x, 
                 y=(a.y + a.vy*DELTA_TIME*float(timesteps_until_appearance) - float(timesteps_until_appearance)*sin(angle)*v*DELTA_TIME) % game_state.map_size_y,
-                velocity=(v*cos(angle), v*sin(angle)),
+                vx=v*cos(angle),
+                vy=v*sin(angle),
                 size=new_size,
                 mass=new_mass,
                 radius=new_radius,
@@ -2462,7 +2469,8 @@ def maintain_forecasted_asteroids(forecasted_asteroid_splits: list[Asteroid], ga
         Asteroid(
             x=(forecasted_asteroid.x + forecasted_asteroid.vx * DELTA_TIME) % game_state.map_size_x,
             y=(forecasted_asteroid.y + forecasted_asteroid.vy * DELTA_TIME) % game_state.map_size_y,
-            velocity=forecasted_asteroid.velocity,
+            vx=forecasted_asteroid.vx,
+            vy=forecasted_asteroid.vy,
             size=forecasted_asteroid.size,
             mass=forecasted_asteroid.mass,
             radius=forecasted_asteroid.radius,
@@ -2581,15 +2589,18 @@ def get_simulated_ship_max_range(max_cruise_seconds: float) -> tuple[float, i64]
         ships=[],
         bullets=[],
         mines=[],
-        map_size=(100000.0, 100000.0),
+        map_size_x=100000.0,
+        map_size_y=100000.0,
         time=0.0,
         delta_time=DELTA_TIME,
         sim_frame=0
     )
     dummy_ship_state = Ship(
         speed=0.0,
-        position=(0.0, 0.0),
-        velocity=(0.0, 0.0),
+        x=0.0,
+        y=0.0,
+        vx=0.0,
+        vy=0.0,
         heading=0.0,
         bullets_remaining=0,
         lives_remaining=1
@@ -2599,7 +2610,7 @@ def get_simulated_ship_max_range(max_cruise_seconds: float) -> tuple[float, i64]
     max_ship_range_test.cruise(round(max_cruise_seconds*FPS))
     max_ship_range_test.accelerate(0)
     state_sequence = max_ship_range_test.get_state_sequence()
-    ship_random_range = dist(state_sequence[0].ship_state.position, state_sequence[-1].ship_state.position)
+    ship_random_range = dist(state_sequence[0].ship_state.x, state_sequence[0].ship_state.y, state_sequence[-1].ship_state.x, state_sequence[-1].ship_state.y)
     ship_random_max_maneuver_length = len(state_sequence)
     return ship_random_range, ship_random_max_maneuver_length
 
@@ -2607,7 +2618,7 @@ def get_simulated_ship_max_range(max_cruise_seconds: float) -> tuple[float, i64]
 def simulate_ship_movement_with_inputs(game_state: GameState, ship_state: Ship, move_sequence: list[Action]) -> Ship:
     # UNUSED
     # TODO: Replace cast with GameState instantiation
-    dummy_game_state = cast(GameState, {'asteroids': [], 'ships': [], 'bullets': [], 'mines': [], 'map_size': game_state.map_size, 'time': 0.0, 'delta_time': 1/30, 'sim_frame': 0})
+    dummy_game_state = cast(GameState, {'asteroids': [], 'ships': [], 'bullets': [], 'mines': [], 'map_size': (game_state.map_size_x, game_state.map_size_y), 'time': 0.0, 'delta_time': 1/30, 'sim_frame': 0})
     ship_movement_sim = Matrix(dummy_game_state, ship_state, 0, 0.0)
     ship_movement_sim.apply_move_sequence(move_sequence)
     return ship_movement_sim.get_ship_state()
@@ -2629,15 +2640,14 @@ def solve_interception(asteroid: Asteroid, ship_state: Ship, game_state: GameSta
     # We want to set the position of the bullet to the center of the bullet, so we have to do some fanciness here so that at t=0, the bullet's center is where it should be
     t_0 = 0.0175 # t_0 = (SHIP_RADIUS - 0.5*BULLET_LENGTH)/BULLET_SPEED
     # Positions are relative to the ship. We set the origin to the ship's position. Remember to translate back!
-    asteroid_velocity: tuple[float, float] = asteroid.velocity
-    asteroid_position: tuple[float, float] = asteroid.position
-    ship_position: tuple[float, float] = ship_state.position
-    origin_x: float = ship_position[0]
-    origin_y: float = ship_position[1]
-    avx: float = asteroid_velocity[0]
-    avy: float = asteroid_velocity[1]
-    ax: float = asteroid_position[0] - origin_x + avx*DELTA_TIME  # We project the asteroid one timestep ahead, since by the time we shoot our bullet, the asteroid would have moved one more timestep!
-    ay: float = asteroid_position[1] - origin_y + avy*DELTA_TIME
+    ship_position_x: float = ship_state.x
+    ship_position_y: float = ship_state.y
+    origin_x: float = ship_position_x
+    origin_y: float = ship_position_y
+    avx: float = asteroid.vx
+    avy: float = asteroid.vy
+    ax: float = asteroid.x - origin_x + avx*DELTA_TIME  # We project the asteroid one timestep ahead, since by the time we shoot our bullet, the asteroid would have moved one more timestep!
+    ay: float = asteroid.y - origin_y + avy*DELTA_TIME
 
     vb = BULLET_SPEED
     vb_sq = vb*vb
@@ -2674,7 +2684,7 @@ def solve_interception(asteroid: Asteroid, ship_state: Ship, game_state: GameSta
             intercept_x = x + origin_x
             intercept_y = y + origin_y
             # Return the first answer we get
-            return t, angle_difference_rad(theta, theta_0), timesteps_until_fire, intercept_x, intercept_y, dist(ship_position, (intercept_x, intercept_y))
+            return t, angle_difference_rad(theta, theta_0), timesteps_until_fire, intercept_x, intercept_y, dist(ship_position_x, ship_position_y, intercept_x, intercept_y)
         #if len(solutions) > 1:
         #    print(len(solutions))
         #return solutions
@@ -2951,7 +2961,8 @@ def track_asteroid_we_shot_at(asteroids_pending_death: dict[i64, list[Asteroid]]
     # Make a copy of the asteroid so we don't mess up the original object
     asteroid = original_asteroid.copy()
     # Wrap asteroid position
-    asteroid.position = (asteroid.x % game_state.map_size_x, asteroid.y % game_state.map_size_y)
+    asteroid.x = asteroid.x % game_state.map_size_x
+    asteroid.y = asteroid.y % game_state.map_size_y
     # Project the asteroid into the future, to where it would be on the timestep of its death
 
     for future_timesteps in range(0, bullet_travel_timesteps + 1):
@@ -2970,7 +2981,8 @@ def track_asteroid_we_shot_at(asteroids_pending_death: dict[i64, list[Asteroid]]
         # Advance the asteroid to the next position
         if future_timesteps != bullet_travel_timesteps:
             # Skip this operation on the last for loop iteration
-            asteroid.position = ((asteroid.x + asteroid.vx*DELTA_TIME) % game_state.map_size_x, (asteroid.y + asteroid.vy*DELTA_TIME) % game_state.map_size_y)
+            asteroid.x = (asteroid.x + asteroid.vx*DELTA_TIME) % game_state.map_size_x
+            asteroid.y = (asteroid.y + asteroid.vy*DELTA_TIME) % game_state.map_size_y
     #asteroid_tracking_total_time += time.perf_counter() - start_time
 
 
@@ -2994,7 +3006,7 @@ def check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot
     #asteroid = asteroid.copy()
     #asteroid.position = (asteroid.x % game_state.map_size_x, asteroid.y % game_state.map_size_y)
     if ENABLE_SANITY_CHECKS:  # REMOVE_FOR_COMPETITION
-        assert check_coordinate_bounds(game_state, asteroid.x, asteroid.y) or current_timestep == 0, f"Asteroid out of bounds! {asteroid.position}"  # REMOVE_FOR_COMPETITION
+        assert check_coordinate_bounds(game_state, asteroid.x, asteroid.y) or current_timestep == 0, f"Asteroid out of bounds! {asteroid.x} {asteroid.y}"  # REMOVE_FOR_COMPETITION
         if not check_coordinate_bounds(game_state, asteroid.x, asteroid.y):  # REMOVE_FOR_COMPETITION
             print("WARNING, the scenario started with the asteroids out of bounds!")  # REMOVE_FOR_COMPETITION
     if current_timestep in asteroids_pending_death:
@@ -3019,8 +3031,10 @@ def time_travel_asteroid(asteroid: Asteroid, timesteps: i64, game_state: GameSta
         #print("WARNING: Time travelling asteroid by 0 timesteps! If this is rare, it's no cause for concern")
         #return asteroid.copy()
     return Asteroid(
-        position=((asteroid.x + float(timesteps)*asteroid.vx*DELTA_TIME) % game_state.map_size_x, (asteroid.y + float(timesteps)*asteroid.vy*DELTA_TIME) % game_state.map_size_y),
-        velocity=asteroid.velocity,
+        x=(asteroid.x + float(timesteps)*asteroid.vx*DELTA_TIME) % game_state.map_size_x,
+        y=(asteroid.y + float(timesteps)*asteroid.vy*DELTA_TIME) % game_state.map_size_y,
+        vx=asteroid.vx,
+        vy=asteroid.vy,
         size=asteroid.size,
         mass=asteroid.mass,
         radius=asteroid.radius,
@@ -3035,8 +3049,10 @@ def time_travel_asteroid_s(asteroid: Asteroid, time: float, game_state: GameStat
         #print("WARNING: Time travelling asteroid by 0 timesteps! If this is rare, it's no cause for concern")
         #return asteroid.copy()
     return Asteroid(
-        position=((asteroid.x + time*asteroid.vx) % game_state.map_size_x, (asteroid.y + time*asteroid.vy) % game_state.map_size_y),
-        velocity=asteroid.velocity,
+        x=(asteroid.x + time*asteroid.vx) % game_state.map_size_x,
+        y=(asteroid.y + time*asteroid.vy) % game_state.map_size_y,
+        vx=asteroid.vx,
+        vy=asteroid.vy,
         size=asteroid.size,
         mass=asteroid.mass,
         radius=asteroid.radius,
@@ -3210,12 +3226,14 @@ class Matrix():
     def get_instantaneous_asteroid_collision(self, asteroids: Optional[list[Asteroid]] = None, ship_position: Optional[tuple[float, float]] = None) -> bool:
         # UNUSED
         if ship_position is not None:
-            position = ship_position
+            position_x = ship_position[0]
+            position_y = ship_position[1]
         else:
-            position = self.ship_state.position
+            position_x = self.ship_state.x
+            position_y = self.ship_state.y
 
         for a in (asteroids if asteroids is not None else self.game_state.asteroids):
-            if check_collision(x, y, SHIP_RADIUS, a.x, a.y, a.radius):
+            if check_collision(position_x, position_y, SHIP_RADIUS, a.x, a.y, a.radius):
                 return True
         return False
 
@@ -3254,7 +3272,7 @@ class Matrix():
             # debug_print(f"Future timesteps: {self.future_timesteps}, timesteps to not check collision for: {self.timesteps_to_not_check_collision_for}")
             for a in unwrap_asteroid(asteroid, self.game_state.map_size_x, self.game_state.map_size_y, UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON, False):
                 # if self.future_timesteps >= self.timesteps_to_not_check_collision_for:
-                assert is_close_to_zero(self.ship_state.vx) and is_close_to_zero(self.ship_state.vy), f"{self.ship_state.velocity=}, {self.ship_state.speed=}"  # REMOVE_FOR_COMPETITION
+                assert is_close_to_zero(self.ship_state.vx) and is_close_to_zero(self.ship_state.vy), f"{self.ship_state.vx=}, {self.ship_state.vy=}, {self.ship_state.speed=}"  # REMOVE_FOR_COMPETITION
 
                 predicted_collision_time_from_future = predict_next_imminent_collision_time_with_asteroid(self.ship_state.x, self.ship_state.y, self.ship_state.vx, self.ship_state.vy, SHIP_RADIUS, a.x, a.y, a.vx, a.vy, a.radius, self.game_state)
                 predicted_collision_time = predicted_collision_time_from_future + (DELTA_TIME*float(additional_timesteps_to_blow_up_mines) if asteroid_is_born else 0.0)
@@ -3306,7 +3324,7 @@ class Matrix():
             # print(f"{self.ship_state.velocity=}")
             next_imminent_mine_collision_time = predict_ship_mine_collision(self.ship_state.x, self.ship_state.y, m, 0)
             if not isinf(next_imminent_mine_collision_time):
-                times_and_mine_pos.append((next_imminent_mine_collision_time, m.position))
+                times_and_mine_pos.append((next_imminent_mine_collision_time, (m.x, m.y)))
         return times_and_mine_pos
 
     def coordinates_in_same_wrap(self, pos1: tuple[float, float], pos2: tuple[float, float]) -> bool:
@@ -3324,7 +3342,7 @@ class Matrix():
             raise Exception("Do not call get_fitness twice!")
         # This is meant to be the last method called from this class. This is rather destructive!
         # print(f"Getting fitness from timestep {self.initial_timestep=} {self.future_timesteps=} in sim id {self.sim_id}")
-        assert is_close_to_zero(self.ship_state.speed), f"In get fitness, the ship speed is not zero: {self.ship_state.speed}, vel is {self.ship_state.velocity}, current ts is {self.initial_timestep + self.future_timesteps} and the time limit is {self.game_state.time_limit} which is {floor(FPS*self.game_state.time_limit)} frames"  # REMOVE_FOR_COMPETITION
+        assert is_close_to_zero(self.ship_state.speed), f"In get fitness, the ship speed is not zero: {self.ship_state.speed}, vel is {self.ship_state.vx} {self.ship_state.vy}, current ts is {self.initial_timestep + self.future_timesteps} and the time limit is {self.game_state.time_limit} which is {floor(FPS*self.game_state.time_limit)} frames"  # REMOVE_FOR_COMPETITION
         # This will return a scalar number representing how good of an action/state sequence we just went through
         # If these moves will keep us alive for a long time and shoot many asteroids along the way, then the fitness is good
         # If these moves result in us getting into a dangerous spot, or if we don't shoot many asteroids at all, then the fitness will be bad
@@ -3390,7 +3408,7 @@ class Matrix():
                     # next_extrapolated_mine_collision_time = max(0, min(3, next_extrapolated_mine_collision_time))
                     if ENABLE_SANITY_CHECKS:  # REMOVE_FOR_COMPETITION
                         assert -EPS <= mine_collision_time <= MINE_FUSE_TIME + EPS  # REMOVE_FOR_COMPETITION
-                    dist_to_ground_zero = dist(self.ship_state.position, mine_pos)
+                    dist_to_ground_zero = dist(self.ship_state.x, self.ship_state.y, mine_pos[0], mine_pos[1])
                     # This is a linear function that is maximum when I'm right over the mine, and minimum at 0 when I'm just touching the blast radius of it
                     # This will penalize being at ground zero more than penalizing being right at the edge of the blast, where it's easier to get out
                     mine_ground_zero_fudge = linear(dist_to_ground_zero, (0.0, 1.0), (MINE_BLAST_RADIUS + SHIP_RADIUS, 0.6))
@@ -3408,7 +3426,6 @@ class Matrix():
                 return 1.0
             # Iterate over all asteroids and get their heading angle from the ship's final position/heading, and see whether it's within +-30 degrees
             #ship_heading = self.ship_state.heading
-            ship_pos_x, ship_pos_y = self.ship_state.position
             ship_heading_rad = self.ship_state.heading*DEG_TO_RAD
             asts_within_cone = 0
             for a in chain(self.game_state.asteroids, self.forecasted_asteroid_splits):
@@ -3421,7 +3438,7 @@ class Matrix():
                 # Is that really better than a case where I did a maneuver, but I shot the asteroids and now there’s no asteroids in the cone in front of me? The latter is preferable.
                 #if check_whether_this_is_a_new_asteroid_we_do_not_have_a_pending_shot_for(self.asteroids_pending_death, self.initial_timestep + self.future_timesteps, self.game_state, a):
                 
-                if heading_diff_within_threshold(ship_heading_rad, a.x - ship_pos_x, a.y - ship_pos_y, AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE):
+                if heading_diff_within_threshold(ship_heading_rad, a.x - self.ship_state.x, a.y - self.ship_state.y, AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE):
                     asts_within_cone += 1
                 #theta = degrees(super_fast_atan2(a.y - ship_pos[1], a.x - ship_pos[0]))
                 #if abs(angle_difference_deg(theta, ship_heading)) <= 30.0:
@@ -3501,9 +3518,7 @@ class Matrix():
                 invert_ship_affinity = False
             for other_ship in self.other_ships:
                 # It's assume there's only one ship, so this returns after the first ship is checked
-                other_ship_pos_x, other_ship_pos_y = other_ship.position
-                other_ship_vel_x, other_ship_vel_y = other_ship.velocity
-                other_ship_speed = sqrt(other_ship_vel_x*other_ship_vel_x + other_ship_vel_y*other_ship_vel_y)
+                other_ship_speed = sqrt(other_ship.vx*other_ship.vx + other_ship.vy*other_ship.vy)
                 # prox_score_speed_mul = min(1, other_ship_speed/100)*0.7 + 0.3
                 # This multiplier effectively decreases the distance between the ships, at least when the fitness function considers it
                 # If the other ship is stationary, then the multiplier is 1. But if the other ship is moving quickly, I treat the distance between us to be smaller than it actually is, down to 30% the actual distance
@@ -3513,8 +3528,8 @@ class Matrix():
                 for self_pos in self_positions:
                     self_pos_x, self_pos_y = self_pos  # self.ship_state.position
                     # Account for wrap. We know that the farthest two objects can be separated within the screen in the x and y axes, is by half the width, and half the height
-                    abs_sep_x = abs(self_pos_x - other_ship_pos_x)
-                    abs_sep_y = abs(self_pos_y - other_ship_pos_y)
+                    abs_sep_x = abs(self_pos_x - other_ship.x)
+                    abs_sep_y = abs(self_pos_y - other_ship.y)
                     sep_x = min(abs_sep_x, self.game_state.map_size_x - abs_sep_x)
                     sep_y = min(abs_sep_y, self.game_state.map_size_y - abs_sep_y)
                     separation_dist = sqrt(sep_x*sep_x + sep_y*sep_y)
@@ -3576,21 +3591,23 @@ class Matrix():
         #states = self.get_state_sequence()
         overall_safe_time_fitness = sigmoid(safe_time_after_maneuver_s, 2.9, 1.4)
 
-        ship_start_position = states[0].ship_state.position
-        ship_end_position = states[-1].ship_state.position
+        ship_start_position_x = states[0].ship_state.x
+        ship_start_position_y = states[0].ship_state.y
+        ship_end_position_x = states[-1].ship_state.x
+        ship_end_position_y = states[-1].ship_state.y
 
         if len(states) >= 2:
-            displacement = dist(ship_start_position, ship_end_position)
+            displacement = dist(ship_start_position_x, ship_start_position_y, ship_end_position_x, ship_end_position_y)
         else:
             displacement = 0.0
         asteroid_safe_time_fitness = get_asteroid_safe_time_fitness(next_extrapolated_asteroid_collision_time, displacement, move_sequence_length_s)
         if displacement < EPS or self.respawn_maneuver_pass_number > 0:
             # Stationary targeting or respawn maneuver
-            self_ship_positions = [ship_end_position]
+            self_ship_positions = [(ship_end_position_x, ship_end_position_y)]
         else:
             # Regular maneuver
             #self_ship_positions = [states[len(states)//2]['ship_state'].position, states[len(states)*3//4]['ship_state'].position, ship_end_position]
-            self_ship_positions = [s.ship_state.position for s in states]
+            self_ship_positions = [(s.ship_state.x, s.ship_state.y) for s in states]
             # This assertion won't hold when the ship takes a long time to rotate at the start
             # assert not (isclose(ship_start_position[0], self_ship_positions[0][0]) and isclose(ship_start_position[1], self_ship_positions[0][1])), f"Ship states: {[s['ship_state'] for s in states]}"
 
@@ -3755,23 +3772,25 @@ class Matrix():
         target_asteroids_list: list[Target] = []
         #dummy_ship_state: Ship = {'is_respawning': False, 'position': self.ship_state.position, 'velocity': (0.0, 0.0), 'speed': 0.0, 'heading': self.ship_state.heading, 'mass': 300.0, 'radius': 20.0, 'id': self.ship_state.id, 'team': self.ship_state.team, 'lives_remaining': 123, 'bullets_remaining': 0, 'mines_remaining': 0, 'can_fire': self.ship_state.can_fire, 'fire_rate': 10.0, 'thrust_range': (-480.0, 480.0), 'turn_rate_range': (-180.0, 180.0), 'max_speed': 240, 'drag': 80.0}
         dummy_ship_state = Ship(
-            is_respawning=False, 
-            position=self.ship_state.position, 
-            velocity=(0.0, 0.0), 
-            speed=0.0, 
-            heading=self.ship_state.heading, 
-            mass=300.0, 
-            radius=20.0, 
-            id=self.ship_state.id, 
+            is_respawning=False,
+            x=self.ship_state.x,
+            y=self.ship_state.y,
+            vx=0.0,
+            vy=0.0,
+            speed=0.0,
+            heading=self.ship_state.heading,
+            mass=300.0,
+            radius=20.0,
+            id=self.ship_state.id,
             team=self.ship_state.team,
-            lives_remaining=123, 
-            bullets_remaining=0, 
-            mines_remaining=0, 
+            lives_remaining=123,
+            bullets_remaining=0,
+            mines_remaining=0,
             can_fire=self.ship_state.can_fire,
-            fire_rate=10.0, 
-            thrust_range=(-480.0, 480.0), 
-            turn_rate_range=(-180.0, 180.0), 
-            max_speed=240, 
+            fire_rate=10.0,
+            thrust_range=(-480.0, 480.0),
+            turn_rate_range=(-180.0, 180.0),
+            max_speed=240,
             drag=80.0
         )
 
@@ -3804,7 +3823,7 @@ class Matrix():
                     separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS
                     if abs(delta_x) <= separation and abs(delta_y) <= separation and delta_x*delta_x + delta_y*delta_y <= separation*separation:
                         # Keep track of whose mine this is. If it's mine, I want more asteroids to be in its blast radius so it does more damage. If it's theirs, I want to shoot asteroids within its blast radius so it does less damage.
-                        if m.position in self.mine_positions_placed:
+                        if (m.x, m.y) in self.mine_positions_placed:
                             asteroid_will_get_hit_by_my_mine = True
                             #print('WILL BE HIT BY MY MINE')
                             if asteroid_will_get_hit_by_their_mine:
@@ -4031,7 +4050,7 @@ class Matrix():
                     idle_thrust = 0.0
                 # We still simulate one iteration of this, because if we had a pending shot from before, this will do the shot!
                 sim_complete_without_crash = self.update(idle_thrust, SHIP_MAX_TURN_RATE*turn_direction, False, False)
-                assert is_close_to_zero(self.ship_state.speed), f"When returning in target selection where the return value of whether we didn't crash is {sim_complete_without_crash}, the ship speed is not zero! {self.ship_state.speed=}, {self.ship_state.velocity=}"  # REMOVE_FOR_COMPETITION
+                assert is_close_to_zero(self.ship_state.speed), f"When returning in target selection where the return value of whether we didn't crash is {sim_complete_without_crash}, the ship speed is not zero! {self.ship_state.speed=}, {self.ship_state.vx=}, {self.ship_state.vy=}"  # REMOVE_FOR_COMPETITION
                 return sim_complete_without_crash
 
         # debug_print('Closest ang asteroid:')
@@ -4084,7 +4103,7 @@ class Matrix():
             # print(f"Calling update from targ sel:")
             sim_complete_without_crash = self.update(idle_thrust, SHIP_MAX_TURN_RATE*turn_direction, False, False)
             # print(f"Sim id {self.sim_id} is returning from target sim with success value {sim_complete_without_crash}")
-            assert is_close_to_zero(self.ship_state.speed), f"When returning in target sel where the return value of whether we didn't crash is {sim_complete_without_crash}, the ship speed is not zero! {self.ship_state.speed=}, {self.ship_state.velocity=}"  # REMOVE_FOR_COMPETITION
+            assert is_close_to_zero(self.ship_state.speed), f"When returning in target sel where the return value of whether we didn't crash is {sim_complete_without_crash}, the ship speed is not zero! {self.ship_state.speed=}, {self.ship_state.vx=}, {self.ship_state.vy=}"  # REMOVE_FOR_COMPETITION
             return sim_complete_without_crash
         else:
             # We're able to hit an asteroid! We're committing to it.
@@ -4147,7 +4166,7 @@ class Matrix():
             # print('THE ACTUAL MOVE SEQUENCE WE GET BACK FROM THE SIM:')
             # print(self.ship_move_sequence)
             # debug_print(f"Sim id {self.sim_id} is returning from target sim with success value {sim_complete_without_crash}")
-            assert is_close_to_zero(self.ship_state.speed), f"When returning in target selection's end where the return value is {sim_complete_without_crash}, the ship speed is not zero! {self.ship_state.speed=}, {self.ship_state.velocity=}"  # REMOVE_FOR_COMPETITION
+            assert is_close_to_zero(self.ship_state.speed), f"When returning in target selection's end where the return value is {sim_complete_without_crash}, the ship speed is not zero! {self.ship_state.speed=}, {self.ship_state.vx=}, {self.ship_state.vy=}"  # REMOVE_FOR_COMPETITION
             return sim_complete_without_crash
 
     def bullet_sim(self, ship_state: Optional[Ship] = None, fire_first_timestep: bool = False, fire_after_timesteps: i64 = 0, skip_half_of_first_cycle: bool = False, current_move_index: Optional[i64] = None, whole_move_sequence: Optional[list[Action]] = None, timestep_limit: i64 = INT_INF, asteroids_to_check: Optional[list[Asteroid]] = None) -> tuple[Optional[Asteroid], i64, bool]:
@@ -4260,15 +4279,17 @@ class Matrix():
             if my_bullet is None and timesteps_until_bullet_hit_asteroid + (-1 if not skip_half_of_first_cycle else 0) == fire_after_timesteps:
                 if ship_state is not None:
                     bullet_fired_from_ship_heading = ship_state.heading
-                    bullet_fired_from_ship_position = ship_state.position
+                    bullet_fired_from_ship_position_x = ship_state.x
+                    bullet_fired_from_ship_position_y = ship_state.y
                 else:
                     bullet_fired_from_ship_heading = self.ship_state.heading
-                    bullet_fired_from_ship_position = self.ship_state.position
+                    bullet_fired_from_ship_position_x = self.ship_state.x
+                    bullet_fired_from_ship_position_y = self.ship_state.y
                 rad_heading = bullet_fired_from_ship_heading*DEG_TO_RAD
                 cos_heading = cos(rad_heading)
                 sin_heading = sin(rad_heading)
-                bullet_x = bullet_fired_from_ship_position[0] + SHIP_RADIUS*cos_heading
-                bullet_y = bullet_fired_from_ship_position[1] + SHIP_RADIUS*sin_heading
+                bullet_x = bullet_fired_from_ship_position_x + SHIP_RADIUS*cos_heading
+                bullet_y = bullet_fired_from_ship_position_y + SHIP_RADIUS*sin_heading
                 # Make sure the bullet isn't being fired out into the void
                 if not check_coordinate_bounds(self.game_state, bullet_x, bullet_y):
                     #bullet_sim_time += time.perf_counter() - start_time
@@ -4313,18 +4334,20 @@ class Matrix():
                     bullet_sim_ship_state.heading %= 360.0
                     # Use speed magnitude to get velocity vector
                     rad_heading = bullet_sim_ship_state.heading*DEG_TO_RAD
-                    bullet_sim_ship_state.velocity = (cos(rad_heading)*bullet_sim_ship_state.speed, sin(rad_heading)*bullet_sim_ship_state.speed)
+                    bullet_sim_ship_state.vx = cos(rad_heading)*bullet_sim_ship_state.speed
+                    bullet_sim_ship_state.vy = sin(rad_heading)*bullet_sim_ship_state.speed
                     # Update the position based off the velocities
                     # Do the wrap in the same operation
-                    bullet_sim_ship_state.position = ((bullet_sim_ship_state.x + bullet_sim_ship_state.vx*DELTA_TIME) % self.game_state.map_size_x, (bullet_sim_ship_state.y + bullet_sim_ship_state.vy*DELTA_TIME) % self.game_state.map_size_y)
+                    bullet_sim_ship_state.x = (bullet_sim_ship_state.x + bullet_sim_ship_state.vx*DELTA_TIME) % self.game_state.map_size_x
+                    bullet_sim_ship_state.y = (bullet_sim_ship_state.y + bullet_sim_ship_state.vy*DELTA_TIME) % self.game_state.map_size_y
 
             # Check bullet/asteroid collisions
             bullet_remove_idxs = []
             #asteroid_remove_idxs: set[i64] = set()
             len_bullets = len(bullets)
             for b_idx, b in enumerate(chain(bullets, [my_bullet] if my_bullet is not None else [])):
-                b_tail_x = b.x + b.tail_delta[0]
-                b_tail_y = b.y + b.tail_delta[1]
+                b_tail_x = b.x + b.tail_delta_x
+                b_tail_y = b.y + b.tail_delta_y
                 for a_idx, a in enumerate(asteroids):
                     if a_idx in asteroid_remove_idxs:
                         continue
@@ -4339,7 +4362,7 @@ class Matrix():
                             bullet_remove_idxs.append(b_idx)
                             # Create asteroid splits and mark it for removal
                             if a.size != 1:
-                                asteroids.extend(forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.velocity, self.game_state))
+                                asteroids.extend(forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, self.game_state))
                             asteroid_remove_idxs.add(a_idx)
                             # Stop checking this bullet
                             break
@@ -4373,22 +4396,25 @@ class Matrix():
             if ship_not_collided_with_asteroid:
                 if whole_move_sequence is not None:
                     assert bullet_sim_ship_state is not None
-                    ship_position = bullet_sim_ship_state.position
+                    ship_position_x = bullet_sim_ship_state.x
+                    ship_position_y = bullet_sim_ship_state.y
                 elif ship_state is not None:
-                    ship_position = ship_state.position
+                    ship_position_x = ship_state.x
+                    ship_position_y = ship_state.y
                 else:
-                    ship_position = self.ship_state.position
+                    ship_position_x = self.ship_state.x
+                    ship_position_y = self.ship_state.y
                 for a_idx, asteroid in enumerate(asteroids):
                     if a_idx in asteroid_remove_idxs:
                         continue
                     #if check_collision(ship_position[0], ship_position[1], SHIP_RADIUS, asteroid.x, asteroid.y, asteroid.radius):
-                    delta_x = ship_position[0] - asteroid.x
-                    delta_y = ship_position[1] - asteroid.y
+                    delta_x = ship_position_x - asteroid.x
+                    delta_y = ship_position_y - asteroid.y
                     separation = SHIP_RADIUS + asteroid.radius
                     if abs(delta_x) <= separation and abs(delta_y) <= separation and delta_x*delta_x + delta_y*delta_y <= separation*separation:
                         # Note that we assume the ship is stationary. In reality, we don't know how the ship will move during the bullet sim. Therefore, these forecasted asteroids may not be accurate if the ship moves.
                         if asteroid.size != 1:
-                            asteroids.extend(forecast_asteroid_ship_splits(asteroid, 0, (0.0, 0.0), self.game_state))
+                            asteroids.extend(forecast_asteroid_ship_splits(asteroid, 0, 0.0, 0.0, self.game_state))
                         asteroid_remove_idxs.add(a_idx)
                         # Stop checking this ship's collisions. And also return saying the ship took damage!
                         #print('ship ast coll!')
@@ -4423,7 +4449,7 @@ class Matrix():
                 break
             # print(f"After thrusting {thrust}: {self.ship_state.speed=}")
         if ENABLE_SANITY_CHECKS:  # REMOVE_FOR_COMPETITION
-            assert is_close_to_zero(self.ship_state.speed), f"When returning in apply move sequence where {sim_was_safe=}, the ship speed is not zero! {self.ship_state.speed=}, {self.ship_state.velocity=}. The whole move sequence is {move_sequence}"  # REMOVE_FOR_COMPETITION
+            assert is_close_to_zero(self.ship_state.speed), f"When returning in apply move sequence where {sim_was_safe=}, the ship speed is not zero! {self.ship_state.speed=}, {self.ship_state.vx=} {self.ship_state.vy=}. The whole move sequence is {move_sequence}"  # REMOVE_FOR_COMPETITION
         return sim_was_safe
 
     def simulate_maneuver(self, move_sequence: list[Action], allow_free_firing: bool, allow_free_mining: bool) -> bool:
@@ -4450,7 +4476,7 @@ class Matrix():
             #if self.sim_id == 333:
             #    print(f"In sim {self.sim_id} After thrusting by {thrust} the true simmed ship speed is {self.ship_state.speed}")
         if ENABLE_SANITY_CHECKS:  # REMOVE_FOR_COMPETITION
-            assert is_close_to_zero(self.ship_state.speed), f"When returning in simulate maneuver where the sim was safe, the ship speed is not zero! {self.ship_state.speed=}, {self.ship_state.velocity=}. The whole move sequence is {move_sequence}"  # REMOVE_FOR_COMPETITION
+            assert is_close_to_zero(self.ship_state.speed), f"When returning in simulate maneuver where the sim was safe, the ship speed is not zero! {self.ship_state.speed=}, {self.ship_state.vx=} {self.ship_state.vy=}. The whole move sequence is {move_sequence}"  # REMOVE_FOR_COMPETITION
         return True
 
     def update(self, thrust: float = 0.0, turn_rate: float = 0.0, fire: Optional[bool] = None, drop_mine: Optional[bool] = None, whole_move_sequence: Optional[list[Action]] = None, wait_out_mines: bool = False) -> bool:
@@ -4597,7 +4623,7 @@ class Matrix():
                                 avoid_targeting_this_asteroid = False
                                 if asteroid.size == 1:
                                     for m in self.game_state.mines:
-                                        if m.position in self.mine_positions_placed:
+                                        if (m.x, m.y) in self.mine_positions_placed:
                                             # This mine is mine
                                             #project_asteroid_by_timesteps_num = round(m.remaining_time*FPS)
                                             #asteroid_when_mine_explodes = time_travel_asteroid(asteroid, project_asteroid_by_timesteps_num, self.game_state)
@@ -4782,7 +4808,7 @@ class Matrix():
                                 avoid_targeting_this_asteroid = False
                                 if asteroid.size == 1:
                                     for m in self.game_state.mines:
-                                        if m.position in self.mine_positions_placed:
+                                        if (m.x, m.y) in self.mine_positions_placed:
                                             # This mine is mine
                                             #project_asteroid_by_timesteps_num = round(m.remaining_time*FPS)
                                             #asteroid_when_mine_explodes = time_travel_asteroid(asteroid, project_asteroid_by_timesteps_num, self.game_state)
@@ -4916,13 +4942,14 @@ class Matrix():
                     self.respawn_timer = 0.0
                     # debug_print(f'BOMBS AWAY! Sim ID {self.sim_id}, future timesteps {self.future_timesteps}')
                     new_mine = Mine(
-                        position=self.ship_state.position,
+                        x=self.ship_state.x,
+                        y=self.ship_state.y,
                         mass=MINE_MASS,
                         fuse_time=MINE_FUSE_TIME,
                         remaining_time=MINE_FUSE_TIME
                     )
                     self.mine_positions_placed_history[self.initial_timestep + self.future_timesteps + 1] = set(self.mine_positions_placed)
-                    self.mine_positions_placed.add(self.ship_state.position) # Track where we placed our mine
+                    self.mine_positions_placed.add((self.ship_state.x, self.ship_state.y)) # Track where we placed our mine
                     self.game_state.mines.append(new_mine)
                     self.ship_state.mines_remaining -= 1
                     if ENABLE_SANITY_CHECKS:  # REMOVE_FOR_COMPETITION
@@ -4984,8 +5011,8 @@ class Matrix():
         # Check bullet/asteroid collisions
         bullet_remove_idxs = []
         for b_idx, b in enumerate(self.game_state.bullets):
-            b_tail_x = b.x + b.tail_delta[0]
-            b_tail_y = b.y + b.tail_delta[1]
+            b_tail_x = b.x + b.tail_delta_x
+            b_tail_y = b.y + b.tail_delta_y
             for a_idx, a in enumerate(self.game_state.asteroids):
                 if a_idx in asteroid_remove_idxs:
                     continue
@@ -4995,7 +5022,7 @@ class Matrix():
                     bullet_remove_idxs.append(b_idx)
                     # Create asteroid splits and mark it for removal
                     if a.size != 1:
-                        self.game_state.asteroids.extend(forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.velocity, self.game_state))
+                        self.game_state.asteroids.extend(forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, self.game_state))
                     asteroid_remove_idxs.add(a_idx)
                     # Stop checking this bullet
                     break
@@ -5038,7 +5065,8 @@ class Matrix():
                             self.ship_state.lives_remaining -= 1
                             self.ship_state.is_respawning = True
                             self.ship_state.speed = 0.0
-                            self.ship_state.velocity = (0.0, 0.0)
+                            self.ship_state.vx = 0.0
+                            self.ship_state.vy = 0.0
                             self.respawn_timer = 3.0
                     elif self.respawn_maneuver_pass_number == 1:
                         # Record the last timestep getting hit by a mine
@@ -5068,7 +5096,7 @@ class Matrix():
                     separation = SHIP_RADIUS + asteroid.radius
                     if abs(delta_x) <= separation and abs(delta_y) <= separation and delta_x*delta_x + delta_y*delta_y <= separation*separation:
                         if asteroid.size != 1:
-                            self.game_state.asteroids.extend(forecast_asteroid_ship_splits(asteroid, 0, self.ship_state.velocity, self.game_state))
+                            self.game_state.asteroids.extend(forecast_asteroid_ship_splits(asteroid, 0, self.ship_state.vx, self.ship_state.vy, self.game_state))
                         asteroid_remove_idxs.add(a_idx)
                         # Stop checking this ship's collisions. And also return saying the ship took damage!
                         return_value = False
@@ -5076,7 +5104,8 @@ class Matrix():
                         self.ship_state.lives_remaining -= 1
                         self.ship_state.is_respawning = True
                         self.ship_state.speed = 0.0
-                        self.ship_state.velocity = (0.0, 0.0)
+                        self.ship_state.vx = 0.0
+                        self.ship_state.vy = 0.0
                         self.respawn_timer = 3.0
                         break
             elif self.respawn_maneuver_pass_number == 1:
@@ -5231,7 +5260,7 @@ class Matrix():
         return self.future_timesteps
 
     def get_position(self) -> tuple[float, float]:
-        return self.ship_state.position
+        return (self.ship_state.x, self.ship_state.y)
 
     def get_last_timestep_fired(self) -> i64:
         return self.last_timestep_fired
@@ -5240,7 +5269,7 @@ class Matrix():
         return self.last_timestep_mined
 
     def get_velocity(self) -> tuple[float, float]:
-        return self.ship_state.velocity
+        return (self.ship_state.vx, self.ship_state.vy)
 
     def get_heading(self) -> float:
         return float(self.ship_state.heading)
@@ -5461,7 +5490,7 @@ class NeoController(KesslerController):
                 ship_line_x = []
                 ship_line_y = []
                 for state in state_seq:
-                    ship_pos = state.ship_state.position
+                    ship_pos = (state.ship_state.x, state.ship_state.y)
                     all_ship_pos.append(ship_pos)
                     ship_line_x.append(ship_pos[0])
                     ship_line_y.append(ship_pos[1])
@@ -5800,7 +5829,7 @@ class NeoController(KesslerController):
                 ship_line_x = []
                 ship_line_y = []
                 for state in state_seq:
-                    ship_pos = state.ship_state.position
+                    ship_pos = (state.ship_state.x, state.ship_state.y)
                     all_ship_pos.append(ship_pos)
                     ship_line_x.append(ship_pos[0])
                     ship_line_y.append(ship_pos[1])
@@ -6382,7 +6411,7 @@ class NeoController(KesslerController):
                 ship_cruise_speed_mode = SHIP_MAX_SPEED
                 ship_cruise_timesteps_mode = MAX_CRUISE_TIMESTEPS
                 max_pre_maneuver_turn_timesteps = 6.0
-            elif any(m.position in self.game_state_to_base_planning['mine_positions_placed'] for m in self.game_state_to_base_planning['game_state'].mines):
+            elif any((m.x, m.y) in self.game_state_to_base_planning['mine_positions_placed'] for m in self.game_state_to_base_planning['game_state'].mines):
                 # We're probably within the radius of a mine we placed
                 print_explanation("We're probably within the radius of a mine we placed! Biasing faster/longer moves to be more likely to escape the mine.", self.current_timestep)
                 ship_cruise_speed_mode = SHIP_MAX_SPEED
@@ -6716,7 +6745,7 @@ class NeoController(KesslerController):
                 ship_cruise_speed_mode = SHIP_MAX_SPEED
                 ship_cruise_timesteps_mode = MAX_CRUISE_TIMESTEPS
                 max_pre_maneuver_turn_timesteps = 6.0
-            elif any(m.position in self.game_state_to_base_planning['mine_positions_placed'] for m in self.game_state_to_base_planning['game_state'].mines):
+            elif any((m.x, m.y) in self.game_state_to_base_planning['mine_positions_placed'] for m in self.game_state_to_base_planning['game_state'].mines):
                 # We're probably within the radius of a mine we placed
                 print_explanation("We're probably within the radius of a mine we placed! Biasing faster/longer moves to be more likely to escape the mine.", self.current_timestep)
                 ship_cruise_speed_mode = SHIP_MAX_SPEED
