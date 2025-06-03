@@ -109,7 +109,7 @@ gc.set_threshold(50000)
 # IMPORTANT: if multiple scenarios are run back-to-back, this controller doesn't get freshly initialized in the subsequent runs.
 # If any global variables are changed during execution, make sure to reset them when the timestep is 0.
 
-BUILD_NUMBER: Final = "2025-06-01 Neo - Jie Fan (jie.f@pm.me)"
+BUILD_NUMBER: Final = "2025-06-03 Neo - Jie Fan (jie.f@pm.me)"
 
 # Output config
 DEBUG_MODE: Final[bool] = False
@@ -136,7 +136,7 @@ RESEED_RNG: Final[bool] = False # If the random seed was set outside of Neo, thi
 
 # Strategic variables
 CONTINUOUS_LOOKAHEAD_PLANNING: Final[bool] = True # If this is false, we use predicted state lookahead planning, which may be outdated, and is more node-based and requires the ship to stop between maneuvers
-
+USE_HEURISTIC_MANEUVER: Final[bool] = False # Experimental fuzzy system to suggest a heuristic maneuver. Honestly this isn't super great, and a random search is probably better.
 END_OF_SCENARIO_DONT_CARE_TIMESTEPS: Final[i64] = 8
 ADVERSARY_ROTATION_TIMESTEP_FUDGE: Final[i64] = 20  # Since we can't predict the adversary ship, in the targetting frontrun protection, fudge the adversary's ship to be more conservative. Since we predict they don't move, but they could be aiming toward the target.
 # TODO: Actually wait, doesn't the rotation timestep fudge just need to be 5, because each stationary targetting is just 5 timesteps long? So using 20 may be overkill!
@@ -6240,10 +6240,9 @@ class NeoController(KesslerController):
                 print(f"\nWARNING: The ship wasn't stationary after the last maneuver, so we're skipping stationary targeting! Our planning period starts on ts {self.game_state_to_base_planning['timestep']}")  # REMOVE_FOR_COMPETITION
             # Try moving! Run a simulation and find a course of action to put me to safety
             if (len(self.sims_this_planning_period) == 0 or (len(self.sims_this_planning_period) == 1 and self.sims_this_planning_period[0]['action_type'] != 'heuristic_maneuver')) and ship_is_stationary:
-                heuristic_maneuver = True
+                heuristic_maneuver = USE_HEURISTIC_MANEUVER # To enable heuristic planning, put this to True
             else:
                 heuristic_maneuver = False
-
             imminent_asteroid_speed, imminent_asteroid_relative_heading, largest_gap_relative_heading, nearby_asteroid_average_speed, nearby_asteroid_count, average_directional_speed, total_asteroids_count, current_asteroids_count = self.base_gamestate_analysis
 
             # Let's just pretend the following is a fuzzy system lol
@@ -6275,7 +6274,7 @@ class NeoController(KesslerController):
             while (search_iterations_count < get_min_maneuver_per_timestep_search_iterations(self.game_state_to_base_planning['ship_state'].lives_remaining, weighted_average(overall_fitness_record)) or self.performance_controller_check_whether_i_can_do_another_iteration()) and not search_iterations_count >= MAX_MANEUVER_PER_TIMESTEP_SEARCH_ITERATIONS:
                 self.performance_controller_start_iteration()
                 search_iterations_count += 1
-                if heuristic_maneuver:
+                if USE_HEURISTIC_MANEUVER and heuristic_maneuver:
                     random_ship_heading_angle = 0.0
                     ship_accel_turn_rate, ship_cruise_speed, ship_cruise_turn_rate, ship_cruise_timesteps_float, thrust_direction = maneuver_heuristic_fis(imminent_asteroid_speed, imminent_asteroid_relative_heading, largest_gap_relative_heading, nearby_asteroid_average_speed, nearby_asteroid_count)
                     # print(ship_accel_turn_rate, ship_cruise_speed, ship_cruise_turn_rate, ship_cruise_timesteps, thrust_direction)
@@ -6286,7 +6285,7 @@ class NeoController(KesslerController):
                         # The FIS couldn't decide which way to thrust, so we'll just skip the heuristic maneuver altogether
                         heuristic_maneuver = False
                 # The reason this isn't an if-else statement is that even if we wanted to do a heuristic maneuver, the heuristic output could be bad and so we skip the heuristic maneuver altogether
-                if not heuristic_maneuver:
+                if not heuristic_maneuver or not USE_HEURISTIC_MANEUVER:
                     random_ship_heading_angle = fast_triangular(-DEGREES_TURNED_PER_TIMESTEP*max_pre_maneuver_turn_timesteps, DEGREES_TURNED_PER_TIMESTEP*max_pre_maneuver_turn_timesteps, 0)
                     ship_accel_turn_rate = fast_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)
                     # random_ship_cruise_speed = fast_uniform(-ship_max_speed, ship_max_speed)
