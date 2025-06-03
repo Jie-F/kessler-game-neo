@@ -2949,13 +2949,14 @@ class Matrix():
         self.asteroids_pending_death: dict[i64, list[Asteroid]] = {timestep: list(l) for timestep, l in asteroids_pending_death.items()}
         self.asteroids_pending_death_history: dict[i64, dict[i64, list[Asteroid]]] = {}
         self.forecasted_asteroid_splits: list[Asteroid] = [a.copy() for a in forecasted_asteroid_splits]
+        self.forecasted_asteroid_splits_history: list[list[Asteroid]] = []
         self.halt_shooting: bool = halt_shooting # This probably means we're doing a respawn maneuver
-        self.fire_next_timestep_flag: bool = False
+        self.fire_next_timestep_flag: bool = False # This is used internally to mark that we want to fire in the next frame for stuff yeah idk
         self.fire_first_timestep: bool = fire_first_timestep
         self.game_state_plotter: Optional[GameStatePlotter] = game_state_plotter
         self.sim_id = random.randint(1, 100000)
-        #if self.sim_id in [15869, 73186]:
-        #    print(f"Starting sim {self.sim_id} with ship state {ship_state}")
+        #if self.sim_id in [22508]:
+        #    print(f"Starting sim {self.sim_id} with ship state {ship_state}, {self.fire_next_timestep_flag=}, {self.fire_first_timestep=}, {self.last_timestep_fired=}")
         self.explanation_messages: list[str] = []
         self.safety_messages: list[str] = []
         self.respawn_timer: float = respawn_timer
@@ -2970,6 +2971,7 @@ class Matrix():
         self.sim_placed_a_mine: bool = False
         self.verify_maneuver_shots: bool = verify_maneuver_shots
         self.mine_positions_placed: set[tuple[float, float]] = mine_positions_placed if mine_positions_placed is not None else set()
+        self.mine_positions_placed_history: dict[i64, set[tuple[float, float]]] = {}
         # This is to facilitate my two-pass respawn maneuvers. The first pass doesn't shoot, and records when we will no longer hit asteroids. The second pass will begin targeting after the ship is clear from asteroids, since after shooting the respawn invincibility will be gone
         self.last_timestep_colliding: i64 = last_timestep_colliding if last_timestep_colliding != -1 else self.initial_timestep - 1
         # 0 - Not a respawn maneuver, 1 - First pass of respawn maneuver, 2 - Second pass of respawn maneuver
@@ -3041,14 +3043,40 @@ class Matrix():
         latest_version = self.asteroids_pending_death
         asteroids_pending_death_history_dict: dict[i64, dict[i64, list[Asteroid]]] = {}
         # TODO: Make sure there's no off-by-one error in these bounds and indices!
-        for t in range(self.initial_timestep + self.future_timesteps + 1, self.initial_timestep, -1):
-            asteroids_pending_death_history_dict[t] = latest_version
+        for t in range(self.initial_timestep + self.future_timesteps, self.initial_timestep, -1):
+            # We add one because it's the frame after this one that we're updating the state to be, and that we read this variable from
+            asteroids_pending_death_history_dict[t + 1] = latest_version
             if t in self.asteroids_pending_death_history:
                 latest_version = self.asteroids_pending_death_history[t]
         return asteroids_pending_death_history_dict
 
     def get_forecasted_asteroid_splits(self) -> list[Asteroid]:
         return self.forecasted_asteroid_splits
+
+    def get_forecasted_asteroid_splits_history(self) -> dict[i64, list[Asteroid]]:
+        forecasted_asteroid_splits_dict = {}
+        for i, timer in enumerate(self.forecasted_asteroid_splits_history):
+            forecasted_asteroid_splits_dict[self.initial_timestep + i] = timer
+        assert len(self.forecasted_asteroid_splits_history) == self.future_timesteps
+        forecasted_asteroid_splits_dict[self.initial_timestep + len(self.forecasted_asteroid_splits_history)] = self.forecasted_asteroid_splits
+        return forecasted_asteroid_splits_dict
+
+    def get_mine_positions_placed_history(self) -> dict[i64, set[tuple[float, float]]]:
+        
+        # This is a doozy. First of all, if we never shot any asteroids during this sim, then this history dict will be empty!
+        # But each time we shoot an asteroid, we add to this dict the timestep the thing was updated, but we plop down the PREVIOUS version!
+        # For example we have versions A and B. 0:A, 1:A, 2:A, 3:B, 4:B is how the thing changes. So the dict would say: {3: A}. And then B is held in the variable.
+        latest_version = self.mine_positions_placed
+        mine_positions_placed_history_dict: dict[i64, set[tuple[float, float]]] = {}
+        # TODO: Make sure there's no off-by-one error in these bounds and indices!
+        for t in range(self.initial_timestep + self.future_timesteps, self.initial_timestep, -1):
+            # We add one because it's the frame after this one that we're updating the state to be, and that we read this variable from
+            mine_positions_placed_history_dict[t + 1] = latest_version
+            if t in self.mine_positions_placed_history:
+                latest_version = self.mine_positions_placed_history[t]
+        return mine_positions_placed_history_dict
+
+
 
     def get_instantaneous_asteroid_collision(self, asteroids: Optional[list[Asteroid]] = None, ship_position: Optional[tuple[float, float]] = None) -> bool:
         # UNUSED
@@ -3968,7 +3996,7 @@ class Matrix():
                 assert future_ts_backup + len(aiming_move_sequence) == self.future_timesteps  # REMOVE_FOR_COMPETITION
                 #if is_close(-10.0, actual_asteroid_hit_when_firing.velocity[0]):
                 #    print(f"\nSHOT AT THE ASTEROID IN TARGET SELECTION on timestep {self.initial_timestep=} {self.future_timesteps=}")
-                self.asteroids_pending_death_history[self.initial_timestep + self.future_timesteps] = self.asteroids_pending_death.deepcopy()
+                self.asteroids_pending_death_history[self.initial_timestep + self.future_timesteps] = {k: [a.copy() for a in v] for k, v in self.asteroids_pending_death.items()} #deepcopy(self.asteroids_pending_death)
                 track_asteroid_we_shot_at(self.asteroids_pending_death, self.initial_timestep + self.future_timesteps, self.game_state, timesteps_until_bullet_hit_asteroid - len(aiming_move_sequence), actual_asteroid_hit_when_firing)
                 # print(f"self.asteroids_pending_death updated to {self.asteroids_pending_death[100]}")
                 # print(self.asteroids_pending_death)
@@ -4294,6 +4322,7 @@ class Matrix():
                 self.state_sequence.append(cast(SimState, {'timestep': self.initial_timestep + self.future_timesteps, 'ship_state': copy.copy(self.ship_state)}))
         '''
         if not wait_out_mines:
+            self.forecasted_asteroid_splits_history.append([a.copy() for a in self.forecasted_asteroid_splits])
             if PRUNE_SIM_STATE_SEQUENCE and self.future_timesteps != 0:
                 # Create a super lightweight state that omits unnecessary stuff
                 self.state_sequence.append(SimState(
@@ -4521,7 +4550,7 @@ class Matrix():
                                         # So the asteroid positions at a certain timestep is before their positions get updated. After updating, it's the next timestep.
                                         #if is_close(-10.0, actual_asteroid_hit_at_fire_time.velocity[0]):
                                         #    print(f"\nSHOT AT THE ASTEROID IN UPDATE in sim {self.sim_id} on timestep {self.initial_timestep + self.future_timesteps + 1}, {self.initial_timestep=} {self.future_timesteps=} and this shot will take this many ts: {timesteps_until_bullet_hit_asteroid}")
-                                        self.asteroids_pending_death_history[self.initial_timestep + self.future_timesteps + 1] = self.asteroids_pending_death.deepcopy()
+                                        self.asteroids_pending_death_history[self.initial_timestep + self.future_timesteps + 1] = {k: [a.copy() for a in v] for k, v in self.asteroids_pending_death.items()} #deepcopy(self.asteroids_pending_death)
                                         track_asteroid_we_shot_at(self.asteroids_pending_death, self.initial_timestep + self.future_timesteps + 1, self.game_state, timesteps_until_bullet_hit_asteroid, actual_asteroid_hit_at_fire_time)
                                     if fire_this_timestep and not isinf(self.game_state.time_limit) and self.initial_timestep + self.future_timesteps + timesteps_until_bullet_hit_asteroid > floor(FPS*self.game_state.time_limit):
                                         # Added one to the timesteps to prevent off by one :P
@@ -4737,6 +4766,7 @@ class Matrix():
                         fuse_time=MINE_FUSE_TIME,
                         remaining_time=MINE_FUSE_TIME
                     )
+                    self.mine_positions_placed_history[self.initial_timestep + self.future_timesteps + 1] = set(self.mine_positions_placed)
                     self.mine_positions_placed.add(self.ship_state.position) # Track where we placed our mine
                     self.game_state.mines.append(new_mine)
                     self.ship_state.mines_remaining -= 1
@@ -5000,6 +5030,15 @@ class Matrix():
         return True
 
     def get_move_sequence(self) -> list[Action]:
+        if ENABLE_SANITY_CHECKS:
+            last_ts_shot = -10
+            for move in self.ship_move_sequence:
+                if move.fire:
+                    assert move.timestep > last_ts_shot
+                    if move.timestep - last_ts_shot < 3:
+                        print(self.ship_move_sequence)
+                        raise Exception("Uhh wth")
+                    last_ts_shot = move.timestep
         return self.ship_move_sequence
 
     def get_intended_move_sequence(self) -> list[Action]:
@@ -5114,8 +5153,8 @@ class NeoController(KesslerController):
         self.stationary_targetting_sim_index: i64 = INT_NEG_INF
         self.current_sequence_fitness: float = -inf # The fitness of the current sequence of actions we're performing
         self.respawn_timer_history: dict[i64, float] = {}
-        self.last_timestep_fired_schedule: dict[i64, i64] = {-1: INT_NEG_INF, 0: INT_NEG_INF} # Just pretend, to make the code simpler
-        self.last_timestep_mined_schedule: dict[i64, i64] = {-1: INT_NEG_INF, 0: INT_NEG_INF}
+        self.last_timestep_fired_schedule: dict[i64, i64] = {0: INT_NEG_INF} # Just pretend, to make the code simpler. If we decide to fire on frame N, it'll only show up in frame N + 1 that we fired on frame N!
+        self.last_timestep_mined_schedule: dict[i64, i64] = {0: INT_NEG_INF}
         self.fire_next_timestep_schedule: set[i64] = set() # If a timestep is in the set, the bool value is True. Otherwise, it's false.
         self.asteroids_pending_death_schedule: dict[i64, dict[i64, list[Asteroid]]] = {}
         self.forecasted_asteroid_splits_schedule: dict[i64, list[Asteroid]] = {}
@@ -5253,8 +5292,8 @@ class NeoController(KesslerController):
         assert self.game_state_to_base_planning is not None
         #print(self.game_state_to_base_planning)
         assert self.best_fitness_this_planning_period_index != INT_NEG_INF  # REMOVE_FOR_COMPETITION
-        debug_print(f"\nDeciding next action! We're picking out of {len(self.sims_this_planning_period)} total sims")
-        debug_print(sorted([round(x['fitness'], 2) for x in self.sims_this_planning_period]))
+        print(f"\nDeciding next action! We're picking out of {len(self.sims_this_planning_period)} total sims")
+        print(sorted([round(x['fitness'], 2) for x in self.sims_this_planning_period]))
         if PLOT_MANEUVER_TRACES:
             all_ship_pos = []
             all_ship_x = []
@@ -5327,11 +5366,12 @@ class NeoController(KesslerController):
         #best_action_fitness = self.sims_this_planning_period[self.best_fitness_this_planning_period_index]['fitness']
         
         if not force_decision:
-            if best_action_fitness >= self.current_sequence_fitness:
+            if best_action_fitness > self.current_sequence_fitness:
                 # Wipe the current move sequence and switch to the new better sequence!
                 print(f"Wipe the current move sequence and switch to the new better sequence! Current action seq fitness is {self.current_sequence_fitness} but we can do {best_action_fitness}")
                 self.action_queue.clear()
                 self.actioned_timesteps.clear()  # REMOVE_FOR_COMPETITION
+                self.fire_next_timestep_schedule.clear()
             else:
                 # It ain't better, so don't switch over to this sequence and continue on our existing one
                 self.sims_this_planning_period.clear()
@@ -5495,6 +5535,7 @@ class NeoController(KesslerController):
         if new_fire_next_timestep_flag:
             # Remember that we want to shoot the next frame!
             self.fire_next_timestep_schedule.add(best_move_sequence[-1].timestep + 1)
+            print(f"Just added {best_move_sequence[-1].timestep + 1} to {self.fire_next_timestep_schedule=}")
         #print(f"Got the respawn timer history: {self.respawn_timer_history}")
         #print('New base gamestate:')
         #print(next_base_game_state)
@@ -5537,8 +5578,9 @@ class NeoController(KesslerController):
             # Keep track of this stuff
             #self.last_timestep_fired_history.clear()
             #self.last_timestep_mined_history.clear()
-            assert best_move_sequence[0].timestep == game_state.sim_frame
+            assert best_move_sequence[0].timestep == game_state.sim_frame, f"{best_move_sequence[0].timestep=}, {game_state.sim_frame=}, {best_move_sequence=}"
             #assert last_timestep_fired == self.last_timestep_fired_history[best_move_sequence[0].timestep - 1], f"{last_timestep_fired=}, {self.last_timestep_fired_history[best_move_sequence[0].timestep - 1]=}"
+        #print(f"The next maneuver is from timesteps {best_move_sequence[0].timestep} to {best_move_sequence[-1].timestep} and the seq is {best_move_sequence}")
         for move in best_move_sequence:
             if ENABLE_SANITY_CHECKS:  # REMOVE_FOR_COMPETITION
                 if not move.timestep not in self.actioned_timesteps:  # REMOVE_FOR_COMPETITION
@@ -5547,6 +5589,7 @@ class NeoController(KesslerController):
                     print('best move sequence:', best_move_sequence)  # REMOVE_FOR_COMPETITION
                 assert move.timestep not in self.actioned_timesteps, "DUPLICATE TIMESTEPS IN ENQUEUED MOVES"  # REMOVE_FOR_COMPETITION
                 self.actioned_timesteps.add(move.timestep)  # REMOVE_FOR_COMPETITION
+                assert move.timestep >= game_state.sim_frame  # REMOVE_FOR_COMPETITION
             self.enqueue_action(move.timestep, move.thrust, move.turn_rate, move.fire, move.drop_mine)
             if CONTINUOUS_LOOKAHEAD_PLANNING:
                 # Keep track of this stuff
@@ -6108,6 +6151,7 @@ class NeoController(KesslerController):
             # Stationary targetting simulation
             #assert self.game_state_to_base_planning is not None
             if self.base_gamestate_analysis is None:
+                print("Analyzing heuristic maneuver")
                 self.base_gamestate_analysis = analyze_gamestate_for_heuristic_maneuver(self.game_state_to_base_planning['game_state'], self.game_state_to_base_planning['ship_state'])
             ship_is_stationary = is_close_to_zero(self.game_state_to_base_planning['ship_state'].speed)
             if plan_stationary and self.game_state_to_base_planning['ship_state'].bullets_remaining != 0 and ship_is_stationary:
@@ -6704,12 +6748,185 @@ class NeoController(KesslerController):
 
         if CONTINUOUS_LOOKAHEAD_PLANNING:
             if self.other_ships_exist:
-                raise NotImplementedError()
+                # We cannot use deterministic mode to plan ahead
+                # We can still try to plan ahead, but we need to compare the predicted state with the actual state
+                # Note that if the other ship dies, then we will switch from this case to the case where other ships don't exist
+
+                # Since other ships exist right now and the game isn't deterministic, we can die at any time even during the middle of a planned maneuver where we SHOULD survive.
+                # Or maybe we planned to die at the end of the maneuver, but we died in the middle instead. That's a sneaky case that's possible too. Handle all of these!
+                # Check for that case:
+                unexpected_death = False
+                # If we're dead/respawning but we didn't plan a respawn maneuver for it, OR if we do expect to die at the end of the maneuver, however we actually died mid-maneuver
+                #print(f"{ship_state.is_respawning=}, ts: {self.current_timestep}, Action queue length: {len(self.action_queue)}")
+                # Originally I thought it'd be a necessary condition to check (not self.last_timestep_ship_is_respawning and ship_state.is_respawning and ship_state.lives_remaining not in self.lives_remaining_that_we_did_respawn_maneuver_for) however WE DO NOT want to check that the last timestep we weren't respawning!
+                # Because a sneaky edge case is, what if we did a respawn maneuver, and then we began to shoot in the middle of the respawn maneuver RIGHT AS the other ship is inside of us? Then we stay in the respawning state without ever getting out of it, but we just lose a life. Losing a life is the main thing we need to check for! And yes, this is an edge case I experienced and spent an hour tracking down.
+                if (ship_state.is_respawning and ship_state.lives_remaining not in self.lives_remaining_that_we_did_respawn_maneuver_for) or (self.action_queue and not self.last_timestep_ship_is_respawning and ship_state.is_respawning and ship_state.lives_remaining in self.lives_remaining_that_we_did_respawn_maneuver_for):
+                    print_explanation(f"Ouch, I died in the middle of a maneuver where I expected to survive, due to other ships being present!", self.current_timestep)
+                    #debug_print(f"I have {ship_state.lives_remaining} lives left, and here's the set of lives left we did respawn maneuvers for: {self.lives_remaining_that_we_did_respawn_maneuver_for}")  # REMOVE_FOR_COMPETITION
+                    # Clear the move queue, since previous moves have been invalidated by us taking damage
+                    print("CLEAARING ACTION QUEUE")
+                    self.action_queue.clear()
+                    self.actioned_timesteps.clear()  # If we don't clear it, we'll have duplicated moves since we have to overwrite our planned moves to get to safety, which means enqueuing moves on timesteps we already enqueued moves for.
+                    self.fire_next_timestep_flag = False  # If we were planning on shooting this timestep but we unexpectedly got hit, DO NOT SHOOT! Actually even if we didn't reset this variable here, we'd only shoot after the respawn maneuver is done and then we'd miss a shot. And yes that was a bug that I fixed lmao
+                    # self.game_state_to_base_planning = None
+                    self.sims_this_planning_period.clear()
+                    self.best_fitness_this_planning_period_index = INT_NEG_INF
+                    self.best_fitness_this_planning_period = -inf
+                    self.second_best_fitness_this_planning_period_index = INT_NEG_INF
+                    self.second_best_fitness_this_planning_period = -inf
+                    self.base_gamestate_analysis = None
+                    unexpected_death = True
+                    iterations_boost = True
+                    if ship_state.lives_remaining in self.lives_remaining_that_we_did_respawn_maneuver_for:
+                        # We expected to die at the end of the maneuver, however we actually died mid-maneuver, so we have to revoke the respawn maneuver we had planned, and plan a new one.
+                        # Removing the life remaining number from this set will allow us to plan a new maneuver for this number of lives remaining
+                        #debug_print("GOTCHA, this life remaining shouldn't be in here! Yoink!")  # REMOVE_FOR_COMPETITION
+                        self.lives_remaining_that_we_did_respawn_maneuver_for.remove(ship_state.lives_remaining)
+                unexpected_survival = False
+                # If we're alive at the end of a maneuver but we're expecting to be dead at the end of the maneuver and we've planned a respawn maneuver
+                #if self.game_state_to_base_planning is not None:
+                #    print(f"Checking for unexpected survival: {ship_state.is_respawning=} {self.game_state_to_base_planning['ship_state'].is_respawning=} {self.game_state_to_base_planning['respawning']=}")
+                if not self.action_queue and self.game_state_to_base_planning is not None and not ship_state.is_respawning and self.game_state_to_base_planning['ship_state'].is_respawning and self.game_state_to_base_planning['respawning']:
+                    # We thought this maneuver would end in us dying, with the next move being a respawn maneuver. However this is not the case. We're alive at the end of the maneuver! This must be because the other ship saved us by shooting an asteroid that was going to hit us, or something.
+                    # This assertion isn't true because we could be doing a respawn maneuver, dying, and doing another respawn maneuver!
+                    # assert not self.last_timestep_ship_is_respawning
+                    print_explanation(f"\nI thought I would die, but the other ship saved me!!!", self.current_timestep)
+                    # Clear the move queue, since previous moves have been invalidated by us taking damage
+                    print("CLEAARING ACTION QUEUE")
+                    self.action_queue.clear()
+                    self.actioned_timesteps.clear()  # If we don't clear it, we'll have duplicated moves since we have to overwrite our planned moves to get to safety, which means enqueuing moves on timesteps we already enqueued moves for.
+                    self.fire_next_timestep_flag = False  # This should be false anyway!
+                    
+                    # self.game_state_to_base_planning = None
+                    self.sims_this_planning_period.clear()
+                    self.best_fitness_this_planning_period_index = INT_NEG_INF
+                    self.best_fitness_this_planning_period = -inf
+                    self.second_best_fitness_this_planning_period_index = INT_NEG_INF
+                    self.second_best_fitness_this_planning_period = -inf
+                    self.base_gamestate_analysis = None
+                    iterations_boost = True
+                    unexpected_survival = True
+                    # Yoink this life remaining from the respawn maneuvers, since we no longer are doing one
+                    if (ship_state.lives_remaining - 1) in self.lives_remaining_that_we_did_respawn_maneuver_for:
+                        # We need to subtract one from the lives remaining, because when we added it, it was from a simulated ship that had one fewer life. In reality we never lost that life, so we subtract one from our actual lives.
+                        self.lives_remaining_that_we_did_respawn_maneuver_for.remove(ship_state.lives_remaining - 1)
+                # set up the actions planning
+                if unexpected_death:
+                    # We need to refresh the state if we died unexpectedly
+                    print_explanation(f"Ouch! Due to the other ship, I unexpectedly died!", self.current_timestep)
+                    self.game_state_to_base_planning = {
+                        'timestep': self.current_timestep,
+                        'respawning': ship_state.is_respawning and ship_state.lives_remaining not in self.lives_remaining_that_we_did_respawn_maneuver_for,
+                        'ship_state': ship_state,
+                        'game_state': game_state,
+                        'ship_respawn_timer': 3.0,
+                        'asteroids_pending_death': {} if not self.current_timestep in self.asteroids_pending_death_schedule else self.asteroids_pending_death_schedule[self.current_timestep],
+                        'forecasted_asteroid_splits': [] if not self.current_timestep in self.forecasted_asteroid_splits_schedule else self.forecasted_asteroid_splits_schedule[self.current_timestep],
+                        'last_timestep_fired': (INT_NEG_INF if self.current_timestep == 0 else self.last_timestep_fired_schedule[self.current_timestep]) if not recovering_from_crash else self.current_timestep - 1,  # self.current_timestep - 1, # TODO: CHECK EDGECASE, may need to restore to larger number to be safe
+                        'last_timestep_mined': (INT_NEG_INF if self.current_timestep == 0 else self.last_timestep_mined_schedule[self.current_timestep]) if not recovering_from_crash else self.current_timestep - 1, # The reason we set this to the last timestep, is to be conservative in the case that we're recovering from a controller crash, and we don't know when we last shot
+                        'mine_positions_placed': set() if not self.current_timestep in self.mine_positions_placed_schedule else self.mine_positions_placed_schedule[self.current_timestep],
+                        'fire_next_timestep_flag': self.current_timestep in self.fire_next_timestep_schedule, # Should prob be false to be safe
+                    }
+                    if self.game_state_to_base_planning['respawning']:
+                        debug_print(f"Adding to lives remaining that we did respawn for, in the unexpected death: {ship_state.lives_remaining}")  # REMOVE_FOR_COMPETITION
+                        self.lives_remaining_that_we_did_respawn_maneuver_for.add(ship_state.lives_remaining)
+                elif unexpected_survival:
+                    debug_print(f"Unexpected survival, the ship state is {ship_state}")  # REMOVE_FOR_COMPETITION
+                    # We need to refresh the state if we survived unexpectedly. Technically if we still had the remainder of the maneuver from before we could use that, but it's easier to just make a new maneuver from this starting point.
+                    
+                    self.game_state_to_base_planning = {
+                        'timestep': self.current_timestep,
+                        'respawning': ship_state.is_respawning and ship_state.lives_remaining not in self.lives_remaining_that_we_did_respawn_maneuver_for,
+                        'ship_state': ship_state,
+                        'game_state': game_state,
+                        'ship_respawn_timer': 0.0,
+                        'asteroids_pending_death': {} if not self.current_timestep in self.asteroids_pending_death_schedule else self.asteroids_pending_death_schedule[self.current_timestep],
+                        'forecasted_asteroid_splits': [] if not self.current_timestep in self.forecasted_asteroid_splits_schedule else self.forecasted_asteroid_splits_schedule[self.current_timestep],
+                        'last_timestep_fired': (INT_NEG_INF if self.current_timestep == 0 else self.last_timestep_fired_schedule[self.current_timestep]) if not recovering_from_crash else self.current_timestep - 1,  # self.current_timestep - 1, # TODO: CHECK EDGECASE, may need to restore to larger number to be safe
+                        'last_timestep_mined': (INT_NEG_INF if self.current_timestep == 0 else self.last_timestep_mined_schedule[self.current_timestep]) if not recovering_from_crash else self.current_timestep - 1, # The reason we set this to the last timestep, is to be conservative in the case that we're recovering from a controller crash, and we don't know when we last shot
+                        'mine_positions_placed': set() if not self.current_timestep in self.mine_positions_placed_schedule else self.mine_positions_placed_schedule[self.current_timestep],
+                        'fire_next_timestep_flag': self.current_timestep in self.fire_next_timestep_schedule, # Should prob be false to be safe
+                    }
+                elif not self.game_state_to_base_planning:
+                    #raise Exception("I didn't think we would come in here LMAO")
+                    '''
+                    self.game_state_to_base_planning = {
+                        'timestep': self.current_timestep,
+                        'respawning': ship_state.is_respawning and ship_state.lives_remaining not in self.lives_remaining_that_we_did_respawn_maneuver_for,
+                        'ship_state': ship_state,
+                        'game_state': game_state,
+                        'ship_respawn_timer': 0.0,
+                        'asteroids_pending_death': {},
+                        'forecasted_asteroid_splits': [],
+                        'last_timestep_fired': INT_NEG_INF,
+                        'last_timestep_mined': INT_NEG_INF,
+                        'mine_positions_placed': set(),
+                        'fire_next_timestep_flag': False,
+                    }
+                    '''
+                    self.game_state_to_base_planning = {
+                        'timestep': self.current_timestep,
+                        'respawning': ship_state.is_respawning and ship_state.lives_remaining not in self.lives_remaining_that_we_did_respawn_maneuver_for,
+                        'ship_state': ship_state,
+                        'game_state': game_state,
+                        'ship_respawn_timer': 0.0 if self.current_timestep == 0 else self.respawn_timer_history[self.current_timestep],
+                        'asteroids_pending_death': {} if not self.current_timestep in self.asteroids_pending_death_schedule else self.asteroids_pending_death_schedule[self.current_timestep],
+                        'forecasted_asteroid_splits': [] if not self.current_timestep in self.forecasted_asteroid_splits_schedule else self.forecasted_asteroid_splits_schedule[self.current_timestep],
+                        'last_timestep_fired': (INT_NEG_INF if self.current_timestep == 0 else self.last_timestep_fired_schedule[self.current_timestep]) if not recovering_from_crash else self.current_timestep - 1,  # self.current_timestep - 1, # TODO: CHECK EDGECASE, may need to restore to larger number to be safe
+                        'last_timestep_mined': (INT_NEG_INF if self.current_timestep == 0 else self.last_timestep_mined_schedule[self.current_timestep]) if not recovering_from_crash else self.current_timestep - 1, # The reason we set this to the last timestep, is to be conservative in the case that we're recovering from a controller crash, and we don't know when we last shot
+                        'mine_positions_placed': set() if not self.current_timestep in self.mine_positions_placed_schedule else self.mine_positions_placed_schedule[self.current_timestep],
+                        'fire_next_timestep_flag': self.current_timestep in self.fire_next_timestep_schedule, # May have to be false to be safe? Idk
+                    }
+                    if self.game_state_to_base_planning['respawning']:
+                        # print(f"Adding to lives remaining that we did respawn for, in actions: {ship_state.lives_remaining}")
+                        self.lives_remaining_that_we_did_respawn_maneuver_for.add(ship_state.lives_remaining)
+                    assert bool(self.game_state_to_base_planning['ship_respawn_timer']) == self.game_state_to_base_planning['ship_state'].is_respawning  # REMOVE_FOR_COMPETITION
+                else:
+                    # Refresh the state anyway to the latest state:
+                    self.game_state_to_base_planning = {
+                        'timestep': self.current_timestep,
+                        'respawning': ship_state.is_respawning and ship_state.lives_remaining not in self.lives_remaining_that_we_did_respawn_maneuver_for,
+                        'ship_state': ship_state,
+                        'game_state': game_state,
+                        'ship_respawn_timer': 0.0 if self.current_timestep == 0 else self.respawn_timer_history[self.current_timestep],
+                        'asteroids_pending_death': {} if not self.current_timestep in self.asteroids_pending_death_schedule else self.asteroids_pending_death_schedule[self.current_timestep],
+                        'forecasted_asteroid_splits': [] if not self.current_timestep in self.forecasted_asteroid_splits_schedule else self.forecasted_asteroid_splits_schedule[self.current_timestep],
+                        'last_timestep_fired': (INT_NEG_INF if self.current_timestep == 0 else self.last_timestep_fired_schedule[self.current_timestep]) if not recovering_from_crash else self.current_timestep - 1,  # self.current_timestep - 1, # TODO: CHECK EDGECASE, may need to restore to larger number to be safe
+                        'last_timestep_mined': (INT_NEG_INF if self.current_timestep == 0 else self.last_timestep_mined_schedule[self.current_timestep]) if not recovering_from_crash else self.current_timestep - 1, # The reason we set this to the last timestep, is to be conservative in the case that we're recovering from a controller crash, and we don't know when we last shot
+                        'mine_positions_placed': set() if not self.current_timestep in self.mine_positions_placed_schedule else self.mine_positions_placed_schedule[self.current_timestep],
+                        'fire_next_timestep_flag': self.current_timestep in self.fire_next_timestep_schedule, # May have to be false to be safe? Idk
+                    }
+                #print(f"The action queue on frame {game_state.sim_frame} is {self.action_queue}")
+                if not self.action_queue:
+                    # Only when we're at the end of our sequence, do we run the stationary targeting sim once. Basically we just keep doing stationary targeting unless we have a better maneuver found
+                    self.plan_action_continuous(other_ships_exist=False, base_state_is_exact=True, iterations_boost=iterations_boost, plan_stationary=True)
+                    self.plan_action_continuous(other_ships_exist=False, base_state_is_exact=True, iterations_boost=iterations_boost, plan_stationary=False)
+                    success = self.decide_next_action_continuous(game_state, ship_state, True)
+                    assert success  # REMOVE_FOR_COMPETITION
+                else:
+                    # We're still in the middle of a maneuver sequence. Run some planning iterations, and switch over to the new sequence if it's better than our fitness
+                    self.plan_action_continuous(other_ships_exist=False, base_state_is_exact=True, iterations_boost=iterations_boost, plan_stationary=False)
+                    success = self.decide_next_action_continuous(game_state, ship_state, False)
+                    if success:
+                        print("Switched to a better maneuver")
+                    else:
+                        print("Didn't find better maneuvers")
+
+
+                if len(get_other_ships(game_state, self.ship_id_internal)) == 0:
+                    # The other ship just died. I'm now alone!
+                    print_explanation("I'm alone. I can see into the future perfectly now!", self.current_timestep)
+                    self.simulated_gamestate_history.clear()
+                    self.set_of_base_gamestate_timesteps.clear()
+                    self.other_ships_exist = False
             else:
                 # No other ships exist, we're deterministically planning the future
                 # Always set the latest state to the base state!
                 # TODO: Use more accurate stuff for the carryover info!
                 #print(self.last_timestep_fired_history)
+                if recovering_from_crash:
+                    print("RECOVERING FROM A CRASH!!!")
+                print(f"{len(self.asteroids_pending_death_schedule)=}, {len(self.forecasted_asteroid_splits_schedule)=}, {len(self.last_timestep_fired_schedule)=}, {len(self.last_timestep_mined_schedule)=}, {len(self.mine_positions_placed_schedule)=}")
                 self.game_state_to_base_planning = {
                     'timestep': self.current_timestep,
                     'respawning': ship_state.is_respawning,
@@ -6979,6 +7196,7 @@ class NeoController(KesslerController):
                 turn_rate = min(max(-SHIP_MAX_TURN_RATE, turn_rate), SHIP_MAX_TURN_RATE)  # REMOVE_FOR_COMPETITION
                 raise Exception("Dude the turn rate is too high, go fix your code >:(")  # REMOVE_FOR_COMPETITION
             if fire and not ship_state.can_fire:  # REMOVE_FOR_COMPETITION
+                print(self.last_timestep_fired_schedule)
                 #self.reality_move_sequence.append({'thrust': thrust, 'turn_rate': turn_rate, 'fire': fire, 'drop_mine': drop_mine})  # REMOVE_FOR_COMPETITION
                 # debug_print(self.reality_move_sequence)  # REMOVE_FOR_COMPETITION
                 raise Exception("Why are you trying to fire when you haven't waited out the cooldown yet?")  # REMOVE_FOR_COMPETITION

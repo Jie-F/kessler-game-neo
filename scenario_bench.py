@@ -18,7 +18,7 @@ from src.kesslergame import Scenario, KesslerGame, GraphicsType
 from src.kesslergame.controller_gamepad import GamepadController
 from src.neo_controller import NeoController
 #from neo_controller import NeoController
-#from src.neo_controller_wcci_bench import NeoController
+from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
 
 global color_text
 color_text = True
@@ -282,13 +282,14 @@ benchmark_scenario = Scenario(name="Benchmark Scenario",
                                 seed=0,
                                 time_limit=120.0)
 
-scenario_to_run = falling_leaves_scenario
+scenario_to_run = xfc2024[14]
+#scenario_to_run = benchmark_scenario
 
 pre = time.perf_counter()
 if scenario_to_run is not None:
     print(f"Evaluating scenario {scenario_to_run.name}")
 
-controllers_used = [NeoController()]
+controllers_used = [NeoController(), NeoControllerWCCI()]
 score, perf_data = game.run(scenario=scenario_to_run, controllers=controllers_used)
 
 # Print out some general info about the result
