@@ -825,6 +825,23 @@ def sign(x: float) -> float:
         return -1.0
 
 
+def fast_randint(a: i64, b: i64) -> i64:
+    return a + cast(i64, floor(float(b - a + 1) * random.random()))
+
+
+def fast_uniform(a: float, b: float) -> float:
+    return a + (b - a) * random.random()
+
+
+def fast_triangular(low: float, high: float, mode: float) -> float:
+    u: float = random.random()
+    c: float = (mode - low) / (high - low)
+    if u < c:
+        return low + sqrt(u*(high - low)*(mode - low))
+    else:
+        return high - sqrt((1.0 - u)*(high - low)*(high - mode))
+
+
 def dist(point_1: tuple[float, float], point_2: tuple[float, float]) -> float:
     '''Calculate the Euclidean distance between two points in 2D space.'''
     dx = point_1[0] - point_2[0]
@@ -2954,7 +2971,7 @@ class Matrix():
         self.fire_next_timestep_flag: bool = False # This is used internally to mark that we want to fire in the next frame for stuff yeah idk
         self.fire_first_timestep: bool = fire_first_timestep
         self.game_state_plotter: Optional[GameStatePlotter] = game_state_plotter
-        self.sim_id = random.randint(1, 100000)
+        self.sim_id = fast_randint(1, 100000)
         #if self.sim_id in [22508]:
         #    print(f"Starting sim {self.sim_id} with ship state {ship_state}, {self.fire_next_timestep_flag=}, {self.fire_first_timestep=}, {self.last_timestep_fired=}")
         self.explanation_messages: list[str] = []
@@ -3319,17 +3336,29 @@ class Matrix():
             if not isinf(self.game_state.time_limit) and self.initial_timestep + self.future_timesteps + END_OF_SCENARIO_DONT_CARE_TIMESTEPS >= floor(FPS*self.game_state.time_limit):
                 # If we're near the end of the scenario, we're gonna fudge things so that we don't care if the ship crashes near the end.
                 # If anything, sacrificing a life to get another hit is probably optimal behavior, since we don't care about deaths, and we only care about asteroid hits!
-                crash_fitness = 1.0
+                if self.ship_crashed:
+                    crash_fitness = 1.0
+                else:
+                    crash_fitness = 0.0
             else:
                 if self.ship_crashed:
                     if self.ship_state.bullets_remaining == 0 and self.ship_state.mines_remaining == 0:
+                        # Out of ammo. We WANT to crash! It's the only way to gain points then!
                         crash_fitness = 1.0
                     else:
-                        crash_fitness = 0.0
+                        # Crashing is generally bad. But the more lives we have, the less bad it is.
+                        if self.ship_state.lives_remaining >= 2: # Only took first life
+                            crash_fitness = 0.5
+                        elif self.ship_state.lives_remaining >= 1:
+                            crash_fitness = 0.2
+                        else:
+                            # This is my last life! Better not lose it.
+                            crash_fitness = 0.0
                 else:
                     if self.ship_state.bullets_remaining == 0 and self.ship_state.mines_remaining == 0:
                         crash_fitness = 0.0
                     else:
+                        # Not out of ammo, and we didn't crash. Good fitness!
                         crash_fitness = 1.0
             return crash_fitness
 
@@ -3875,7 +3904,7 @@ class Matrix():
                 self.explanation_messages.append("There's nothing I can feasibly shoot at!")
                 # Pick a direction to turn the ship anyway, just to better line it up with more shots
                 if asteroids_still_exist:
-                    if random.randint(1, 10) == 1:
+                    if fast_randint(1, 10) == 1:
                         self.explanation_messages.append("Asteroids exist but we can't hit them. Moving around a bit randomly.")
                         # Setting this to -1 is a signal to set the asteroid fitness really low, so hopefully we'll choose actions that'll move around
                         self.asteroids_shot -= 1
@@ -3928,12 +3957,12 @@ class Matrix():
             # print("We can't hit anything this timestep.")
             if asteroids_still_exist:
                 # print('asteroids still exist')
-                if random.randint(1, 10) == 1:
+                if fast_randint(1, 10) == 1:
                     self.explanation_messages.append("Asteroids exist but we can't hit them. Moving around a bit randomly.")
                     # Setting this to -1 is a signal to set the asteroid fitness really low, so hopefully we'll choose actions that'll move around
                     self.asteroids_shot -= 1
                 # turn_direction = random.random()
-                # idle_thrust = random.triangular(0, SHIP_MAX_THRUST, 0)
+                # idle_thrust = custom_triangular(0, SHIP_MAX_THRUST, 0)
                 turn_direction = 0
                 idle_thrust = 0.0
             else:
@@ -6095,11 +6124,11 @@ class NeoController(KesslerController):
                     ship_cruise_turn_rate = 0.0
                     ship_cruise_timesteps = 0
                 else:
-                    random_ship_heading_angle = random.uniform(-20.0, 20.0)
-                    ship_accel_turn_rate = random.uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
+                    random_ship_heading_angle = fast_uniform(-20.0, 20.0)
+                    ship_accel_turn_rate = fast_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
                     ship_cruise_speed = SHIP_MAX_SPEED*random.choice([-1, 1])
                     ship_cruise_turn_rate = 0.0
-                    ship_cruise_timesteps = random.randint(0, round(MAX_CRUISE_SECONDS*FPS))
+                    ship_cruise_timesteps = fast_randint(0, round(MAX_CRUISE_SECONDS*FPS))
                 if ENABLE_SANITY_CHECKS and not (bool(self.game_state_to_base_planning['ship_respawn_timer']) == self.game_state_to_base_planning['ship_state'].is_respawning):  # REMOVE_FOR_COMPETITION
                     print(f"BAD, self.game_state_to_base_planning['ship_respawn_timer']: {self.game_state_to_base_planning['ship_respawn_timer']}, self.game_state_to_base_planning['ship_state'].is_respawning: {self.game_state_to_base_planning['ship_state'].is_respawning}")  # REMOVE_FOR_COMPETITION
                 # TODO: There's a hardcoded false in the arguments to the following sim. Investigate!!!
@@ -6255,30 +6284,30 @@ class NeoController(KesslerController):
                         heuristic_maneuver = False
                 # The reason this isn't an if-else statement is that even if we wanted to do a heuristic maneuver, the heuristic output could be bad and so we skip the heuristic maneuver altogether
                 if not heuristic_maneuver:
-                    random_ship_heading_angle = random.triangular(-DEGREES_TURNED_PER_TIMESTEP*max_pre_maneuver_turn_timesteps, DEGREES_TURNED_PER_TIMESTEP*max_pre_maneuver_turn_timesteps, 0)
-                    ship_accel_turn_rate = random.triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)
-                    # random_ship_cruise_speed = random.uniform(-ship_max_speed, ship_max_speed)
+                    random_ship_heading_angle = fast_triangular(-DEGREES_TURNED_PER_TIMESTEP*max_pre_maneuver_turn_timesteps, DEGREES_TURNED_PER_TIMESTEP*max_pre_maneuver_turn_timesteps, 0)
+                    ship_accel_turn_rate = fast_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)
+                    # random_ship_cruise_speed = fast_uniform(-ship_max_speed, ship_max_speed)
                     if isnan(ship_cruise_speed_mode):
-                        ship_cruise_speed = random.uniform(-SHIP_MAX_SPEED, SHIP_MAX_SPEED)
+                        ship_cruise_speed = fast_uniform(-SHIP_MAX_SPEED, SHIP_MAX_SPEED)
                     else:
-                        ship_cruise_speed = random.triangular(0, SHIP_MAX_SPEED, ship_cruise_speed_mode)*(2.0*float(random.getrandbits(1)) - 1.0)  # random.triangular(0, SHIP_MAX_SPEED, SHIP_MAX_SPEED)*(2.0*float(random.getrandbits(1)) - 1.0)
-                    ship_cruise_turn_rate = random.triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)  # random.uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
+                        ship_cruise_speed = fast_triangular(0, SHIP_MAX_SPEED, ship_cruise_speed_mode)*(2.0*float(random.getrandbits(1)) - 1.0)  # custom_triangular(0, SHIP_MAX_SPEED, SHIP_MAX_SPEED)*(2.0*float(random.getrandbits(1)) - 1.0)
+                    ship_cruise_turn_rate = fast_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)  # fast_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
                     # TODO: For denser asteroid fields, decrease the max cruise seconds to encourage shorter maneuvers!
-                    # ship_cruise_timesteps = random.randint(1, round(max_cruise_seconds*FPS))
+                    # ship_cruise_timesteps = fast_randint(1, round(max_cruise_seconds*FPS))
                     if isnan(ship_cruise_timesteps_mode):
-                        ship_cruise_timesteps = random.randint(0, round(MAX_CRUISE_TIMESTEPS))
+                        ship_cruise_timesteps = fast_randint(0, round(MAX_CRUISE_TIMESTEPS))
                     else:
-                        ship_cruise_timesteps = floor(random.triangular(0.0, MAX_CRUISE_TIMESTEPS, ship_cruise_timesteps_mode))
+                        ship_cruise_timesteps = floor(fast_triangular(0.0, MAX_CRUISE_TIMESTEPS, ship_cruise_timesteps_mode))
 
                     '''
-                    random_ship_heading_angle = random.triangular(-6.0*10.0, 6.0*10.0, 0)
-                    ship_accel_turn_rate = random.triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)
-                    #random_ship_cruise_speed = random.uniform(-ship_max_speed, ship_max_speed)
-                    ship_cruise_speed = random.uniform(-SHIP_MAX_SPEED, SHIP_MAX_SPEED)#random.triangular(0, SHIP_MAX_SPEED, SHIP_MAX_SPEED)*(2.0*float(random.getrandbits(1)) - 1.0)
-                    ship_cruise_turn_rate = random.triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)#random.uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
+                    random_ship_heading_angle = custom_triangular(-6.0*10.0, 6.0*10.0, 0)
+                    ship_accel_turn_rate = custom_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)
+                    #random_ship_cruise_speed = fast_uniform(-ship_max_speed, ship_max_speed)
+                    ship_cruise_speed = fast_uniform(-SHIP_MAX_SPEED, SHIP_MAX_SPEED)#custom_triangular(0, SHIP_MAX_SPEED, SHIP_MAX_SPEED)*(2.0*float(random.getrandbits(1)) - 1.0)
+                    ship_cruise_turn_rate = custom_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)#fast_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
                     # TODO: For denser asteroid fields, decrease the max cruise seconds to encourage shorter maneuvers!
-                    #ship_cruise_timesteps = random.randint(1, round(max_cruise_seconds*FPS))
-                    ship_cruise_timesteps = floor(random.triangular(0.0, max_cruise_seconds*FPS, 0.0))
+                    #ship_cruise_timesteps = fast_randint(1, round(max_cruise_seconds*FPS))
+                    ship_cruise_timesteps = floor(custom_triangular(0.0, max_cruise_seconds*FPS, 0.0))
                     '''
 
                 # First do a dummy simulation just to go through the motion, so we have the list of moves
@@ -6427,11 +6456,11 @@ class NeoController(KesslerController):
                     ship_cruise_turn_rate = 0.0
                     ship_cruise_timesteps = 0
                 else:
-                    random_ship_heading_angle = random.uniform(-20.0, 20.0)
-                    ship_accel_turn_rate = random.uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
+                    random_ship_heading_angle = fast_uniform(-20.0, 20.0)
+                    ship_accel_turn_rate = fast_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
                     ship_cruise_speed = SHIP_MAX_SPEED*random.choice([-1, 1])
                     ship_cruise_turn_rate = 0.0
-                    ship_cruise_timesteps = random.randint(0, round(MAX_CRUISE_SECONDS*FPS))
+                    ship_cruise_timesteps = fast_randint(0, round(MAX_CRUISE_SECONDS*FPS))
                 if ENABLE_SANITY_CHECKS and not (bool(self.game_state_to_base_planning['ship_respawn_timer']) == self.game_state_to_base_planning['ship_state'].is_respawning):  # REMOVE_FOR_COMPETITION
                     print(f"BAD, self.game_state_to_base_planning['ship_respawn_timer']: {self.game_state_to_base_planning['ship_respawn_timer']}, self.game_state_to_base_planning['ship_state'].is_respawning: {self.game_state_to_base_planning['ship_state'].is_respawning}")  # REMOVE_FOR_COMPETITION
                 # TODO: There's a hardcoded false in the arguments to the following sim. Investigate!!!
@@ -6586,30 +6615,30 @@ class NeoController(KesslerController):
                         heuristic_maneuver = False
                 # The reason this isn't an if-else statement is that even if we wanted to do a heuristic maneuver, the heuristic output could be bad and so we skip the heuristic maneuver altogether
                 if not heuristic_maneuver:
-                    random_ship_heading_angle = random.triangular(-DEGREES_TURNED_PER_TIMESTEP*max_pre_maneuver_turn_timesteps, DEGREES_TURNED_PER_TIMESTEP*max_pre_maneuver_turn_timesteps, 0)
-                    ship_accel_turn_rate = random.triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)
-                    # random_ship_cruise_speed = random.uniform(-ship_max_speed, ship_max_speed)
+                    random_ship_heading_angle = fast_triangular(-DEGREES_TURNED_PER_TIMESTEP*max_pre_maneuver_turn_timesteps, DEGREES_TURNED_PER_TIMESTEP*max_pre_maneuver_turn_timesteps, 0)
+                    ship_accel_turn_rate = fast_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)
+                    # random_ship_cruise_speed = fast_uniform(-ship_max_speed, ship_max_speed)
                     if isnan(ship_cruise_speed_mode):
-                        ship_cruise_speed = random.uniform(-SHIP_MAX_SPEED, SHIP_MAX_SPEED)
+                        ship_cruise_speed = fast_uniform(-SHIP_MAX_SPEED, SHIP_MAX_SPEED)
                     else:
-                        ship_cruise_speed = random.triangular(0, SHIP_MAX_SPEED, ship_cruise_speed_mode)*(2.0*float(random.getrandbits(1)) - 1.0)  # random.triangular(0, SHIP_MAX_SPEED, SHIP_MAX_SPEED)*(2.0*float(random.getrandbits(1)) - 1.0)
-                    ship_cruise_turn_rate = random.triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)  # random.uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
+                        ship_cruise_speed = fast_triangular(0, SHIP_MAX_SPEED, ship_cruise_speed_mode)*(2.0*float(random.getrandbits(1)) - 1.0)  # custom_triangular(0, SHIP_MAX_SPEED, SHIP_MAX_SPEED)*(2.0*float(random.getrandbits(1)) - 1.0)
+                    ship_cruise_turn_rate = fast_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)  # fast_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
                     # TODO: For denser asteroid fields, decrease the max cruise seconds to encourage shorter maneuvers!
-                    # ship_cruise_timesteps = random.randint(1, round(max_cruise_seconds*FPS))
+                    # ship_cruise_timesteps = fast_randint(1, round(max_cruise_seconds*FPS))
                     if isnan(ship_cruise_timesteps_mode):
-                        ship_cruise_timesteps = random.randint(0, round(MAX_CRUISE_TIMESTEPS))
+                        ship_cruise_timesteps = fast_randint(0, round(MAX_CRUISE_TIMESTEPS))
                     else:
-                        ship_cruise_timesteps = floor(random.triangular(0.0, MAX_CRUISE_TIMESTEPS, ship_cruise_timesteps_mode))
+                        ship_cruise_timesteps = floor(fast_triangular(0.0, MAX_CRUISE_TIMESTEPS, ship_cruise_timesteps_mode))
 
                     '''
-                    random_ship_heading_angle = random.triangular(-6.0*10.0, 6.0*10.0, 0)
-                    ship_accel_turn_rate = random.triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)
-                    #random_ship_cruise_speed = random.uniform(-ship_max_speed, ship_max_speed)
-                    ship_cruise_speed = random.uniform(-SHIP_MAX_SPEED, SHIP_MAX_SPEED)#random.triangular(0, SHIP_MAX_SPEED, SHIP_MAX_SPEED)*(2.0*float(random.getrandbits(1)) - 1.0)
-                    ship_cruise_turn_rate = random.triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)#random.uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
+                    random_ship_heading_angle = custom_triangular(-6.0*10.0, 6.0*10.0, 0)
+                    ship_accel_turn_rate = custom_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)
+                    #random_ship_cruise_speed = fast_uniform(-ship_max_speed, ship_max_speed)
+                    ship_cruise_speed = fast_uniform(-SHIP_MAX_SPEED, SHIP_MAX_SPEED)#custom_triangular(0, SHIP_MAX_SPEED, SHIP_MAX_SPEED)*(2.0*float(random.getrandbits(1)) - 1.0)
+                    ship_cruise_turn_rate = custom_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)*(2.0*float(random.getrandbits(1)) - 1.0)#fast_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
                     # TODO: For denser asteroid fields, decrease the max cruise seconds to encourage shorter maneuvers!
-                    #ship_cruise_timesteps = random.randint(1, round(max_cruise_seconds*FPS))
-                    ship_cruise_timesteps = floor(random.triangular(0.0, max_cruise_seconds*FPS, 0.0))
+                    #ship_cruise_timesteps = fast_randint(1, round(max_cruise_seconds*FPS))
+                    ship_cruise_timesteps = floor(custom_triangular(0.0, max_cruise_seconds*FPS, 0.0))
                     '''
 
                 # First do a dummy simulation just to go through the motion, so we have the list of moves

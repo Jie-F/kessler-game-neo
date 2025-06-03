@@ -62,7 +62,7 @@ def color_print(text='', color='white', style='normal', same=False, previous=Fal
 
 width, height = (1000, 800)
 
-GRAPHICS = True
+GRAPHICS = False
 
 # Define Game Settings
 game_settings = {'perf_tracker': True,
@@ -283,7 +283,7 @@ benchmark_scenario = Scenario(name="Benchmark Scenario",
                                 time_limit=120.0)
 
 scenario_to_run = xfc2024[14]
-#scenario_to_run = benchmark_scenario
+scenario_to_run = benchmark_scenario
 
 pre = time.perf_counter()
 if scenario_to_run is not None:
