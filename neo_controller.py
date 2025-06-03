@@ -875,9 +875,9 @@ def create_ship_from_dict(d: ShipDict) -> Ship:
         bullets_remaining=d.get('bullets_remaining', 0),
         mines_remaining=d.get('mines_remaining', 0),
         can_fire=d.get('can_fire', True),
-        fire_rate=d.get('fire_rate', 0.0),
+        fire_rate=d.get('fire_rate', 1.0/(1.0/10.0)),
         can_deploy_mine=d.get('can_deploy_mine', True),
-        mine_deploy_rate=d.get('mine_deploy_rate', 0.0),
+        mine_deploy_rate=d.get('mine_deploy_rate', 1.0/1.0),
         thrust_range=thrust_range,
         turn_rate_range=turn_rate_range,
         max_speed=d.get('max_speed', SHIP_MAX_SPEED),
@@ -897,15 +897,17 @@ def create_mine_from_dict(d: MineDict) -> Mine:
 def create_bullet_from_dict(d: BulletDict) -> Bullet:
     x, y = d['position']
     vx, vy = d['velocity']
+    heading = d['heading']
+    heading_rad = heading*DEG_TO_RAD
     return Bullet(
         x=x,
         y=y,
         vx=vx,
         vy=vy,
-        heading=d['heading'],
+        heading=heading,
         mass=d['mass'],
-        tail_delta_x=-BULLET_LENGTH*cos(d['heading']),
-        tail_delta_y=-BULLET_LENGTH*sin(d['heading'])
+        tail_delta_x=-BULLET_LENGTH*cos(heading_rad),
+        tail_delta_y=-BULLET_LENGTH*sin(heading_rad)
     )
 
 def create_game_state_from_dict(game_state_dict: GameStateDict) -> GameState:
@@ -2955,6 +2957,9 @@ def solve_interception(asteroid: Asteroid, ship_state: Ship, game_state: GameSta
 
 
 def track_asteroid_we_shot_at(asteroids_pending_death: dict[i64, list[Asteroid]], current_timestep: i64, game_state: GameState, bullet_travel_timesteps: i64, original_asteroid: Asteroid) -> None:
+    debug_print(f"Tracking asteroid we shot at. Asts pending death: {asteroids_pending_death}, {current_timestep=}, {bullet_travel_timesteps=}, {original_asteroid=}")
+    if ENABLE_SANITY_CHECKS:
+        assert check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, current_timestep, game_state, original_asteroid)
     #global asteroid_tracking_total_time
     #start_time = time.perf_counter()
     # This modifies asteroids_pending_death in place instead of returning it
@@ -2974,9 +2979,9 @@ def track_asteroid_we_shot_at(asteroids_pending_death: dict[i64, list[Asteroid]]
                 if is_asteroid_in_list(asteroids_pending_death[timestep], asteroid, game_state):  # REMOVE_FOR_COMPETITION
                     print(f'ABOUT TO FAIL ASSERTION, we are in the future by {future_timesteps} timesteps from the current ts {current_timestep}, this asteroid is {asteroid} and LIST FOR THIS TS IS:')  # REMOVE_FOR_COMPETITION
                     print(asteroids_pending_death[timestep])  # REMOVE_FOR_COMPETITION
-                    culled_asteroids_pending_death = {k: [a for a in v if is_close(a.vx, -10.0)] for k, v in asteroids_pending_death.items()}  # REMOVE_FOR_COMPETITION
-                    print(culled_asteroids_pending_death)  # REMOVE_FOR_COMPETITION
-                assert not is_asteroid_in_list(asteroids_pending_death[timestep], asteroid, game_state), f"The asteroid {asteroid} appeared in the list of pending death when it wasn't supposed to! I'm on future ts {future_timesteps} when tracking."  # REMOVE_FOR_COMPETITION
+                    #culled_asteroids_pending_death = {k: [a for a in v if is_close(a.vx, -10.0)] for k, v in asteroids_pending_death.items()}  # REMOVE_FOR_COMPETITION
+                    print(asteroids_pending_death)  # REMOVE_FOR_COMPETITION
+                assert not is_asteroid_in_list(asteroids_pending_death[timestep], asteroid, game_state), f"The asteroid {asteroid} appeared in the list of pending death when it wasn't supposed to! I'm on future ts {future_timesteps} when tracking. This probably means we're reshooting at the same asteroid we already shot at!"  # REMOVE_FOR_COMPETITION
             asteroids_pending_death[timestep].append(asteroid.copy())
         # Advance the asteroid to the next position
         if future_timesteps != bullet_travel_timesteps:
