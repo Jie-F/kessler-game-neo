@@ -4280,8 +4280,8 @@ class Matrix():
     def apply_move_sequence(self, move_sequence: list[Action], allow_free_firing: bool = False, allow_free_mining: bool = False) -> bool:
         # assert isclose(self.ship_state.speed, 0.0), f"When starting in apply move sequence where the sim was safe, the ship speed is not zero! {self.ship_state.speed=}, {self.ship_state.velocity=}. The whole move sequence is {move_sequence}"
         sim_was_safe = True
-        if not is_close(self.ship_state.speed, 0.0):  # REMOVE_FOR_COMPETITION
-            print(f"When starting in apply move sequence where the sim was safe, the ship speed is not zero! {self.ship_state.speed=}, {self.ship_state.velocity=}. The whole move sequence is {move_sequence}")  # REMOVE_FOR_COMPETITION
+        #if not is_close(self.ship_state.speed, 0.0):  # REMOVE_FOR_COMPETITION
+        #    print(f"When starting in apply move sequence where the sim was safe, the ship speed is not zero! {self.ship_state.speed=}, {self.ship_state.velocity=}. The whole move sequence is {move_sequence}")  # REMOVE_FOR_COMPETITION
         for move in move_sequence:
             #thrust = 0.0
             #turn_rate = 0.0
@@ -5317,12 +5317,12 @@ class NeoController(KesslerController):
 
     def decide_next_action_continuous(self, game_state: GameState, ship_state: Ship, force_decision: bool) -> bool:
         global unwrap_cache
-        print(f"Calling decide next action continuous on timestep {game_state.sim_frame}, and {force_decision=}")
+        debug_print(f"Calling decide next action continuous on timestep {game_state.sim_frame}, and {force_decision=}")
         assert self.game_state_to_base_planning is not None
         #print(self.game_state_to_base_planning)
         assert self.best_fitness_this_planning_period_index != INT_NEG_INF  # REMOVE_FOR_COMPETITION
-        print(f"\nDeciding next action! We're picking out of {len(self.sims_this_planning_period)} total sims")
-        print(sorted([round(x['fitness'], 2) for x in self.sims_this_planning_period]))
+        debug_print(f"\nDeciding next action! We're picking out of {len(self.sims_this_planning_period)} total sims")
+        debug_print(sorted([round(x['fitness'], 2) for x in self.sims_this_planning_period]))
         if PLOT_MANEUVER_TRACES:
             all_ship_pos = []
             all_ship_x = []
@@ -5397,7 +5397,7 @@ class NeoController(KesslerController):
         if not force_decision:
             if best_action_fitness > self.current_sequence_fitness:
                 # Wipe the current move sequence and switch to the new better sequence!
-                print(f"Wipe the current move sequence and switch to the new better sequence! Current action seq fitness is {self.current_sequence_fitness} but we can do {best_action_fitness}")
+                debug_print(f"Wipe the current move sequence and switch to the new better sequence! Current action seq fitness is {self.current_sequence_fitness} but we can do {best_action_fitness}")
                 self.action_queue.clear()
                 self.actioned_timesteps.clear()  # REMOVE_FOR_COMPETITION
                 self.fire_next_timestep_schedule.clear()
@@ -5564,7 +5564,7 @@ class NeoController(KesslerController):
         if new_fire_next_timestep_flag:
             # Remember that we want to shoot the next frame!
             self.fire_next_timestep_schedule.add(best_move_sequence[-1].timestep + 1)
-            print(f"Just added {best_move_sequence[-1].timestep + 1} to {self.fire_next_timestep_schedule=}")
+            debug_print(f"Just added {best_move_sequence[-1].timestep + 1} to {self.fire_next_timestep_schedule=}")
         #print(f"Got the respawn timer history: {self.respawn_timer_history}")
         #print('New base gamestate:')
         #print(next_base_game_state)
@@ -6126,7 +6126,10 @@ class NeoController(KesslerController):
                 else:
                     random_ship_heading_angle = fast_uniform(-20.0, 20.0)
                     ship_accel_turn_rate = fast_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
-                    ship_cruise_speed = SHIP_MAX_SPEED*random.choice([-1, 1])
+                    if random.random() < 0.5:
+                        ship_cruise_speed = SHIP_MAX_SPEED
+                    else:
+                        ship_cruise_speed = -SHIP_MAX_SPEED
                     ship_cruise_turn_rate = 0.0
                     ship_cruise_timesteps = fast_randint(0, round(MAX_CRUISE_SECONDS*FPS))
                 if ENABLE_SANITY_CHECKS and not (bool(self.game_state_to_base_planning['ship_respawn_timer']) == self.game_state_to_base_planning['ship_state'].is_respawning):  # REMOVE_FOR_COMPETITION
@@ -6180,7 +6183,7 @@ class NeoController(KesslerController):
             # Stationary targetting simulation
             #assert self.game_state_to_base_planning is not None
             if self.base_gamestate_analysis is None:
-                print("Analyzing heuristic maneuver")
+                debug_print("Analyzing heuristic maneuver")
                 self.base_gamestate_analysis = analyze_gamestate_for_heuristic_maneuver(self.game_state_to_base_planning['game_state'], self.game_state_to_base_planning['ship_state'])
             ship_is_stationary = is_close_to_zero(self.game_state_to_base_planning['ship_state'].speed)
             if plan_stationary and self.game_state_to_base_planning['ship_state'].bullets_remaining != 0 and ship_is_stationary:
@@ -6458,7 +6461,10 @@ class NeoController(KesslerController):
                 else:
                     random_ship_heading_angle = fast_uniform(-20.0, 20.0)
                     ship_accel_turn_rate = fast_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
-                    ship_cruise_speed = SHIP_MAX_SPEED*random.choice([-1, 1])
+                    if random.random() < 0.5:
+                        ship_cruise_speed = SHIP_MAX_SPEED
+                    else:
+                        ship_cruise_speed = -SHIP_MAX_SPEED
                     ship_cruise_turn_rate = 0.0
                     ship_cruise_timesteps = fast_randint(0, round(MAX_CRUISE_SECONDS*FPS))
                 if ENABLE_SANITY_CHECKS and not (bool(self.game_state_to_base_planning['ship_respawn_timer']) == self.game_state_to_base_planning['ship_state'].is_respawning):  # REMOVE_FOR_COMPETITION
@@ -6937,9 +6943,9 @@ class NeoController(KesslerController):
                     self.plan_action_continuous(other_ships_exist=False, base_state_is_exact=True, iterations_boost=iterations_boost, plan_stationary=False)
                     success = self.decide_next_action_continuous(game_state, ship_state, False)
                     if success:
-                        print("Switched to a better maneuver")
+                        debug_print("Switched to a better maneuver")
                     else:
-                        print("Didn't find better maneuvers")
+                        debug_print("Didn't find better maneuvers")
 
 
                 if len(get_other_ships(game_state, self.ship_id_internal)) == 0:
@@ -6955,7 +6961,7 @@ class NeoController(KesslerController):
                 #print(self.last_timestep_fired_history)
                 if recovering_from_crash:
                     print("RECOVERING FROM A CRASH!!!")
-                print(f"{len(self.asteroids_pending_death_schedule)=}, {len(self.forecasted_asteroid_splits_schedule)=}, {len(self.last_timestep_fired_schedule)=}, {len(self.last_timestep_mined_schedule)=}, {len(self.mine_positions_placed_schedule)=}")
+                debug_print(f"{len(self.asteroids_pending_death_schedule)=}, {len(self.forecasted_asteroid_splits_schedule)=}, {len(self.last_timestep_fired_schedule)=}, {len(self.last_timestep_mined_schedule)=}, {len(self.mine_positions_placed_schedule)=}")
                 self.game_state_to_base_planning = {
                     'timestep': self.current_timestep,
                     'respawning': ship_state.is_respawning,
@@ -6981,9 +6987,9 @@ class NeoController(KesslerController):
                     self.plan_action_continuous(other_ships_exist=False, base_state_is_exact=True, iterations_boost=iterations_boost, plan_stationary=False)
                     success = self.decide_next_action_continuous(game_state, ship_state, False)
                     if success:
-                        print("Switched to a better maneuver")
+                        debug_print("Switched to a better maneuver")
                     else:
-                        print("Didn't find better maneuvers")
+                        debug_print("Didn't find better maneuvers")
         else:
             if self.other_ships_exist:
                 # We cannot use deterministic mode to plan ahead

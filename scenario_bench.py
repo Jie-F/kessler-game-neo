@@ -62,7 +62,7 @@ def color_print(text='', color='white', style='normal', same=False, previous=Fal
 
 width, height = (1000, 800)
 
-GRAPHICS = False
+GRAPHICS = True
 
 # Define Game Settings
 game_settings = {'perf_tracker': True,
