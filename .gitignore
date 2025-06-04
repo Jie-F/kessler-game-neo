@@ -168,3 +168,5 @@ src/kesslergame/graphics/images/
 *.pdb
 *.idb
 *.ilk
+
+*.exp
