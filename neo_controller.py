@@ -1895,6 +1895,7 @@ def analyze_gamestate_for_heuristic_maneuver(game_state: GameState, ship_state: 
         total_x_velocity = 0.0
         total_y_velocity = 0.0
         for a in asteroids:
+            assert a.alive
             total_x_velocity += a.vx
             total_y_velocity += a.vy
         num_asteroids = len(asteroids)
@@ -1981,6 +1982,7 @@ def analyze_gamestate_for_heuristic_maneuver(game_state: GameState, ship_state: 
     nearby_threshold_square = 40000.0  # 200.0**2
     nearby_asteroids = []
     for asteroid in asteroids:
+        assert asteroid.alive
         for a in unwrap_asteroid(asteroid, game_state.map_size_x, game_state.map_size_y, UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON, False):
             if is_close_to_zero(ship_vel_x) and is_close_to_zero(ship_vel_y):
                 imminent_collision_time_s = predict_next_imminent_collision_time_with_asteroid(ship_pos_x, ship_pos_y, ship_vel_x, ship_vel_y, SHIP_RADIUS, a.x, a.y, a.vx, a.vy, a.radius, game_state)
@@ -2592,6 +2594,7 @@ def maintain_forecasted_asteroids(forecasted_asteroid_splits: list[Asteroid], ga
     return updated_asteroids
 
 def is_asteroid_in_list(list_of_asteroids: list[Asteroid], asteroid: Asteroid, game_state: GameState) -> bool:
+    assert asteroid.alive
     # Since floating point comparison isn't a good idea, break apart the asteroid dict and compare each element manually in a fuzzy way
     for a in list_of_asteroids:
         # The reason we do the seemingly redundant checks for position, is that we need to account for wrap. If the game field was 1000 pixels wide, and one asteroid is at 0.0000000001 and the other is at 999.9999999999, they're basically the same asteroid, so we need to realize that.
@@ -2602,17 +2605,18 @@ def is_asteroid_in_list(list_of_asteroids: list[Asteroid], asteroid: Asteroid, g
 
 
 def count_asteroids_in_mine_blast_radius(game_state: GameState, mine_x: float, mine_y: float, future_check_timesteps: i64) -> i64:
-    count = 0
+    count: i64 = 0
     for a in game_state.asteroids:
-        # Extrapolate the asteroid position into the time of the mine detonation to check its bounds
-        asteroid_future_pos_x = (a.x + float(future_check_timesteps)*a.vx*DELTA_TIME) % game_state.map_size_x
-        asteroid_future_pos_y = (a.y + float(future_check_timesteps)*a.vy*DELTA_TIME) % game_state.map_size_y
-        #if check_collision(asteroid_future_pos_x, asteroid_future_pos_y, a.radius, mine_x, mine_y, MINE_BLAST_RADIUS - MINE_ASTEROID_COUNT_FUDGE_DISTANCE):
-        delta_x = asteroid_future_pos_x - mine_x
-        delta_y = asteroid_future_pos_y - mine_y
-        separation = a.radius + (MINE_BLAST_RADIUS - MINE_ASTEROID_COUNT_FUDGE_DISTANCE)
-        if abs(delta_x) <= separation and abs(delta_y) <= separation and delta_x*delta_x + delta_y*delta_y <= separation*separation:
-            count += 1
+        if a.alive:
+            # Extrapolate the asteroid position into the time of the mine detonation to check its bounds
+            asteroid_future_pos_x = (a.x + float(future_check_timesteps)*a.vx*DELTA_TIME) % game_state.map_size_x
+            asteroid_future_pos_y = (a.y + float(future_check_timesteps)*a.vy*DELTA_TIME) % game_state.map_size_y
+            #if check_collision(asteroid_future_pos_x, asteroid_future_pos_y, a.radius, mine_x, mine_y, MINE_BLAST_RADIUS - MINE_ASTEROID_COUNT_FUDGE_DISTANCE):
+            delta_x = asteroid_future_pos_x - mine_x
+            delta_y = asteroid_future_pos_y - mine_y
+            separation = a.radius + (MINE_BLAST_RADIUS - MINE_ASTEROID_COUNT_FUDGE_DISTANCE)
+            if abs(delta_x) <= separation and abs(delta_y) <= separation and delta_x*delta_x + delta_y*delta_y <= separation*separation:
+                count += 1
     return count
 
 
@@ -3197,9 +3201,15 @@ class Matrix():
         self.game_state: GameState = game_state.copy()
         self.ship_state: Ship = ship_state.copy()
         self.game_state.asteroids = [a.copy() for a in game_state.asteroids]
+        for a in self.game_state.asteroids:
+            assert a.alive
         self.game_state.ships = [s.copy() for s in game_state.ships]
         self.game_state.bullets = [b.copy() for b in game_state.bullets]
+        for b in self.game_state.bullets:
+            assert b.alive
         self.game_state.mines = [m.copy() for m in game_state.mines]
+        for m in self.game_state.mines:
+            assert m.alive
         self.other_ships = get_other_ships(self.game_state, ship_state.id)
         if ENABLE_SANITY_CHECKS:  # REMOVE_FOR_COMPETITION
             assert 0 <= len(self.other_ships) <= 1  # REMOVE_FOR_COMPETITION
@@ -3209,6 +3219,8 @@ class Matrix():
         self.asteroids_pending_death: dict[i64, list[Asteroid]] = {timestep: list(l) for timestep, l in asteroids_pending_death.items()}
         self.asteroids_pending_death_history: dict[i64, dict[i64, list[Asteroid]]] = {}
         self.forecasted_asteroid_splits: list[Asteroid] = [a.copy() for a in forecasted_asteroid_splits]
+        for a in self.forecasted_asteroid_splits:
+            assert a.alive
         self.forecasted_asteroid_splits_history: list[list[Asteroid]] = []
         self.halt_shooting: bool = halt_shooting # This probably means we're doing a respawn maneuver
         self.fire_next_timestep_flag: bool = False # This is used internally to mark that we want to fire in the next frame for stuff yeah idk
@@ -3928,72 +3940,73 @@ class Matrix():
         # print(self.forecasted_asteroid_splits)
 
         for asteroid in chain(self.game_state.asteroids, self.forecasted_asteroid_splits):
-            if check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(self.asteroids_pending_death, self.initial_timestep + self.future_timesteps, self.game_state, asteroid):
-                asteroids_still_exist = True
-                # print(f"\nOn TS {self.initial_timestep + self.future_timesteps} We do not have a pending shot for the asteroid {ast_to_string(asteroid)}")
+            if asteroid.alive:
+                if check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(self.asteroids_pending_death, self.initial_timestep + self.future_timesteps, self.game_state, asteroid):
+                    asteroids_still_exist = True
+                    # print(f"\nOn TS {self.initial_timestep + self.future_timesteps} We do not have a pending shot for the asteroid {ast_to_string(asteroid)}")
 
-                best_feasible_unwrapped_target: Optional[tuple[bool, float, i64, float, float, float, float]] = None
-                # Check whether there are any mines that are about to go off, and if so, project this asteroid into the future to when the mine goes off to get a boolean of whether the asteroid will get hit by the mine or not.
-                asteroid_will_get_hit_by_my_mine = False
-                asteroid_will_get_hit_by_their_mine = False
-                for m in self.game_state.mines:
-                    #project_asteroid_by_timesteps_num = round(m.remaining_time*FPS)
-                    #asteroid_when_mine_explodes = time_travel_asteroid(asteroid, project_asteroid_by_timesteps_num, self.game_state)
-                    asteroid_when_mine_explodes = time_travel_asteroid_s(asteroid, m.remaining_time, self.game_state)
-                    #if check_collision(asteroid_when_mine_explodes.x, asteroid_when_mine_explodes.y, asteroid_when_mine_explodes.radius, m.x, m.y, MINE_BLAST_RADIUS):
-                    delta_x = asteroid_when_mine_explodes.x - m.x
-                    delta_y = asteroid_when_mine_explodes.y - m.y
-                    separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS
-                    if abs(delta_x) <= separation and abs(delta_y) <= separation and delta_x*delta_x + delta_y*delta_y <= separation*separation:
-                        # Keep track of whose mine this is. If it's mine, I want more asteroids to be in its blast radius so it does more damage. If it's theirs, I want to shoot asteroids within its blast radius so it does less damage.
-                        if (m.x, m.y) in self.mine_positions_placed:
-                            asteroid_will_get_hit_by_my_mine = True
-                            #print('WILL BE HIT BY MY MINE')
-                            if asteroid_will_get_hit_by_their_mine:
-                                break
-                        else:
-                            #print('WILL BE HIT BY THEIR MINE')
-                            asteroid_will_get_hit_by_their_mine = True
-                            if asteroid_will_get_hit_by_my_mine:
-                                break
-                # Iterate through all unwrapped asteroids to find which one of the unwraps is the best feasible target.
-                # 99% of the time, only one of the unwraps will have a feasible target, but there's situations where we could either shoot the asteroid before it wraps, or wait for it to wrap and then shoot it.
-                # In these cases, we need to pick whichever option is the fastest when factoring in turn time and waiting time.
-                unwrapped_asteroids = unwrap_asteroid(asteroid, self.game_state.map_size_x, self.game_state.map_size_y, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON, True)
-                for a in unwrapped_asteroids:
-                    feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception = solve_interception(a, dummy_ship_state, self.game_state, timesteps_until_can_fire)
-
-                    if feasible:
-                        assert aiming_timesteps_required is not None  # REMOVE_FOR_COMPETITION
-                        if best_feasible_unwrapped_target is None or aiming_timesteps_required < best_feasible_unwrapped_target[2]:
-                            #print((feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception))
-                            best_feasible_unwrapped_target = (feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception)
-                    #else:
-                    #    pass
-                        #print(f'INFEASIBLE SHOT for ast {ast_to_string(a)}')
-                        #print(feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception)
-                if best_feasible_unwrapped_target is not None:
-                    feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception = best_feasible_unwrapped_target
-                    imminent_collision_time_s = inf
-                    assert is_close_to_zero(self.ship_state.vx) and is_close_to_zero(self.ship_state.vy)  # REMOVE_FOR_COMPETITION
+                    best_feasible_unwrapped_target: Optional[tuple[bool, float, i64, float, float, float, float]] = None
+                    # Check whether there are any mines that are about to go off, and if so, project this asteroid into the future to when the mine goes off to get a boolean of whether the asteroid will get hit by the mine or not.
+                    asteroid_will_get_hit_by_my_mine = False
+                    asteroid_will_get_hit_by_their_mine = False
+                    for m in self.game_state.mines:
+                        #project_asteroid_by_timesteps_num = round(m.remaining_time*FPS)
+                        #asteroid_when_mine_explodes = time_travel_asteroid(asteroid, project_asteroid_by_timesteps_num, self.game_state)
+                        asteroid_when_mine_explodes = time_travel_asteroid_s(asteroid, m.remaining_time, self.game_state)
+                        #if check_collision(asteroid_when_mine_explodes.x, asteroid_when_mine_explodes.y, asteroid_when_mine_explodes.radius, m.x, m.y, MINE_BLAST_RADIUS):
+                        delta_x = asteroid_when_mine_explodes.x - m.x
+                        delta_y = asteroid_when_mine_explodes.y - m.y
+                        separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS
+                        if abs(delta_x) <= separation and abs(delta_y) <= separation and delta_x*delta_x + delta_y*delta_y <= separation*separation:
+                            # Keep track of whose mine this is. If it's mine, I want more asteroids to be in its blast radius so it does more damage. If it's theirs, I want to shoot asteroids within its blast radius so it does less damage.
+                            if (m.x, m.y) in self.mine_positions_placed:
+                                asteroid_will_get_hit_by_my_mine = True
+                                #print('WILL BE HIT BY MY MINE')
+                                if asteroid_will_get_hit_by_their_mine:
+                                    break
+                            else:
+                                #print('WILL BE HIT BY THEIR MINE')
+                                asteroid_will_get_hit_by_their_mine = True
+                                if asteroid_will_get_hit_by_my_mine:
+                                    break
+                    # Iterate through all unwrapped asteroids to find which one of the unwraps is the best feasible target.
+                    # 99% of the time, only one of the unwraps will have a feasible target, but there's situations where we could either shoot the asteroid before it wraps, or wait for it to wrap and then shoot it.
+                    # In these cases, we need to pick whichever option is the fastest when factoring in turn time and waiting time.
+                    unwrapped_asteroids = unwrap_asteroid(asteroid, self.game_state.map_size_x, self.game_state.map_size_y, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON, True)
                     for a in unwrapped_asteroids:
-                        imminent_collision_time_s = min(imminent_collision_time_s, predict_next_imminent_collision_time_with_asteroid(self.ship_state.x, self.ship_state.y, self.ship_state.vx, self.ship_state.vy, SHIP_RADIUS, a.x, a.y, a.vx, a.vy, a.radius, self.game_state))
-                    target_asteroids_list.append(Target(
-                        asteroid=asteroid.copy(),  # Record the canonical asteroid even if we're shooting at an unwrapped one
-                        feasible=feasible,  # Will be True
-                        shooting_angle_error_deg=shooting_angle_error_deg,
-                        aiming_timesteps_required=aiming_timesteps_required,
-                        interception_time_s=interception_time_s,
-                        intercept_x=intercept_x,
-                        intercept_y=intercept_y,
-                        asteroid_dist_during_interception=asteroid_dist_during_interception,
-                        imminent_collision_time_s=imminent_collision_time_s,
-                        asteroid_will_get_hit_by_my_mine=asteroid_will_get_hit_by_my_mine,
-                        asteroid_will_get_hit_by_their_mine=asteroid_will_get_hit_by_their_mine,
-                    ))
-                    if imminent_collision_time_s < inf:
-                        # debug_print(f"Imminent collision time is less than inf! {imminent_collision_time_s}")
-                        most_imminent_asteroid_exists = True
+                        feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception = solve_interception(a, dummy_ship_state, self.game_state, timesteps_until_can_fire)
+
+                        if feasible:
+                            assert aiming_timesteps_required is not None  # REMOVE_FOR_COMPETITION
+                            if best_feasible_unwrapped_target is None or aiming_timesteps_required < best_feasible_unwrapped_target[2]:
+                                #print((feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception))
+                                best_feasible_unwrapped_target = (feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception)
+                        #else:
+                        #    pass
+                            #print(f'INFEASIBLE SHOT for ast {ast_to_string(a)}')
+                            #print(feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception)
+                    if best_feasible_unwrapped_target is not None:
+                        feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception = best_feasible_unwrapped_target
+                        imminent_collision_time_s = inf
+                        assert is_close_to_zero(self.ship_state.vx) and is_close_to_zero(self.ship_state.vy)  # REMOVE_FOR_COMPETITION
+                        for a in unwrapped_asteroids:
+                            imminent_collision_time_s = min(imminent_collision_time_s, predict_next_imminent_collision_time_with_asteroid(self.ship_state.x, self.ship_state.y, self.ship_state.vx, self.ship_state.vy, SHIP_RADIUS, a.x, a.y, a.vx, a.vy, a.radius, self.game_state))
+                        target_asteroids_list.append(Target(
+                            asteroid=asteroid.copy(),  # Record the canonical asteroid even if we're shooting at an unwrapped one
+                            feasible=feasible,  # Will be True
+                            shooting_angle_error_deg=shooting_angle_error_deg,
+                            aiming_timesteps_required=aiming_timesteps_required,
+                            interception_time_s=interception_time_s,
+                            intercept_x=intercept_x,
+                            intercept_y=intercept_y,
+                            asteroid_dist_during_interception=asteroid_dist_during_interception,
+                            imminent_collision_time_s=imminent_collision_time_s,
+                            asteroid_will_get_hit_by_my_mine=asteroid_will_get_hit_by_my_mine,
+                            asteroid_will_get_hit_by_their_mine=asteroid_will_get_hit_by_their_mine,
+                        ))
+                        if imminent_collision_time_s < inf:
+                            # debug_print(f"Imminent collision time is less than inf! {imminent_collision_time_s}")
+                            most_imminent_asteroid_exists = True
         # Check whether we have enough time to aim at it and shoot it down
         # PROBLEM, what if the asteroid breaks into pieces and I need to shoot those down too? But I have plenty of time, and I still want the fitness function to be good in that case, but there's no easy way to evaluate that. It's hard to decide whether we want to shoot the asteroids that are about to hit us, or to just dodge it by moving myself.
 
@@ -5388,6 +5401,8 @@ class Matrix():
                 asteroids_pending_death=dict(self.asteroids_pending_death),
                 forecasted_asteroid_splits=[a.copy() for a in self.forecasted_asteroid_splits]
             ))
+            for a in self.forecasted_asteroid_splits:
+                assert a.alive
         return self.state_sequence
 
     def get_sequence_length(self) -> i64:
