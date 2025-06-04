@@ -29,7 +29,7 @@ const double inf = std::numeric_limits<double>::infinity();
 //const double nan = std::numeric_limits<double>::quiet_NaN();
 
 // Build Info
-constexpr const char* BUILD_NUMBER = "2025-06-03 Neo - Jie Fan (jie.f@pm.me)";
+constexpr const char* BUILD_NUMBER = "2025-06-04 Neo - Jie Fan (jie.f@pm.me)";
 
 // Output Config
 constexpr bool DEBUG_MODE = false;
@@ -74,19 +74,16 @@ const std::tuple<double,double,double,double,double,double,double,double,double>
 
 // Angle cone/culling parameters
 const double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF = 45.0;
-const double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF_COSINE =
-    std::cos(MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF * M_PI / 180.0);
+const double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF_COSINE = std::cos(MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF * M_PI / 180.0);
 
 const double MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF = 60.0;
-const double MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF_COSINE =
-    std::cos(MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF * M_PI / 180.0);
+const double MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF_COSINE = std::cos(MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF * M_PI / 180.0);
 
 const double MAX_CRUISE_TIMESTEPS = 30.0;
 constexpr i64 MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD = 10;
 constexpr i64 OVERALL_FITNESS_ROLLING_AVERAGE_PERIOD = 5;
 const double AIMING_CONE_FITNESS_CONE_WIDTH_HALF = 18.0;
-const double AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE =
-    std::cos(AIMING_CONE_FITNESS_CONE_WIDTH_HALF * M_PI / 180.0);
+const double AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE = std::cos(AIMING_CONE_FITNESS_CONE_WIDTH_HALF * M_PI / 180.0);
 
 constexpr i64 MANEUVER_SIM_DISALLOW_TARGETING_FOR_START_TIMESTEPS_AMOUNT = 10;
 constexpr double ASTEROID_AIM_BUFFER_PIXELS = 1.0;
@@ -658,7 +655,7 @@ private:
 public:
     NeoController() = default;
 
-    std::tuple<float, float, bool, bool>
+    std::tuple<double, double, bool, bool>
     actions(const py::dict& ship_state,
             const py::dict& game_state)
     {
@@ -666,20 +663,59 @@ public:
         Ship ship = create_ship_from_dict(ship_state);
         GameState game = create_game_state_from_dict(game_state);
 
-        float thrust = 480.0f;
-        float turn_rate = -9.0f;
+        //std::cout << game << std::endl;
+
+        double thrust = 0.0; // full thrust
+
+        // Find nearest asteroid
+        const Asteroid* nearest = nullptr;
+        double min_dist2 = std::numeric_limits<double>::infinity();
+        for (const auto& ast : game.asteroids) {
+            if (!ast.alive) continue;  // only alive
+            double dx = ast.x - ship.x;
+            double dy = ast.y - ship.y;
+            double dist2 = dx*dx + dy*dy;
+            if (dist2 < min_dist2) {
+                min_dist2 = dist2;
+                nearest = &ast;
+            }
+        }
+
+        double turn_rate = 0.0f;
+        if (nearest) {
+            double dx = nearest->x - ship.x;
+            double dy = nearest->y - ship.y;
+            double angle_to_asteroid = std::atan2(dy, dx) * 180.0 / M_PI;  // degrees
+
+            // Compute smallest signed angle difference to current heading (also in degrees)
+            double angle_diff = angle_to_asteroid - ship.heading;
+            // Normalize to [-180, 180):
+            while (angle_diff < -180.0) angle_diff += 360.0;
+            while (angle_diff >= 180.0) angle_diff -= 360.0;
+
+            // Clamp to ship's max turn per step, if needed
+            // But you may choose to set full turn_rate and let game handle per-timestep clip
+            if (angle_diff > SHIP_MAX_TURN_RATE/30.0)
+                turn_rate = (double)SHIP_MAX_TURN_RATE;
+            else if (angle_diff < -SHIP_MAX_TURN_RATE/30.0)
+                turn_rate = (double)-SHIP_MAX_TURN_RATE;
+            else
+                turn_rate = (double)angle_diff*30.0; // direct, but may want to clamp to max turn per timestep
+        }
+
         bool fire = true;
         bool drop_mine = false;
 
-        // Use ship and game here for real logic...
-        std::cout << game << std::endl;
-
+        //double thrust = 480.0f;
+        //double turn_rate = -9.0f;
+        //bool fire = true;
+        //bool drop_mine = false;
 
         return std::make_tuple(thrust, turn_rate, fire, drop_mine);
     }
 
     std::string name() const {
-        return "Neo";
+        return "Neo C++";
     }
 
     int ship_id() const {
