@@ -18,7 +18,11 @@ from src.kesslergame import Scenario, KesslerGame, GraphicsType
 from src.kesslergame.controller_gamepad import GamepadController
 from src.neo_controller import NeoController
 #from neo_controller import NeoController
+#from src.neo_controller_cont_working import NeoController 
 from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
+
+BENCHMARK_TIME_LIMIT = 120.0
+#BENCHMARK_TIME_LIMIT = 30.0
 
 global color_text
 color_text = True
@@ -280,66 +284,69 @@ benchmark_scenario = Scenario(name="Benchmark Scenario",
                                 ],
                                 map_size=(width, height),
                                 seed=0,
-                                time_limit=120.0)
+                                time_limit=BENCHMARK_TIME_LIMIT)
 
-scenario_to_run = xfc2024[14]
+scenario_to_run = xfc_2021_portfolio[11]
 scenario_to_run = benchmark_scenario
 
-pre = time.perf_counter()
-if scenario_to_run is not None:
-    print(f"Evaluating scenario {scenario_to_run.name}")
+for i in range(1):
+    print()
+    print()
+    pre = time.perf_counter()
+    if scenario_to_run is not None:
+        print(f"Evaluating scenario {scenario_to_run.name}")
 
-controllers_used = [NeoController(), NeoControllerWCCI()]
-score, perf_data = game.run(scenario=scenario_to_run, controllers=controllers_used)
+    controllers_used = [NeoController(), NeoControllerWCCI()]
+    score, perf_data = game.run(scenario=scenario_to_run, controllers=controllers_used)
 
-# Print out some general info about the result
-num_teams = len(score.teams)
-if score:
-    team1 = score.teams[0]
-    if num_teams > 1:
-        team2 = score.teams[1]
-    asts_hit = [team.asteroids_hit for team in score.teams]
-    color_print('Scenario eval time: '+str(time.perf_counter()-pre), 'green')
-    color_print(score.stop_reason, 'green')
-    color_print(f"Scenario in-game time: {score.sim_time:.02f} s", 'green')
-    color_print('Asteroids hit: ' + str(asts_hit), 'green')
-    team_1_hits += asts_hit[0]
-    if num_teams > 1:
-        team_2_hits += asts_hit[1]
-        if asts_hit[0] > asts_hit[1]:
+    # Print out some general info about the result
+    num_teams = len(score.teams)
+    if score:
+        team1 = score.teams[0]
+        if num_teams > 1:
+            team2 = score.teams[1]
+        asts_hit = [team.asteroids_hit for team in score.teams]
+        color_print('Scenario eval time: '+str(time.perf_counter()-pre), 'green')
+        color_print(score.stop_reason, 'green')
+        color_print(f"Scenario in-game time: {score.sim_time:.02f} s", 'green')
+        color_print('Asteroids hit: ' + str(asts_hit), 'green')
+        team_1_hits += asts_hit[0]
+        if num_teams > 1:
+            team_2_hits += asts_hit[1]
+            if asts_hit[0] > asts_hit[1]:
+                team_1_wins += 1
+            elif asts_hit[0] < asts_hit[1]:
+                team_2_wins += 1
+        else:
             team_1_wins += 1
-        elif asts_hit[0] < asts_hit[1]:
-            team_2_wins += 1
-    else:
-        team_1_wins += 1
-    team_deaths = [team.deaths for team in score.teams]
-    team_1_deaths += team_deaths[0]
-    if num_teams > 1:
-        team_2_deaths += team_deaths[1]
-    color_print('Deaths: ' + str(team_deaths), 'green')
-    if team_deaths[0] >= 1:
-        died = True
-    else:
-        died = False
-    color_print('Accuracy: ' + str([team.accuracy for team in score.teams]), 'green')
-    color_print('Mean eval time: ' + str([team.mean_eval_time for team in score.teams]), 'green')
-    if score.teams[0].accuracy < 1:
-        color_print('NEO MISSED SDIOFJSDI(FJSDIOJFIOSDJFIODSJFIOJSDIOFJSDIOFJOSDIJFISJFOSDJFOJSDIOFJOSDIJFDSJFI)SDFJHSUJFIOSJFIOSJIOFJSDIOFJIOSDFOSDF\n\n', 'red')
-        missed = True
-    else:
-        missed = False
-    team_1_shot_efficiency = (team1.bullets_hit/score.sim_time)/(1/(1/10))
-    team_1_shot_efficiency_including_mines = (team1.asteroids_hit/score.sim_time)/(1/(1/10))
-    if num_teams > 1:
-        team_2_shot_efficiency = (team2.bullets_hit/score.sim_time)/(1/(1/10))
-        team_2_shot_efficiency_including_mines = (team2.asteroids_hit/score.sim_time)/(1/(1/10))
-        team_1_bullets_hit += team1.bullets_hit
-        team_2_bullets_hit += team2.bullets_hit
-        team_1_shots_fired += team1.shots_fired
-        team_2_shots_fired += team2.shots_fired
-print(f"Team 1, 2 hits: ({team_1_hits}, {team_2_hits})")
-print(f"Team 1, 2 wins: ({team_1_wins}, {team_2_wins})")
-print(f"Team 1, 2 deaths: ({team_1_deaths}, {team_2_deaths})")
-print(f"Team 1, 2 accuracies: ({team_1_bullets_hit/(team_1_shots_fired + 0.000000000000001)}, {team_2_bullets_hit/(team_2_shots_fired + 0.000000000000001)})")
-print(f"Team 1, 2 shot efficiencies: ({team_1_shot_efficiency:.02%}, {team_2_shot_efficiency:.02%})")
-print(f"Team 1, 2 shot efficiencies inc. mines/ship hits: ({team_1_shot_efficiency_including_mines:.02%}, {team_2_shot_efficiency_including_mines:.02%})")
+        team_deaths = [team.deaths for team in score.teams]
+        team_1_deaths += team_deaths[0]
+        if num_teams > 1:
+            team_2_deaths += team_deaths[1]
+        color_print('Deaths: ' + str(team_deaths), 'green')
+        if team_deaths[0] >= 1:
+            died = True
+        else:
+            died = False
+        color_print('Accuracy: ' + str([team.accuracy for team in score.teams]), 'green')
+        color_print('Mean eval time: ' + str([team.mean_eval_time for team in score.teams]), 'green')
+        if score.teams[0].accuracy < 1:
+            color_print('NEO MISSED SDIOFJSDI(FJSDIOJFIOSDJFIODSJFIOJSDIOFJSDIOFJOSDIJFISJFOSDJFOJSDIOFJOSDIJFDSJFI)SDFJHSUJFIOSJFIOSJIOFJSDIOFJIOSDFOSDF\n\n', 'red')
+            missed = True
+        else:
+            missed = False
+        team_1_shot_efficiency = (team1.bullets_hit/score.sim_time)/(1/(1/10))
+        team_1_shot_efficiency_including_mines = (team1.asteroids_hit/score.sim_time)/(1/(1/10))
+        if num_teams > 1:
+            team_2_shot_efficiency = (team2.bullets_hit/score.sim_time)/(1/(1/10))
+            team_2_shot_efficiency_including_mines = (team2.asteroids_hit/score.sim_time)/(1/(1/10))
+            team_1_bullets_hit += team1.bullets_hit
+            team_2_bullets_hit += team2.bullets_hit
+            team_1_shots_fired += team1.shots_fired
+            team_2_shots_fired += team2.shots_fired
+    print(f"Team 1, 2 hits: ({team_1_hits}, {team_2_hits})")
+    print(f"Team 1, 2 wins: ({team_1_wins}, {team_2_wins})")
+    print(f"Team 1, 2 deaths: ({team_1_deaths}, {team_2_deaths})")
+    print(f"Team 1, 2 accuracies: ({team_1_bullets_hit/(team_1_shots_fired + 0.000000000000001)}, {team_2_bullets_hit/(team_2_shots_fired + 0.000000000000001)})")
+    print(f"Team 1, 2 shot efficiencies: ({team_1_shot_efficiency:.02%}, {team_2_shot_efficiency:.02%})")
+    print(f"Team 1, 2 shot efficiencies inc. mines/ship hits: ({team_1_shot_efficiency_including_mines:.02%}, {team_2_shot_efficiency_including_mines:.02%})")

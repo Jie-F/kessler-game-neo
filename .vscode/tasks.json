@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build test_controller.pyd (MSVC)",
+      "type": "shell",
+      "command": "cl",
+      "args": [
+        "/LD", "/Od",
+        "test_controller.cpp",
+        "/I", "C:\\Program Files\\Python312\\Include",
+        "/I", "C:\\Users\\Jie Fan\\AppData\\Roaming\\Python\\Python312\\site-packages\\pybind11\\include",
+        "/link",
+        "/OUT:test_controller.pyd",
+        "/LIBPATH:C:\\Program Files\\Python312\\libs",
+        "python312.lib"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}
