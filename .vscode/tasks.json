@@ -2,16 +2,16 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Build test_controller.pyd (MSVC)",
+      "label": "Build neo_controller.pyd (MSVC)",
       "type": "shell",
       "command": "cl",
       "args": [
-        "/LD", "/Od",
-        "test_controller.cpp",
+        "/LD", "/Od", "/EHsc", "/std:c++17",
+        "neo_controller.cpp",
         "/I", "C:\\Program Files\\Python312\\Include",
         "/I", "C:\\Users\\Jie Fan\\AppData\\Roaming\\Python\\Python312\\site-packages\\pybind11\\include",
         "/link",
-        "/OUT:test_controller.pyd",
+        "/OUT:neo_controller.pyd",
         "/LIBPATH:C:\\Program Files\\Python312\\libs",
         "python312.lib"
       ],
