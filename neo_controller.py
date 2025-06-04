@@ -1914,6 +1914,7 @@ def analyze_gamestate_for_heuristic_maneuver(game_state: GameState, ship_state: 
         initial_cover_count: i64 = 0  # Counter for asteroids covering angle 0
 
         for asteroid in asteroids:
+            assert asteroid.alive
             x = asteroid.x - ship_position[0]
             y = asteroid.y - ship_position[1]
             distance = sqrt(x*x + y*y)
@@ -3452,6 +3453,7 @@ class Matrix():
     def get_next_extrapolated_mine_collision_times_and_pos(self) -> list[tuple[float, tuple[float, float]]]:
         times_and_mine_pos = []
         for m in self.game_state.mines:
+            assert m.alive
             # print(f"{self.ship_state.velocity=}")
             next_imminent_mine_collision_time = predict_ship_mine_collision(self.ship_state.x, self.ship_state.y, m, 0)
             if not isinf(next_imminent_mine_collision_time):
@@ -3950,6 +3952,7 @@ class Matrix():
                     asteroid_will_get_hit_by_my_mine = False
                     asteroid_will_get_hit_by_their_mine = False
                     for m in self.game_state.mines:
+                        assert m.alive
                         #project_asteroid_by_timesteps_num = round(m.remaining_time*FPS)
                         #asteroid_when_mine_explodes = time_travel_asteroid(asteroid, project_asteroid_by_timesteps_num, self.game_state)
                         asteroid_when_mine_explodes = time_travel_asteroid_s(asteroid, m.remaining_time, self.game_state)
@@ -4762,18 +4765,19 @@ class Matrix():
                                     avoid_targeting_this_asteroid = False
                                     if asteroid.size == 1:
                                         for m in self.game_state.mines:
-                                            if (m.x, m.y) in self.mine_positions_placed:
-                                                # This mine is mine
-                                                #project_asteroid_by_timesteps_num = round(m.remaining_time*FPS)
-                                                #asteroid_when_mine_explodes = time_travel_asteroid(asteroid, project_asteroid_by_timesteps_num, self.game_state)
-                                                asteroid_when_mine_explodes = time_travel_asteroid_s(asteroid, m.remaining_time, self.game_state)
-                                                #if check_collision(asteroid_when_mine_explodes.x, asteroid_when_mine_explodes.y, asteroid_when_mine_explodes.radius, m.x, m.y, MINE_BLAST_RADIUS):
-                                                delta_x = asteroid_when_mine_explodes.x - m.x
-                                                delta_y = asteroid_when_mine_explodes.y - m.y
-                                                separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS
-                                                if abs(delta_x) <= separation and abs(delta_y) <= separation and delta_x*delta_x + delta_y*delta_y <= separation*separation:
-                                                    avoid_targeting_this_asteroid = True
-                                                    break
+                                            if m.alive:
+                                                if (m.x, m.y) in self.mine_positions_placed:
+                                                    # This mine is mine
+                                                    #project_asteroid_by_timesteps_num = round(m.remaining_time*FPS)
+                                                    #asteroid_when_mine_explodes = time_travel_asteroid(asteroid, project_asteroid_by_timesteps_num, self.game_state)
+                                                    asteroid_when_mine_explodes = time_travel_asteroid_s(asteroid, m.remaining_time, self.game_state)
+                                                    #if check_collision(asteroid_when_mine_explodes.x, asteroid_when_mine_explodes.y, asteroid_when_mine_explodes.radius, m.x, m.y, MINE_BLAST_RADIUS):
+                                                    delta_x = asteroid_when_mine_explodes.x - m.x
+                                                    delta_y = asteroid_when_mine_explodes.y - m.y
+                                                    separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS
+                                                    if abs(delta_x) <= separation and abs(delta_y) <= separation and delta_x*delta_x + delta_y*delta_y <= separation*separation:
+                                                        avoid_targeting_this_asteroid = True
+                                                        break
                                     if avoid_targeting_this_asteroid:
                                         continue
                                     if ast_idx < len_asteroids:
@@ -6468,12 +6472,25 @@ class NeoController(KesslerController):
                                       verify_first_shot=False,
                                       verify_maneuver_shots=False,
                                       game_state_plotter=self.game_state_plotter)
+                move_seq_preview = get_ship_maneuver_move_sequence(random_ship_heading_angle, ship_cruise_speed, ship_accel_turn_rate, ship_cruise_timesteps, ship_cruise_turn_rate, self.game_state_to_base_planning['ship_state'].speed)
+                while len(move_seq_preview) >= self.game_state_to_base_planning['ship_respawn_timer']*FPS:
+                    # Rejection sample this lolool
+                    random_ship_heading_angle = fast_uniform(-20.0, 20.0)
+                    ship_accel_turn_rate = fast_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
+                    if random.random() < 0.5:
+                        ship_cruise_speed = SHIP_MAX_SPEED
+                    else:
+                        ship_cruise_speed = -SHIP_MAX_SPEED
+                    ship_cruise_turn_rate = 0.0
+                    ship_cruise_timesteps = fast_randint(0, round(MAX_CRUISE_SECONDS*FPS))
+                    move_seq_preview = get_ship_maneuver_move_sequence(random_ship_heading_angle, ship_cruise_speed, ship_accel_turn_rate, ship_cruise_timesteps, ship_cruise_turn_rate, self.game_state_to_base_planning['ship_state'].speed)
                 # This statement's a doozy. We evaluate left to right, and once it returns false, we stop going.
-                (maneuver_sim.rotate_heading(random_ship_heading_angle) and maneuver_sim.accelerate(ship_cruise_speed, ship_accel_turn_rate) and maneuver_sim.cruise(ship_cruise_timesteps, ship_cruise_turn_rate) and maneuver_sim.accelerate(0.0, 0.0))
+                respawn_maneuver_without_crash: bool = (maneuver_sim.rotate_heading(random_ship_heading_angle) and maneuver_sim.accelerate(ship_cruise_speed, ship_accel_turn_rate) and maneuver_sim.cruise(ship_cruise_timesteps, ship_cruise_turn_rate) and maneuver_sim.accelerate(0.0, 0.0))
                     # The ship went through all the steps without colliding
                     #debug_print("The ship went through all the steps without colliding")
                     # maneuver_complete_without_crash = True
                 #else:
+                assert respawn_maneuver_without_crash, f"The respawn maneuver somehow crashed. Maybe it's too long! The respawn timer was {self.game_state_to_base_planning['ship_respawn_timer']} and the maneuver length was {maneuver_sim.get_sequence_length()}"
                     # The ship crashed somewhere before reaching the final resting spot
                     #debug_print("The ship crashed somewhere before reaching the final resting spot")
                 #print(f"Move seq: {maneuver_sim.get_move_sequence()}")
