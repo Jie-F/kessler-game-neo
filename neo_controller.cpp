@@ -2129,6 +2129,2568 @@ inline std::tuple<
     return std::make_tuple(false, nan, -1, nan, nan, nan, nan);
 }
 
+// C++ port of track_asteroid_we_shot_at
+void track_asteroid_we_shot_at(
+    std::unordered_map<i64, std::vector<Asteroid>>& asteroids_pending_death,
+    i64 current_timestep,
+    const GameState& game_state,
+    i64 bullet_travel_timesteps,
+    const Asteroid& original_asteroid
+) {
+    // Debug print (replace with your own debug/log system or comment out)
+    debug_print("Tracking asteroid we shot at. Asts pending death: ", /* custom print for asteroids_pending_death if desired */,
+                ", current_timestep=", current_timestep,
+                ", bullet_travel_timesteps=", bullet_travel_timesteps,
+                ", original_asteroid=", original_asteroid.str());
+
+    if (ENABLE_SANITY_CHECKS) {
+        assert(check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
+            asteroids_pending_death, current_timestep, game_state, original_asteroid
+        ));
+    }
+
+    // Create a copy of the asteroid so we don't mess up the original object
+    Asteroid asteroid = original_asteroid.copy();
+
+    // Wrap asteroid position
+    asteroid.x = fmod(fmod(asteroid.x, game_state.map_size_x) + game_state.map_size_x, game_state.map_size_x);
+    asteroid.y = fmod(fmod(asteroid.y, game_state.map_size_y) + game_state.map_size_y, game_state.map_size_y);
+
+    // Project asteroid into future positions for each timestep
+    for (i64 future_timesteps = 0; future_timesteps <= bullet_travel_timesteps; ++future_timesteps) {
+        i64 timestep = current_timestep + future_timesteps;
+        auto& list_for_timestep = asteroids_pending_death[timestep];
+        if (list_for_timestep.empty()) {
+            // New timestep entry
+            list_for_timestep.push_back(asteroid.copy());
+        } else {
+            if (ENABLE_SANITY_CHECKS) { // REMOVE_FOR_COMPETITION
+                if (is_asteroid_in_list(list_for_timestep, asteroid, game_state)) { // REMOVE_FOR_COMPETITION
+                    std::cout << "ABOUT TO FAIL ASSERTION, we are in the future by " << future_timesteps
+                        << " timesteps from the current ts " << current_timestep << ", this asteroid is "
+                        << asteroid.str() << " and LIST FOR THIS TS IS:\n";
+                    for (const auto& a : list_for_timestep)
+                        std::cout << "  " << a.str() << "\n";
+                    for (const auto& pair : asteroids_pending_death) {
+                        std::cout << "ts: " << pair.first << "\n";
+                        for (const auto& a : pair.second) std::cout << "  " << a.str() << "\n";
+                    }
+                }
+                assert(!is_asteroid_in_list(list_for_timestep, asteroid, game_state) &&
+                       ("The asteroid " + asteroid.str() +
+                        " appeared in the list of pending death when it wasn't supposed to! I'm on future ts " +
+                        std::to_string(future_timesteps) + " when tracking. This probably means we're reshooting at the same asteroid we already shot at!").c_str());
+            }
+            list_for_timestep.push_back(asteroid.copy());
+        }
+
+        // Advance the asteroid to the next position, unless last iteration
+        if (future_timesteps != bullet_travel_timesteps) {
+            asteroid.x = fmod(fmod(asteroid.x + asteroid.vx * DELTA_TIME, game_state.map_size_x) + game_state.map_size_x, game_state.map_size_x);
+            asteroid.y = fmod(fmod(asteroid.y + asteroid.vy * DELTA_TIME, game_state.map_size_y) + game_state.map_size_y, game_state.map_size_y);
+        }
+    }
+}
+
+// Checks if this asteroid already has a pending shot tracked
+bool check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
+    const std::unordered_map<i64, std::vector<Asteroid>>& asteroids_pending_death,
+    i64 current_timestep,
+    const GameState& game_state,
+    const Asteroid& asteroid
+) {
+    // Helper lambda for the REMOVED_FOR_COMPETITION checks:
+    auto verify_asteroid_does_not_appear_in_wrong_timestep = [&](const Asteroid& a) -> bool {
+        for (const auto& kv : asteroids_pending_death) {
+            i64 timestep = kv.first;
+            const auto& asts_list = kv.second;
+            if (is_asteroid_in_list(asts_list, a, game_state)) {
+                double delta = static_cast<double>(timestep - current_timestep);
+                if (std::abs(delta) <= 120) {
+                    double movex = std::abs(delta) * DELTA_TIME * a.vx;
+                    double movey = std::abs(delta) * DELTA_TIME * a.vy;
+                    bool periodic_x = is_close_to_zero(fmod(movex, game_state.map_size_x)) ||
+                        is_close(fmod(movex, game_state.map_size_x), game_state.map_size_x);
+                    bool periodic_y = is_close_to_zero(fmod(movey, game_state.map_size_y)) ||
+                        is_close(fmod(movey, game_state.map_size_y), game_state.map_size_y);
+
+                    if (!(periodic_x && periodic_y)) {
+                        throw std::runtime_error(
+                            "Asteroid " + a.str() +
+                            " from actual ts " + std::to_string(current_timestep) +
+                            " appears in list on ts " + std::to_string(timestep) +
+                            " with a delta of " + std::to_string(delta) + "!"
+                        );
+                    }
+                }
+                return false;
+            }
+        }
+        return true;
+    };
+
+    // Sanity check
+    if (ENABLE_SANITY_CHECKS) {
+        assert(check_coordinate_bounds(game_state, asteroid.x, asteroid.y) || current_timestep == 0 && "Asteroid out of bounds!");
+        if (!check_coordinate_bounds(game_state, asteroid.x, asteroid.y)) {
+            std::cout << "WARNING, the scenario started with the asteroids out of bounds!" << std::endl;
+        }
+    }
+
+    // See if asteroid for this timestep is tracked
+    auto it = asteroids_pending_death.find(current_timestep);
+    if (it != asteroids_pending_death.end()) {
+        if (VERIFY_AST_TRACKING) { // REMOVE_FOR_COMPETITION
+            if (!is_asteroid_in_list(it->second, asteroid, game_state)) { // REMOVE_FOR_COMPETITION
+                return verify_asteroid_does_not_appear_in_wrong_timestep(asteroid); // REMOVE_FOR_COMPETITION
+            }
+        }
+        // If we found a list for this ts, return whether asteroid is not present
+        return !is_asteroid_in_list(it->second, asteroid, game_state);
+    } else {
+        if (VERIFY_AST_TRACKING) { // REMOVE_FOR_COMPETITION
+            return verify_asteroid_does_not_appear_in_wrong_timestep(asteroid); // REMOVE_FOR_COMPETITION
+        }
+        return true;
+    }
+}
+
+Asteroid time_travel_asteroid(const Asteroid& asteroid, i64 timesteps, const GameState& game_state) {
+    // Project an asteroid forward or backward in time, with automatic position wrapping
+    // Note: C++'s fmod can yield negative; ensure wrap is always positive like Python's % for floats.
+    auto wrap = [](double value, double modulus) -> double {
+        return fmod(fmod(value, modulus) + modulus, modulus);
+    };
+
+    double new_x = wrap(asteroid.x + static_cast<double>(timesteps) * asteroid.vx * DELTA_TIME, game_state.map_size_x);
+    double new_y = wrap(asteroid.y + static_cast<double>(timesteps) * asteroid.vy * DELTA_TIME, game_state.map_size_y);
+
+    return Asteroid(
+        new_x,
+        new_y,
+        asteroid.vx,
+        asteroid.vy,
+        asteroid.size,
+        asteroid.mass,
+        asteroid.radius,
+        asteroid.timesteps_until_appearance
+    );
+}
+
+Asteroid time_travel_asteroid_s(const Asteroid& asteroid, double time, const GameState& game_state) {
+    // Helper for modulus wrapping on floating point, always positive
+    auto wrap = [](double value, double modulus) -> double {
+        return fmod(fmod(value, modulus) + modulus, modulus);
+    };
+
+    double new_x = wrap(asteroid.x + time * asteroid.vx, game_state.map_size_x);
+    double new_y = wrap(asteroid.y + time * asteroid.vy, game_state.map_size_y);
+
+    return Asteroid(
+        new_x,
+        new_y,
+        asteroid.vx,
+        asteroid.vy,
+        asteroid.size,
+        asteroid.mass,
+        asteroid.radius,
+        asteroid.timesteps_until_appearance
+    );
+}
+
+
+
+
+
+
+
+
+// Matrix.h -- or in your neo_controller.cpp, assuming everything is defined globally
+
+class Matrix {
+public:
+    // Member variables
+    i64 initial_timestep;
+    i64 future_timesteps;
+    i64 last_timestep_fired;
+    i64 last_timestep_mined;
+    GameState game_state;
+    Ship ship_state;
+    std::vector<Ship> other_ships;
+    std::vector<Action> ship_move_sequence;
+    std::vector<SimState> state_sequence;
+    i64 asteroids_shot;
+    std::unordered_map<i64, std::vector<Asteroid>> asteroids_pending_death;
+    std::unordered_map<i64, std::unordered_map<i64, std::vector<Asteroid>>> asteroids_pending_death_history;
+    std::vector<Asteroid> forecasted_asteroid_splits;
+    std::vector<std::vector<Asteroid>> forecasted_asteroid_splits_history;
+    bool halt_shooting;
+    bool fire_next_timestep_flag;
+    bool fire_first_timestep;
+    std::optional<GameStatePlotter> game_state_plotter;
+    i64 sim_id;
+    std::vector<std::string> explanation_messages;
+    std::vector<std::string> safety_messages; 
+    double respawn_timer;
+    std::vector<double> respawn_timer_history;
+    bool plot_this_sim;
+    bool ship_crashed;
+    std::optional<GameState> backed_up_game_state_before_post_mutation;
+    std::optional<std::tuple<float, float, float, float, float, float, float, float, float>> fitness_breakdown;
+    bool cancel_firing_first_timestep;
+    bool verify_first_shot;
+    std::vector<Action> intended_move_sequence;
+    bool sim_placed_a_mine;
+    bool verify_maneuver_shots;
+    std::set<std::pair<double, double>> mine_positions_placed;
+    std::unordered_map<i64, std::set<std::pair<double, double>>> mine_positions_placed_history;
+    i64 last_timestep_colliding;
+    i64 respawn_maneuver_pass_number;
+    std::vector<bool> random_walk_schedule;
+
+    // Constructor
+    Matrix(
+        const GameState& game_state_,
+        const Ship& ship_state_,
+        i64 initial_timestep_,
+        double respawn_timer_ = 0.0,
+        const std::unordered_map<i64, std::vector<Asteroid>>* asteroids_pending_death_ = nullptr,
+        const std::vector<Asteroid>* forecasted_asteroid_splits_ = nullptr,
+        i64 last_timestep_fired_ = INT_NEG_INF,
+        i64 last_timestep_mined_ = INT_NEG_INF,
+        const std::set<std::pair<double, double>>* mine_positions_placed_ = nullptr,
+        bool halt_shooting_ = false,
+        bool fire_first_timestep_ = false,
+        bool verify_first_shot_ = false,
+        bool verify_maneuver_shots_ = true,
+        i64 last_timestep_colliding_ = -1,
+        std::optional<GameStatePlotter> game_state_plotter_ = std::nullopt
+    )
+        : initial_timestep(initial_timestep_),
+          future_timesteps(0),
+          last_timestep_fired(last_timestep_fired_),
+          last_timestep_mined(last_timestep_mined_),
+          halt_shooting(halt_shooting_),
+          fire_first_timestep(fire_first_timestep_),
+          game_state_plotter(game_state_plotter_),
+          sim_id(fast_randint(1, 100000)),
+          respawn_timer(respawn_timer_),
+          plot_this_sim(false),
+          ship_crashed(false),
+          cancel_firing_first_timestep(false),
+          verify_first_shot(verify_first_shot_),
+          sim_placed_a_mine(false),
+          verify_maneuver_shots(verify_maneuver_shots_),
+          // mine_positions_placed is initialized below
+          last_timestep_colliding(last_timestep_colliding_ != -1 ? last_timestep_colliding_ : initial_timestep_ - 1)
+    {
+        std::unordered_map<i64, std::vector<Asteroid>> local_asteroids_pending_death;
+        if (asteroids_pending_death_ == nullptr) {
+            local_asteroids_pending_death = std::unordered_map<i64, std::vector<Asteroid>>();
+        } else {
+            local_asteroids_pending_death = *asteroids_pending_death_;
+        }
+
+        std::vector<Asteroid> local_forecasted_asteroid_splits;
+        if (forecasted_asteroid_splits_ == nullptr) {
+            local_forecasted_asteroid_splits = std::vector<Asteroid>();
+        } else {
+            local_forecasted_asteroid_splits = *forecasted_asteroid_splits_;
+        }
+
+        if (ENABLE_SANITY_CHECKS) {
+            assert(static_cast<bool>(ship_state_.is_respawning) == (respawn_timer_ != 0.0));
+        }
+
+        game_state = game_state_.copy();
+        ship_state = ship_state_.copy();
+
+        // Deep copy game state asteroids/bullets/mines/ships
+        game_state.asteroids.clear();
+        for (const auto& a : game_state_.asteroids) {
+            game_state.asteroids.push_back(a.copy());
+        }
+        for (const auto& a : game_state.asteroids) {
+            assert(a.alive);
+        }
+        game_state.ships.clear();
+        for (const auto& s : game_state_.ships) {
+            game_state.ships.push_back(s.copy());
+        }
+        game_state.bullets.clear();
+        for (const auto& b : game_state_.bullets) {
+            game_state.bullets.push_back(b.copy());
+        }
+        for (const auto& b : game_state.bullets) {
+            assert(b.alive);
+        }
+        game_state.mines.clear();
+        for (const auto& m : game_state_.mines) {
+            game_state.mines.push_back(m.copy());
+        }
+        for (const auto& m : game_state.mines) {
+            assert(m.alive);
+        }
+        other_ships = get_other_ships(game_state, ship_state.id);
+        if (ENABLE_SANITY_CHECKS) {
+            assert(0 <= static_cast<int>(other_ships.size()) && static_cast<int>(other_ships.size()) <= 1);
+        }
+
+        ship_move_sequence.clear();
+        state_sequence.clear();
+        asteroids_shot = 0;
+
+        // asteroids_pending_death: deep copy
+        for (const auto& kv : local_asteroids_pending_death) {
+            std::vector<Asteroid> tmp;
+            for (const auto& ast : kv.second) {
+                tmp.push_back(ast);
+            }
+            asteroids_pending_death[kv.first] = tmp;
+        }
+        asteroids_pending_death_history.clear();
+
+        // forecasted_asteroid_splits: deep copy
+        forecasted_asteroid_splits.clear();
+        for (const auto& a : local_forecasted_asteroid_splits) {
+            forecasted_asteroid_splits.push_back(a.copy());
+        }
+        for (const auto& a : forecasted_asteroid_splits) {
+            assert(a.alive);
+        }
+        forecasted_asteroid_splits_history.clear();
+
+        fire_next_timestep_flag = false;
+        explanation_messages.clear();
+        safety_messages.clear();
+        respawn_timer_history.clear();
+        backed_up_game_state_before_post_mutation = std::nullopt;
+        fitness_breakdown = std::nullopt;
+        intended_move_sequence.clear();
+        mine_positions_placed_history.clear();
+
+        if (mine_positions_placed_ != nullptr) {
+            mine_positions_placed = *mine_positions_placed_;
+        } else {
+            mine_positions_placed = std::set<std::pair<double, double>>();
+        }
+
+        // 0 - Not a respawn maneuver, 1 - First pass, 2 - Second pass
+        if (!halt_shooting && last_timestep_colliding_ == -1) {
+            respawn_maneuver_pass_number = 0;
+        } else if (last_timestep_colliding_ == -1) {
+            respawn_maneuver_pass_number = 1;
+        } else {
+            respawn_maneuver_pass_number = 2;
+        }
+
+        if (ENABLE_SANITY_CHECKS) {
+            if (respawn_maneuver_pass_number == 1) {
+                assert(halt_shooting);
+                assert(!fire_first_timestep);
+            } else if (respawn_maneuver_pass_number == 2) {
+                assert(halt_shooting);
+                assert(!fire_first_timestep);
+            }
+        }
+
+        // Define random walk schedule
+        double bias = random_uniform_0_1(); // Random number between 0.0 and 1.0
+        random_walk_schedule.clear();
+        for (int i = 0; i < RANDOM_WALK_SCHEDULE_LENGTH; ++i) {
+            random_walk_schedule.push_back(random_uniform_0_1() < bias);
+        }
+
+        if (sim_id == 24111) {
+            std::cout << "Starting sim " << sim_id << " with ship state " << ship_state_.str()
+                << ", fire_next_timestep_flag=" << fire_next_timestep_flag
+                << ", fire_first_timestep=" << fire_first_timestep
+                << ", last_timestep_fired=" << last_timestep_fired << std::endl;
+        }
+    }
+
+    // ---- getters ----
+
+    i64 get_last_timestep_colliding() const {
+        return last_timestep_colliding;
+    }
+
+    std::set<std::pair<double, double>> get_mine_positions_placed() const {
+        return mine_positions_placed;
+    }
+
+    bool get_cancel_firing_first_timestep() const {
+        return cancel_firing_first_timestep;
+    }
+
+    std::vector<std::string> get_explanations() const {
+        return explanation_messages;
+    }
+
+    std::vector<std::string> get_safety_messages() const {
+        return safety_messages;
+    }
+
+    i64 get_sim_id() const {
+        return sim_id;
+    }
+
+    double get_respawn_timer() const {
+        return respawn_timer;
+    }
+
+    std::unordered_map<i64, double> get_respawn_timer_history() const {
+        std::unordered_map<i64, double> respawn_timer_history_dict;
+        for (size_t i = 0; i < respawn_timer_history.size(); ++i) {
+            respawn_timer_history_dict[initial_timestep + static_cast<i64>(i) + 1] = respawn_timer_history[i];
+        }
+        return respawn_timer_history_dict;
+    }
+
+    Ship get_ship_state() const {
+        return ship_state.copy();
+    }
+
+    GameState get_game_state() const {
+        if (backed_up_game_state_before_post_mutation.has_value()) {
+            return backed_up_game_state_before_post_mutation.value().copy();
+        }
+        return game_state.copy();
+    }
+
+    bool get_fire_next_timestep_flag() const {
+        return fire_next_timestep_flag;
+    }
+
+    void set_fire_next_timestep_flag(bool flag) {
+        fire_next_timestep_flag = flag;
+    }
+
+    std::unordered_map<i64, std::vector<Asteroid>> get_asteroids_pending_death() const {
+        return asteroids_pending_death;
+    }
+
+    std::unordered_map<i64, std::unordered_map<i64, std::vector<Asteroid>>> get_asteroids_pending_death_history() const {
+        std::unordered_map<i64, std::unordered_map<i64, std::vector<Asteroid>>> asteroids_pending_death_history_dict;
+        std::unordered_map<i64, std::vector<Asteroid>> latest_version = asteroids_pending_death;
+        for (i64 t = initial_timestep + future_timesteps; t > initial_timestep; --t) {
+            asteroids_pending_death_history_dict[t + 1] = latest_version;
+            auto it = asteroids_pending_death_history.find(t);
+            if (it != asteroids_pending_death_history.end()) {
+                latest_version = it->second;
+            }
+        }
+        return asteroids_pending_death_history_dict;
+    }
+
+    std::vector<Asteroid> get_forecasted_asteroid_splits() const {
+        return forecasted_asteroid_splits;
+    }
+
+    std::unordered_map<i64, std::vector<Asteroid>> get_forecasted_asteroid_splits_history() const {
+        std::unordered_map<i64, std::vector<Asteroid>> forecasted_asteroid_splits_dict;
+        for (size_t i = 0; i < forecasted_asteroid_splits_history.size(); ++i) {
+            forecasted_asteroid_splits_dict[initial_timestep + static_cast<i64>(i)] = forecasted_asteroid_splits_history[i];
+        }
+        assert(static_cast<i64>(forecasted_asteroid_splits_history.size()) == future_timesteps);
+        forecasted_asteroid_splits_dict[initial_timestep + static_cast<i64>(forecasted_asteroid_splits_history.size())] = forecasted_asteroid_splits;
+        return forecasted_asteroid_splits_dict;
+    }
+
+    std::unordered_map<i64, std::set<std::pair<double, double>>> get_mine_positions_placed_history() const {
+        std::unordered_map<i64, std::set<std::pair<double, double>>> mine_positions_placed_history_dict;
+        std::set<std::pair<double, double>> latest_version = mine_positions_placed;
+        for (i64 t = initial_timestep + future_timesteps; t > initial_timestep; --t) {
+            mine_positions_placed_history_dict[t + 1] = latest_version;
+            auto it = mine_positions_placed_history.find(t);
+            if (it != mine_positions_placed_history.end()) {
+                latest_version = it->second;
+            }
+        }
+        return mine_positions_placed_history_dict;
+    }
+
+
+    // ---- collision queries ----
+
+    bool get_instantaneous_asteroid_collision(const std::vector<Asteroid>* asteroids = nullptr, const std::pair<double, double>* ship_position = nullptr) const {
+        double position_x, position_y;
+        if (ship_position != nullptr) {
+            position_x = ship_position->first;
+            position_y = ship_position->second;
+        } else {
+            position_x = ship_state.x;
+            position_y = ship_state.y;
+        }
+        const std::vector<Asteroid>& ast_ref = (asteroids != nullptr) ? *asteroids : game_state.asteroids;
+        for (const auto& a : ast_ref) {
+            if (check_collision(position_x, position_y, SHIP_RADIUS, a.x, a.y, a.radius)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool get_instantaneous_ship_collision() const {
+        for (const auto& ship : other_ships) {
+            double padding = SHIP_AVOIDANCE_PADDING + std::sqrt(ship.vx*ship.vx + ship.vy*ship.vy)*SHIP_AVOIDANCE_SPEED_PADDING_RATIO;
+            if (check_collision(ship_state.x, ship_state.y, SHIP_RADIUS, ship.x, ship.y, ship.radius + padding)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool get_instantaneous_mine_collision() {
+        bool mine_collision = false;
+        std::vector<size_t> mine_remove_idxs;
+        for (size_t i = 0; i < game_state.mines.size(); ++i) {
+            const auto& m = game_state.mines[i];
+            if (m.remaining_time < EPS) {
+                if (check_collision(ship_state.x, ship_state.y, SHIP_RADIUS, m.x, m.y, MINE_BLAST_RADIUS)) {
+                    mine_collision = true;
+                }
+                mine_remove_idxs.push_back(i);
+            }
+        }
+        if (!mine_remove_idxs.empty()) {
+            std::vector<Mine> new_mines;
+            for (size_t idx = 0; idx < game_state.mines.size(); ++idx) {
+                if (std::find(mine_remove_idxs.begin(), mine_remove_idxs.end(), idx) == mine_remove_idxs.end()) {
+                    new_mines.push_back(game_state.mines[idx]);
+                }
+            }
+            game_state.mines = new_mines;
+        }
+        return mine_collision;
+    }
+
+    double get_next_extrapolated_asteroid_collision_time(int64_t additional_timesteps_to_blow_up_mines = 0) const {
+        double next_imminent_asteroid_collision_time = std::numeric_limits<double>::infinity();
+
+        // We need to iterate over game_state.asteroids and then forecasted_asteroid_splits,
+        // treating their indices as in Python's `enumerate(chain(...))`.
+        // First, build a single std::vector<const Asteroid*> as our chain.
+        std::vector<const Asteroid*> chain_asteroids;
+        for (const auto& a : game_state.asteroids) {
+            chain_asteroids.push_back(&a);
+        }
+        for (const auto& a : forecasted_asteroid_splits) {
+            chain_asteroids.push_back(&a);
+        }
+
+        for (size_t ast_idx = 0; ast_idx < chain_asteroids.size(); ++ast_idx) {
+            const Asteroid& asteroid = *(chain_asteroids[ast_idx]);
+            if (asteroid.alive) {
+                bool asteroid_is_born = (ast_idx < game_state.asteroids.size());
+
+                // For each unwrapped image
+                std::vector<Asteroid> unwrapped_asteroids = unwrap_asteroid(
+                    asteroid, game_state.map_size_x, game_state.map_size_y,
+                    UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON, false
+                );
+                for (const Asteroid& a : unwrapped_asteroids) {
+                    // Sanity check: ship should not be moving (REMOVE_FOR_COMPETITION)
+                    assert(is_close_to_zero(ship_state.vx) && is_close_to_zero(ship_state.vy));
+
+                    double predicted_collision_time_from_future =
+                        predict_next_imminent_collision_time_with_asteroid(
+                            ship_state.x, ship_state.y, ship_state.vx, ship_state.vy, SHIP_RADIUS,
+                            a.x, a.y, a.vx, a.vy, a.radius, game_state
+                        );
+                    double predicted_collision_time;
+                    if (asteroid_is_born) {
+                        predicted_collision_time = predicted_collision_time_from_future + DELTA_TIME * static_cast<double>(additional_timesteps_to_blow_up_mines);
+                    } else {
+                        predicted_collision_time = predicted_collision_time_from_future;
+                    }
+
+                    if (std::isinf(predicted_collision_time)) {
+                        continue;
+                    }
+                    if (ENABLE_SANITY_CHECKS) {
+                        assert(predicted_collision_time >= 0.0);
+                    }
+
+                    // Only consider asteroids that exist, or will exist before possible collision time
+                    if (!(asteroid.timesteps_until_appearance > 0 &&
+                        static_cast<double>(asteroid.timesteps_until_appearance) * DELTA_TIME > predicted_collision_time + EPS)) {
+
+                        Asteroid ast_to_check;
+                        if (asteroid_is_born && additional_timesteps_to_blow_up_mines != 0) {
+                            ast_to_check = time_travel_asteroid(asteroid, -additional_timesteps_to_blow_up_mines, game_state);
+                        } else {
+                            ast_to_check = asteroid;
+                        }
+
+                        if (!check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
+                                asteroids_pending_death,
+                                initial_timestep + future_timesteps,
+                                game_state, ast_to_check)) {
+
+                            int64_t predicted_collision_ts = static_cast<int64_t>(std::floor(predicted_collision_time * FPS));
+                            Asteroid future_asteroid_during_imminent_collision_time;
+                            if (asteroid_is_born) {
+                                future_asteroid_during_imminent_collision_time = time_travel_asteroid(a, predicted_collision_ts - additional_timesteps_to_blow_up_mines, game_state);
+                            } else {
+                                future_asteroid_during_imminent_collision_time = time_travel_asteroid(a, predicted_collision_ts, game_state);
+                            }
+
+                            if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
+                                    asteroids_pending_death,
+                                    initial_timestep + future_timesteps + predicted_collision_ts,
+                                    game_state, future_asteroid_during_imminent_collision_time)) {
+                                // Already eliminated by future time; skip
+                                continue;
+                            } else {
+                                next_imminent_asteroid_collision_time = std::min(
+                                    next_imminent_asteroid_collision_time, predicted_collision_time
+                                );
+                            }
+                        } else {
+                            // We're not eliminating it, or it's forecasted, so collision is real
+                            next_imminent_asteroid_collision_time = std::min(
+                                next_imminent_asteroid_collision_time, predicted_collision_time
+                            );
+                        }
+                    }
+                    // else: asteroid is born after the predicted collision time
+                }
+            }
+        }
+        return next_imminent_asteroid_collision_time;
+    }
+
+    std::vector<std::pair<double, std::pair<double, double>>>
+    get_next_extrapolated_mine_collision_times_and_pos() const {
+        std::vector<std::pair<double, std::pair<double, double>>> times_and_mine_pos;
+        for (const Mine& m : game_state.mines) {
+            assert(m.alive);
+            double next_imminent_mine_collision_time = predict_ship_mine_collision(
+                ship_state.x, ship_state.y, m, 0
+            );
+            if (!std::isinf(next_imminent_mine_collision_time)) {
+                times_and_mine_pos.emplace_back(
+                    next_imminent_mine_collision_time,
+                    std::make_pair(m.x, m.y)
+                );
+            }
+        }
+        return times_and_mine_pos;
+    }
+
+    bool coordinates_in_same_wrap(const std::pair<double, double>& pos1, const std::pair<double, double>& pos2) const {
+        // UNUSED
+        double max_width = game_state.map_size_x;
+        double max_height = game_state.map_size_y;
+        // Cast to int to mimic Python's floor division, since double//double in Python is floor division
+        int32_t x_wrap1 = static_cast<int32_t>(std::floor(pos1.first / max_width));
+        int32_t x_wrap2 = static_cast<int32_t>(std::floor(pos2.first / max_width));
+        int32_t y_wrap1 = static_cast<int32_t>(std::floor(pos1.second / max_height));
+        int32_t y_wrap2 = static_cast<int32_t>(std::floor(pos2.second / max_height));
+        return (x_wrap1 == x_wrap2) && (y_wrap1 == y_wrap2);
+    }
+
+    double get_fitness() {
+        // if (sim_id == 15869 || sim_id == 73186) {
+        //     // Debug print trigger
+        // }
+        if (fitness_breakdown.has_value()) {
+            throw std::runtime_error("Do not call get_fitness twice!");
+        }
+
+        // This is meant to be the last method called from this class. This is rather destructive!
+        assert(is_close_to_zero(ship_state.speed)); // REMOVE_FOR_COMPETITION
+
+        // ========== NESTED LAMBDAS ==========
+
+        // Asteroid safe time fitness
+        auto get_asteroid_safe_time_fitness = [&](double next_extrapolated_asteroid_collision_time, double displacement, double move_sequence_length_s) -> double {
+            if (!std::isinf(game_state.time_limit) 
+                && initial_timestep + future_timesteps + END_OF_SCENARIO_DONT_CARE_TIMESTEPS >= static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
+                return 1.0;
+            } else if (ship_state.bullets_remaining == 0 && ship_state.mines_remaining == 0) {
+                return 1.0;
+            } else {
+                if (displacement < EPS) {
+                    return sigmoid(next_extrapolated_asteroid_collision_time + move_sequence_length_s * 0.25, 1.4, 3.0);
+                } else {
+                    return sigmoid(next_extrapolated_asteroid_collision_time + move_sequence_length_s * 0.25, 1.4, 3.0);
+                }
+            }
+        };
+
+        // How frequently did we shoot asteroids
+        auto get_asteroid_shot_frequency_fitness = [&](int64_t asteroids_shot, double move_sequence_length_s) -> double {
+            if (asteroids_shot < 0) {
+                return -0.9;
+            } else {
+                double fudged_asteroids_shot = (asteroids_shot == 0) ? 0.1 : static_cast<double>(asteroids_shot);
+                double time_per_asteroids_shot = move_sequence_length_s / fudged_asteroids_shot;
+                double asteroids_fitness = sigmoid(time_per_asteroids_shot, -0.5 * FPS, 10.8*DELTA_TIME);
+                return asteroids_fitness;
+            }
+        };
+
+        // Mine safety
+        auto get_mine_safety_fitness = [&](const std::vector<std::pair<double, std::pair<double, double>>>& next_extrapolated_mine_collision_times)
+            -> std::pair<double, double> {
+            if (next_extrapolated_mine_collision_times.empty()) {
+                return std::make_pair(1.0, std::numeric_limits<double>::infinity());
+            }
+            if (!std::isinf(game_state.time_limit)
+                && initial_timestep + future_timesteps + END_OF_SCENARIO_DONT_CARE_TIMESTEPS >= static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
+                return std::make_pair(1.0, std::numeric_limits<double>::infinity());
+            }
+            double mines_threat_level = 0.0;
+            double next_extrapolated_mine_collision_time = std::numeric_limits<double>::infinity();
+            for (const auto& mc_pair : next_extrapolated_mine_collision_times) {
+                double mine_collision_time = mc_pair.first;
+                const std::pair<double, double>& mine_pos = mc_pair.second;
+                next_extrapolated_mine_collision_time = std::min(next_extrapolated_mine_collision_time, mine_collision_time);
+                if (ENABLE_SANITY_CHECKS) {
+                    assert(-EPS <= mine_collision_time && mine_collision_time <= MINE_FUSE_TIME + EPS);
+                }
+                double dist_to_ground_zero = dist(ship_state.x, ship_state.y, mine_pos.first, mine_pos.second);
+                double mine_ground_zero_fudge = linear(dist_to_ground_zero, std::make_pair(0.0, 1.0), std::make_pair(MINE_BLAST_RADIUS + SHIP_RADIUS, 0.6));
+                mines_threat_level += std::pow(MINE_FUSE_TIME - next_extrapolated_mine_collision_time, 2.0) / 9.0 * mine_ground_zero_fudge;
+            }
+            double mine_safe_time_fitness = sigmoid(mines_threat_level, -6.8, 0.232);
+            return std::make_pair(mine_safe_time_fitness, next_extrapolated_mine_collision_time);
+        };
+
+        // Asteroid aiming cone fitness
+        auto get_asteroid_aiming_cone_fitness = [&]() -> double {
+            if (!std::isinf(game_state.time_limit)
+                && initial_timestep + future_timesteps + END_OF_SCENARIO_DONT_CARE_TIMESTEPS >= static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
+                return 1.0;
+            } else if (ship_state.bullets_remaining == 0 && ship_state.mines_remaining == 0) {
+                return 1.0;
+            }
+            double ship_heading_rad = ship_state.heading * DEG_TO_RAD;
+            int asts_within_cone = 0;
+            // Chain together game_state.asteroids and forecasted_asteroid_splits
+            for (const auto& a : game_state.asteroids) {
+                if (a.alive) {
+                    if (heading_diff_within_threshold(
+                            ship_heading_rad, a.x - ship_state.x, a.y - ship_state.y,
+                            AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE)) {
+                        ++asts_within_cone;
+                    }
+                }
+            }
+            for (const auto& a : forecasted_asteroid_splits) {
+                if (a.alive) {
+                    if (heading_diff_within_threshold(
+                            ship_heading_rad, a.x - ship_state.x, a.y - ship_state.y,
+                            AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE)) {
+                        ++asts_within_cone;
+                    }
+                }
+            }
+            return sigmoid(asts_within_cone, 1.0, 2.4);
+        };
+
+        // Crash fitness
+        auto get_crash_fitness = [&]() -> double {
+            double crash_fitness = 1.0;
+            if (!std::isinf(game_state.time_limit)
+                && initial_timestep + future_timesteps + END_OF_SCENARIO_DONT_CARE_TIMESTEPS >= static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
+                crash_fitness = ship_crashed ? 1.0 : 0.0;
+            } else {
+                if (ship_crashed) {
+                    if (ship_state.bullets_remaining == 0 && ship_state.mines_remaining == 0) {
+                        crash_fitness = 1.0;
+                    } else {
+                        if (ship_state.lives_remaining >= 2) {
+                            crash_fitness = 0.5;
+                        } else if (ship_state.lives_remaining >= 1) {
+                            crash_fitness = 0.2;
+                        } else {
+                            crash_fitness = 0.0;
+                        }
+                    }
+                } else {
+                    if (ship_state.bullets_remaining == 0 && ship_state.mines_remaining == 0) {
+                        crash_fitness = 0.0;
+                    } else {
+                        crash_fitness = 1.0;
+                    }
+                }
+            }
+            return crash_fitness;
+        };
+
+        // Sequence length fitness
+        auto get_sequence_length_fitness = [&](double move_sequence_length_s, double displacement) -> double {
+            if (respawn_maneuver_pass_number > 0) {
+                return sigmoid(move_sequence_length_s, -2.8, 1.7);
+            } else {
+                if (displacement < EPS) {
+                    return sigmoid(move_sequence_length_s, -2.8, 1.7);
+                } else {
+                    return sigmoid(move_sequence_length_s, -5.7, 0.8);
+                }
+            }
+        };
+
+        // Other ship proximity
+        auto get_other_ship_proximity_fitness = [&](const std::vector<std::pair<double,double>>& self_positions) -> double {
+            bool invert_ship_affinity = false;
+            // Complex logic for invert affinity -- assign as appropriate for your situation.
+            if ((ship_state.bullets_remaining == 0 && ship_state.mines_remaining == 0)
+                || (!other_ships.empty() &&
+                    ((weighted_average(overall_fitness_record) > 0.55 && other_ships[0].lives_remaining == 1 && ship_state.lives_remaining >= 3)
+                    || (weighted_average(overall_fitness_record) > 0.7 && other_ships[0].lives_remaining < ship_state.lives_remaining)))
+            ) {
+                invert_ship_affinity = true;
+                explanation_messages.emplace_back("I'm either out of bullets/mines or the other ship is about to die, so I'm gonna try to crash into the other ship mwahahahaha");
+            }
+
+            for (const Ship& other_ship : other_ships) {
+                double other_ship_speed = std::sqrt(other_ship.vx*other_ship.vx + other_ship.vy*other_ship.vy);
+                double other_ship_speed_dist_mul = linear(other_ship_speed, std::make_pair(0.0, 1.0), std::make_pair(SHIP_MAX_SPEED, 0.3));
+                std::vector<double> separation_dists;
+                for (const auto& self_pos : self_positions) {
+                    double self_pos_x = self_pos.first;
+                    double self_pos_y = self_pos.second;
+                    double abs_sep_x = std::abs(self_pos_x - other_ship.x);
+                    double abs_sep_y = std::abs(self_pos_y - other_ship.y);
+                    double sep_x = std::min(abs_sep_x, game_state.map_size_x - abs_sep_x);
+                    double sep_y = std::min(abs_sep_y, game_state.map_size_y - abs_sep_y);
+                    double separation_dist = std::sqrt(sep_x*sep_x + sep_y*sep_y);
+                    separation_dists.push_back(separation_dist);
+                }
+                double mean_separation_dist = weighted_harmonic_mean(separation_dists);
+                double fit_val = invert_ship_affinity ?
+                    1.0 - sigmoid(mean_separation_dist * other_ship_speed_dist_mul, 0.032, 120.0)
+                    :      sigmoid(mean_separation_dist * other_ship_speed_dist_mul, 0.032, 120.0);
+                return fit_val;
+            }
+            return 1.0;
+        };
+
+        // ========== MAIN BODY ==========
+
+        // Only alive mines
+        std::vector<Mine> filtered_mines;
+        for (const auto& m : game_state.mines) {
+            if (m.alive) filtered_mines.push_back(m);
+        }
+        game_state.mines = filtered_mines;
+
+        // Get states before mutations
+        std::vector<SimState> states = this->get_state_sequence();
+
+        double move_sequence_length_s = static_cast<double>(this->get_sequence_length() - 1) * DELTA_TIME;
+        std::vector<std::pair<double, std::pair<double, double>>> next_extrapolated_mine_collision_times = this->get_next_extrapolated_mine_collision_times_and_pos();
+
+        double mine_safe_time_fitness, next_extrapolated_mine_collision_time;
+        std::tie(mine_safe_time_fitness, next_extrapolated_mine_collision_time) = get_mine_safety_fitness(next_extrapolated_mine_collision_times);
+
+        double asteroids_fitness = get_asteroid_shot_frequency_fitness(asteroids_shot, move_sequence_length_s);
+        double asteroid_aiming_cone_fitness = get_asteroid_aiming_cone_fitness();
+
+        int64_t additional_timesteps_to_blow_up_mines = 0;
+        double next_extrapolated_asteroid_collision_time = this->get_next_extrapolated_asteroid_collision_time();
+
+        // If we have mines, simulate blowing them up
+        if (!game_state.mines.empty()) {
+            backed_up_game_state_before_post_mutation = game_state.copy();
+            backed_up_game_state_before_post_mutation->asteroids.clear();
+            for (const auto& a : game_state.asteroids) if (a.alive) backed_up_game_state_before_post_mutation->asteroids.push_back(a.copy());
+            backed_up_game_state_before_post_mutation->mines.clear();
+            for (const auto& m : game_state.mines) if (m.alive) backed_up_game_state_before_post_mutation->mines.push_back(m.copy());
+            backed_up_game_state_before_post_mutation->bullets.clear();
+            for (const auto& b : game_state.bullets) if (b.alive) backed_up_game_state_before_post_mutation->bullets.push_back(b.copy());
+
+            while (!game_state.mines.empty()) {
+                additional_timesteps_to_blow_up_mines += 1;
+                // Step simulation forward one tick at a time (disable shooting etc)
+                this->update(0.0, 0.0, false, false, nullptr, true);
+            }
+        }
+
+        double safe_time_after_maneuver_s;
+        if (additional_timesteps_to_blow_up_mines == 0) {
+            assert(std::isinf(next_extrapolated_mine_collision_time)); // REMOVE_FOR_COMPETITION
+            safe_time_after_maneuver_s = std::min(next_extrapolated_asteroid_collision_time, next_extrapolated_mine_collision_time);
+        } else {
+            double next_extrapolated_asteroid_collision_time_after_mines = this->get_next_extrapolated_asteroid_collision_time(additional_timesteps_to_blow_up_mines);
+            if (!std::isinf(next_extrapolated_asteroid_collision_time) &&
+                next_extrapolated_asteroid_collision_time <= additional_timesteps_to_blow_up_mines * DELTA_TIME) {
+                safe_time_after_maneuver_s = std::min({
+                    next_extrapolated_asteroid_collision_time,
+                    next_extrapolated_asteroid_collision_time_after_mines,
+                    next_extrapolated_mine_collision_time
+                });
+            } else {
+                safe_time_after_maneuver_s = std::min(
+                    next_extrapolated_asteroid_collision_time_after_mines,
+                    next_extrapolated_mine_collision_time
+                );
+            }
+        }
+        double overall_safe_time_fitness = sigmoid(safe_time_after_maneuver_s, 2.9, 1.4);
+
+        // Ship path geometry
+        double ship_start_position_x = states.front().ship_state.x;
+        double ship_start_position_y = states.front().ship_state.y;
+        double ship_end_position_x = states.back().ship_state.x;
+        double ship_end_position_y = states.back().ship_state.y;
+
+        double displacement;
+        if (states.size() >= 2) {
+            displacement = dist(ship_start_position_x, ship_start_position_y, ship_end_position_x, ship_end_position_y);
+        } else {
+            displacement = 0.0;
+        }
+
+        double asteroid_safe_time_fitness = get_asteroid_safe_time_fitness(next_extrapolated_asteroid_collision_time, displacement, move_sequence_length_s);
+
+        // Determine "ship positions" for other ship proximity check
+        std::vector<std::pair<double, double>> self_ship_positions;
+        if (displacement < EPS || respawn_maneuver_pass_number > 0) {
+            self_ship_positions.emplace_back(ship_end_position_x, ship_end_position_y);
+        } else {
+            for (const SimState& s : states) {
+                self_ship_positions.emplace_back(s.ship_state.x, s.ship_state.y);
+            }
+        }
+
+        double other_ship_proximity_fitness = get_other_ship_proximity_fitness(self_ship_positions);
+        double sequence_length_fitness = get_sequence_length_fitness(move_sequence_length_s, displacement);
+        double crash_fitness = get_crash_fitness();
+        double placed_mine_fitness = 0.0;
+        if (sim_placed_a_mine) {
+            // Uncommented logic from Py, can adjust if necessary.
+            if (ship_state.lives_remaining >= 3) {
+                placed_mine_fitness = 1.0;
+            } else {
+                placed_mine_fitness = mine_safe_time_fitness;
+            }
+        }
+
+        // ====== STATUS/SAFETY MESSAGES ======
+        if (asteroid_safe_time_fitness < 0.1) {
+            safety_messages.push_back("I'm dangerously close to being hit by asteroids if I stay here (Imminent collision in " + std::to_string(next_extrapolated_asteroid_collision_time) + "s). Trying my hardest to maneuver out of this situation.");
+        } else if (asteroid_safe_time_fitness < 0.4) {
+            safety_messages.push_back("I'm close to being hit by asteroids if I stay here (Imminent collision in " + std::to_string(next_extrapolated_asteroid_collision_time) + "s).");
+        } else if (asteroid_safe_time_fitness < 0.8) {
+            safety_messages.push_back("I'll eventually get hit by asteroids if I stay here (Imminent collision in " + std::to_string(next_extrapolated_asteroid_collision_time) + "s). Keeping my eye out for a dodge maneuver.");
+        }
+        if (mine_safe_time_fitness < 0.1) {
+            safety_messages.push_back("I'm dangerously close to being kablooied by a mine (Imminent blast in " + std::to_string(next_extrapolated_mine_collision_time) + "s). Trying my hardest to maneuver out of this situation.");
+        } else if (mine_safe_time_fitness < 0.4) {
+            safety_messages.push_back("I'm close to being boomed by a mine (Imminent blast in " + std::to_string(next_extrapolated_mine_collision_time) + "s).");
+        } else if (mine_safe_time_fitness < 0.9) {
+            safety_messages.push_back("I'm within the radius of a mine (Imminent blast in " + std::to_string(next_extrapolated_mine_collision_time) + "s).");
+        }
+        if (other_ship_proximity_fitness < 0.2) {
+            safety_messages.push_back("I'm dangerously close to the other ship. Get away from me!");
+        } else if (other_ship_proximity_fitness < 0.5) {
+            safety_messages.push_back("I'm near the other ship. Being cautious.");
+        }
+        // ================================
+
+        // Final assertion checks
+        if (ENABLE_SANITY_CHECKS) {
+            assert(asteroid_safe_time_fitness >= 0.0 && asteroid_safe_time_fitness <= 1.0);
+            assert(mine_safe_time_fitness >= 0.0 && mine_safe_time_fitness <= 1.0);
+            assert(asteroids_fitness >= -1.0 && asteroids_fitness <= 1.0);
+            assert(sequence_length_fitness >= 0.0 && sequence_length_fitness <= 1.0);
+            assert(other_ship_proximity_fitness >= 0.0 && other_ship_proximity_fitness <= 1.0);
+            assert(crash_fitness >= 0.0 && crash_fitness <= 1.0);
+            assert(asteroid_aiming_cone_fitness >= 0.0 && asteroid_aiming_cone_fitness <= 1.0);
+            assert(placed_mine_fitness >= 0.0 && placed_mine_fitness <= 1.0);
+        }
+
+        // Store the breakdown, and compute the overall fitness
+        std::tuple<double, double, double, double, double, double, double, double, double> fitness_breakdown_tuple(
+            asteroid_safe_time_fitness, mine_safe_time_fitness, asteroids_fitness, sequence_length_fitness,
+            other_ship_proximity_fitness, crash_fitness, asteroid_aiming_cone_fitness, placed_mine_fitness,
+            overall_safe_time_fitness);
+        fitness_breakdown = fitness_breakdown_tuple;
+
+        // Pick weights
+        const std::vector<double>& fitness_weights = (fitness_function_weights != nullptr) ? 
+            (*fitness_function_weights) : DEFAULT_FITNESS_WEIGHTS;
+
+        double overall_fitness = weighted_harmonic_mean(fitness_breakdown_tuple, fitness_weights, 1.0);
+        assert((overall_fitness >= 0.0 && overall_fitness <= 1.0) || asteroids_fitness < 0.0);
+
+        if (overall_fitness > 0.9) {
+            safety_messages.push_back("I'm safe and chilling");
+        }
+        return overall_fitness;
+    }
+
+    std::tuple<double, double, double, double, double, double, double, double, double>
+    get_fitness_breakdown() const {
+        assert(fitness_breakdown.has_value() && "fitness_breakdown must not be null");
+        return fitness_breakdown.value();
+    }
+
+    std::optional<Target>
+    find_extreme_shooting_angle_error(const std::vector<Target>& asteroid_list, double threshold, const std::string& mode = "largest_below") const {
+        // Extract the angle values
+        std::vector<double> shooting_angles;
+        shooting_angles.reserve(asteroid_list.size());
+        for (const Target& d : asteroid_list) {
+            shooting_angles.push_back(d.shooting_angle_error_deg);
+        }
+
+        size_t idx = 0;
+        if (mode == "largest_below") {
+            // std::lower_bound returns the iterator to the first element >= threshold
+            auto it = std::lower_bound(shooting_angles.begin(), shooting_angles.end(), threshold);
+            idx = static_cast<size_t>(it - shooting_angles.begin());
+            if (idx > 0) {
+                --idx;
+            } else {
+                return std::nullopt;
+            }
+        } else if (mode == "smallest_above") {
+            // std::upper_bound returns iterator to first element > threshold
+            auto it = std::upper_bound(shooting_angles.begin(), shooting_angles.end(), threshold);
+            idx = static_cast<size_t>(it - shooting_angles.begin());
+            if (idx >= asteroid_list.size()) {
+                return std::nullopt;
+            }
+        } else {
+            throw std::invalid_argument("Invalid mode. Choose 'largest_below' or 'smallest_above'");
+        }
+
+        return asteroid_list[idx];
+    }
+
+    bool target_selection() {
+        // The job of this method is to calculate how to hit each asteroid, and then pick the best one to try to target
+
+        // --- Simulate shooting at a particular target, returning all the information the inner Python function did ---
+        auto simulate_shooting_at_target =
+            [&](const Asteroid& target_asteroid_original, double target_asteroid_shooting_angle_error_deg, double target_asteroid_interception_time_s, int64_t target_asteroid_turning_timesteps)
+                -> std::tuple<std::optional<Asteroid>, std::vector<Action>, Asteroid, double, double, int64_t, std::optional<int64_t>, Ship>
+        {
+            std::vector<Action> aiming_move_sequence = get_rotate_heading_move_sequence(target_asteroid_shooting_angle_error_deg);
+
+            int64_t timesteps_until_can_fire;
+            if (fire_first_timestep) {
+                timesteps_until_can_fire = std::max(int64_t(0), int64_t(FIRE_COOLDOWN_TS) - int64_t(aiming_move_sequence.size()));
+            } else {
+                timesteps_until_can_fire = std::max(int64_t(0), int64_t(FIRE_COOLDOWN_TS) -
+                    (int64_t(initial_timestep) + int64_t(future_timesteps) + int64_t(aiming_move_sequence.size()) - int64_t(last_timestep_fired)));
+            }
+            for (int64_t i = 0; i < timesteps_until_can_fire; ++i)
+                aiming_move_sequence.push_back(Action{0.0, 0.0, false});
+
+            int64_t asteroid_advance_timesteps = int64_t(aiming_move_sequence.size());
+            if (ENABLE_SANITY_CHECKS) {
+                assert(asteroid_advance_timesteps <= target_asteroid_turning_timesteps || target_asteroid_turning_timesteps == 0);
+            }
+            if (asteroid_advance_timesteps < target_asteroid_turning_timesteps) {
+                for (int64_t i = 0; i < (target_asteroid_turning_timesteps - asteroid_advance_timesteps); ++i)
+                    aiming_move_sequence.push_back(Action{0.0, 0.0, false});
+            }
+            Asteroid target_asteroid = time_travel_asteroid(target_asteroid_original, asteroid_advance_timesteps, game_state);
+
+            Ship ship_state_after_aiming = get_ship_state();
+            ship_state_after_aiming.heading = std::fmod(ship_state_after_aiming.heading + target_asteroid_shooting_angle_error_deg, 360.0);
+
+            std::optional<Asteroid> actual_asteroid_hit;
+            std::optional<int64_t> timesteps_until_bullet_hit_asteroid;
+            std::ignore = bullet_sim(ship_state_after_aiming, fire_first_timestep, aiming_move_sequence.size(), actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, nullptr);
+            return std::make_tuple(actual_asteroid_hit, aiming_move_sequence, target_asteroid,
+                target_asteroid_shooting_angle_error_deg, target_asteroid_interception_time_s,
+                target_asteroid_turning_timesteps, timesteps_until_bullet_hit_asteroid, ship_state_after_aiming);
+        };
+
+        // --- Target acquisition loop ---
+
+        std::vector<Target> target_asteroids_list;
+        Ship dummy_ship_state(
+            /*is_respawning=*/false,
+            /*x=*/ship_state.x,
+            /*y=*/ship_state.y,
+            /*vx=*/0.0,
+            /*vy=*/0.0,
+            /*speed=*/0.0,
+            /*heading=*/ship_state.heading,
+            /*mass=*/300.0,
+            /*radius=*/20.0,
+            /*id=*/ship_state.id,
+            /*team=*/ship_state.team,
+            /*lives_remaining=*/123,
+            /*bullets_remaining=*/0,
+            /*mines_remaining=*/0,
+            /*can_fire=*/ship_state.can_fire,
+            /*fire_rate=*/10.0,
+            /*can_deploy_mine=*/false, /* note: need to set properly if used */
+            /*mine_deploy_rate=*/0.0,
+            /*thrust_range=*/std::make_pair(-480.0, 480.0),
+            /*turn_rate_range=*/std::make_pair(-180.0, 180.0),
+            /*max_speed=*/240,
+            /*drag=*/80.0
+        );
+
+        int64_t timesteps_until_can_fire;
+        if (fire_first_timestep) {
+            timesteps_until_can_fire = FIRE_COOLDOWN_TS;
+        } else {
+            timesteps_until_can_fire = std::max<int64_t>(0, FIRE_COOLDOWN_TS - (initial_timestep + future_timesteps - last_timestep_fired));
+        }
+
+        bool most_imminent_asteroid_exists = false;
+        bool asteroids_still_exist = false;
+        std::vector<const Asteroid*> chained_asteroids;
+        for (const auto& a : game_state.asteroids) chained_asteroids.push_back(&a);
+        for (const auto& a : forecasted_asteroid_splits) chained_asteroids.push_back(&a);
+
+        for (const Asteroid* astptr : chained_asteroids) {
+            const Asteroid& asteroid = *astptr;
+            if (asteroid.alive) {
+                if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps, game_state, asteroid)) {
+                    asteroids_still_exist = true;
+                    std::optional<std::tuple<bool, double, int64_t, double, double, double, double>> best_feasible_unwrapped_target;
+                    bool asteroid_will_get_hit_by_my_mine = false, asteroid_will_get_hit_by_their_mine = false;
+
+                    for (const auto& m : game_state.mines) {
+                        assert(m.alive);
+                        Asteroid asteroid_when_mine_explodes = time_travel_asteroid_s(asteroid, m.remaining_time, game_state);
+                        double delta_x = asteroid_when_mine_explodes.x - m.x;
+                        double delta_y = asteroid_when_mine_explodes.y - m.y;
+                        double separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS;
+                        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                            if (mine_positions_placed.count(std::make_pair(m.x, m.y))) {
+                                asteroid_will_get_hit_by_my_mine = true;
+                                if (asteroid_will_get_hit_by_their_mine) break;
+                            } else {
+                                asteroid_will_get_hit_by_their_mine = true;
+                                if (asteroid_will_get_hit_by_my_mine) break;
+                            }
+                        }
+                    }
+                    std::vector<Asteroid> unwrapped_asteroids = unwrap_asteroid(asteroid, game_state.map_size_x, game_state.map_size_y, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON, true);
+                    for (const Asteroid& a : unwrapped_asteroids) {
+                        bool feasible;
+                        double shooting_angle_error_deg, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception;
+                        int64_t aiming_timesteps_required;
+                        std::tie(feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception)
+                            = solve_interception(a, dummy_ship_state, game_state, timesteps_until_can_fire);
+                        if (feasible) {
+                            assert(aiming_timesteps_required >= 0);
+                            if (!best_feasible_unwrapped_target.has_value() || aiming_timesteps_required < std::get<2>(best_feasible_unwrapped_target.value())) {
+                                best_feasible_unwrapped_target = std::make_tuple(feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception);
+                            }
+                        }
+                    }
+                    if (best_feasible_unwrapped_target.has_value()) {
+                        bool feasible; double shooting_angle_error_deg, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception; int64_t aiming_timesteps_required;
+                        std::tie(feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception) = best_feasible_unwrapped_target.value();
+                        double imminent_collision_time_s = std::numeric_limits<double>::infinity();
+                        assert(is_close_to_zero(ship_state.vx) && is_close_to_zero(ship_state.vy));
+                        for (const Asteroid& a : unwrapped_asteroids) {
+                            imminent_collision_time_s = std::min(imminent_collision_time_s,
+                                predict_next_imminent_collision_time_with_asteroid(
+                                    ship_state.x, ship_state.y, ship_state.vx, ship_state.vy, SHIP_RADIUS,
+                                    a.x, a.y, a.vx, a.vy, a.radius, game_state));
+                        }
+                        target_asteroids_list.emplace_back(
+                            Target{
+                                asteroid.copy(), feasible, shooting_angle_error_deg, aiming_timesteps_required,
+                                interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception,
+                                imminent_collision_time_s, asteroid_will_get_hit_by_my_mine, asteroid_will_get_hit_by_their_mine
+                            });
+                        if (imminent_collision_time_s < std::numeric_limits<double>::infinity())
+                            most_imminent_asteroid_exists = true;
+                    }
+                }
+            }
+        }
+
+        double turn_angle_deg_until_can_fire = double(timesteps_until_can_fire)*SHIP_MAX_TURN_RATE*DELTA_TIME;
+        std::optional<Asteroid> actual_asteroid_hit;
+        std::vector<Action> aiming_move_sequence;
+        Asteroid target_asteroid, target_asteroid_when_firing, actual_asteroid_hit_when_firing, actual_asteroid_hit_at_present_time;
+        double target_asteroid_shooting_angle_error_deg = 0, target_asteroid_interception_time_s = 0;
+        int64_t target_asteroid_turning_timesteps = 0;
+        std::optional<int64_t> timesteps_until_bullet_hit_asteroid;
+        Ship ship_state_after_aiming;
+
+        if (most_imminent_asteroid_exists) {
+            std::vector<Target> sorted_imminent_targets = target_asteroids_list;
+            if (!other_ships.empty()) {
+                double frontrun_score_multiplier = ship_state.bullets_remaining > 0 ? 4.0 : 3.0;
+                std::sort(sorted_imminent_targets.begin(), sorted_imminent_targets.end(), [&](const Target& t1, const Target& t2) {
+                    auto score = [&](const Target& t) {
+                        return std::min(10.0, t.imminent_collision_time_s) +
+                            ASTEROID_SIZE_SHOT_PRIORITY[t.asteroid.size]*0.25 +
+                            t.interception_time_s +
+                            t.asteroid_dist_during_interception/400.0 +
+                            frontrun_score_multiplier*std::min(0.5, std::max(0.0, t.interception_time_s - get_adversary_interception_time_lower_bound(t.asteroid, other_ships, game_state))) +
+                            ((t.asteroid.size == 1 ? 5.0 : -5.0) * (t.asteroid_will_get_hit_by_my_mine ? 1.0 : 0.0)) +
+                            ((t.asteroid.size != 1 ? 3.0 : -3.0) * (t.asteroid_will_get_hit_by_their_mine ? 1.0 : 0.0));
+                    };
+                    return score(t1) < score(t2);
+                });
+            } else {
+                std::sort(sorted_imminent_targets.begin(), sorted_imminent_targets.end(), [&](const Target& t1, const Target& t2) {
+                    auto score = [&](const Target& t) {
+                        return std::min(10.0, t.imminent_collision_time_s) +
+                            ASTEROID_SIZE_SHOT_PRIORITY[t.asteroid.size]*0.25 +
+                            t.asteroid_dist_during_interception/400.0 +
+                            ((t.asteroid.size == 1 ? 5.0 : -5.0) * (t.asteroid_will_get_hit_by_my_mine ? 1.0 : 0.0));
+                    };
+                    return score(t1) < score(t2);
+                });
+            }
+            for (const Target& candidate_target : sorted_imminent_targets) {
+                if (std::isinf(candidate_target.imminent_collision_time_s)) break;
+                int64_t most_imminent_asteroid_aiming_timesteps = candidate_target.aiming_timesteps_required;
+                Asteroid most_imminent_asteroid = candidate_target.asteroid;
+                double most_imminent_asteroid_shooting_angle_error_deg = candidate_target.shooting_angle_error_deg;
+                double most_imminent_asteroid_interception_time_s = candidate_target.interception_time_s;
+
+                if (most_imminent_asteroid_aiming_timesteps <= timesteps_until_can_fire) {
+                    if (ENABLE_SANITY_CHECKS) {
+                        assert(most_imminent_asteroid_aiming_timesteps == timesteps_until_can_fire);
+                    }
+                    std::tie(actual_asteroid_hit, aiming_move_sequence, target_asteroid,
+                        target_asteroid_shooting_angle_error_deg, target_asteroid_interception_time_s,
+                        target_asteroid_turning_timesteps, timesteps_until_bullet_hit_asteroid, ship_state_after_aiming) =
+                            simulate_shooting_at_target(most_imminent_asteroid, most_imminent_asteroid_shooting_angle_error_deg, most_imminent_asteroid_interception_time_s, most_imminent_asteroid_aiming_timesteps);
+                    if (actual_asteroid_hit.has_value()) {
+                        assert(timesteps_until_bullet_hit_asteroid.has_value());
+                        int64_t len_aiming_move_sequence = aiming_move_sequence.size();
+                        actual_asteroid_hit_when_firing = time_travel_asteroid(actual_asteroid_hit.value(), len_aiming_move_sequence - timesteps_until_bullet_hit_asteroid.value(), game_state);
+                        if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps + len_aiming_move_sequence, game_state, actual_asteroid_hit_when_firing)) {
+                            break;
+                        }
+                    }
+                } else {
+                    // Not enough time to aim; try for "closest along the way"
+                    std::vector<Target> sorted_targets = target_asteroids_list;
+                    std::sort(sorted_targets.begin(), sorted_targets.end(), [](const Target& t1, const Target& t2) {
+                        int a1 = int(std::round(t1.shooting_angle_error_deg)), a2 = int(std::round(t2.shooting_angle_error_deg));
+                        auto p1 = std::make_pair(a1, ASTEROID_SIZE_SHOT_PRIORITY[t1.asteroid.size]);
+                        auto p2 = std::make_pair(a2, ASTEROID_SIZE_SHOT_PRIORITY[t2.asteroid.size]);
+                        return p1 < p2;
+                    });
+                    std::optional<Target> target;
+                    if (most_imminent_asteroid_shooting_angle_error_deg > 0.0) {
+                        target = find_extreme_shooting_angle_error(sorted_targets, turn_angle_deg_until_can_fire, "largest_below");
+                        if (!target.has_value() || target->shooting_angle_error_deg < 0.0 ||
+                            target->shooting_angle_error_deg < turn_angle_deg_until_can_fire - TARGETING_AIMING_UNDERTURN_ALLOWANCE_DEG) {
+                            target = find_extreme_shooting_angle_error(sorted_targets, turn_angle_deg_until_can_fire, "smallest_above");
+                        }
+                    } else {
+                        target = find_extreme_shooting_angle_error(sorted_targets, -turn_angle_deg_until_can_fire, "smallest_above");
+                        if (!target.has_value() || target->shooting_angle_error_deg > 0.0 ||
+                            target->shooting_angle_error_deg > -turn_angle_deg_until_can_fire + TARGETING_AIMING_UNDERTURN_ALLOWANCE_DEG) {
+                            target = find_extreme_shooting_angle_error(sorted_targets, -turn_angle_deg_until_can_fire, "largest_below");
+                        }
+                    }
+                    if (target.has_value()) {
+                        std::tie(actual_asteroid_hit, aiming_move_sequence, target_asteroid,
+                            target_asteroid_shooting_angle_error_deg, target_asteroid_interception_time_s,
+                            target_asteroid_turning_timesteps, timesteps_until_bullet_hit_asteroid, ship_state_after_aiming) =
+                            simulate_shooting_at_target(target->asteroid, target->shooting_angle_error_deg, target->interception_time_s, target->aiming_timesteps_required);
+                        if (actual_asteroid_hit.has_value()) {
+                            assert(timesteps_until_bullet_hit_asteroid.has_value());
+                            int64_t len_aiming_move_sequence = aiming_move_sequence.size();
+                            actual_asteroid_hit_when_firing = time_travel_asteroid(actual_asteroid_hit.value(), len_aiming_move_sequence - timesteps_until_bullet_hit_asteroid.value(), game_state);
+                            if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps + len_aiming_move_sequence, game_state, actual_asteroid_hit_when_firing)) {
+                                break;
+                            }
+                        }
+                    } else {
+                        // Waste shot: turn all the way
+                        std::tie(actual_asteroid_hit, aiming_move_sequence, target_asteroid,
+                            target_asteroid_shooting_angle_error_deg, target_asteroid_interception_time_s,
+                            target_asteroid_turning_timesteps, timesteps_until_bullet_hit_asteroid, ship_state_after_aiming) =
+                            simulate_shooting_at_target(most_imminent_asteroid, most_imminent_asteroid_shooting_angle_error_deg, most_imminent_asteroid_interception_time_s, most_imminent_asteroid_aiming_timesteps);
+                        if (actual_asteroid_hit.has_value()) {
+                            assert(timesteps_until_bullet_hit_asteroid.has_value());
+                            int64_t len_aiming_move_sequence = aiming_move_sequence.size();
+                            actual_asteroid_hit_when_firing = time_travel_asteroid(actual_asteroid_hit.value(), len_aiming_move_sequence - timesteps_until_bullet_hit_asteroid.value(), game_state);
+                            if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps + len_aiming_move_sequence, game_state, actual_asteroid_hit_when_firing)) {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!actual_asteroid_hit.has_value()) {
+            // Try for least aiming delay targets
+            if (!target_asteroids_list.empty()) {
+                explanation_messages.push_back("No asteroids on collision course with me. Shooting at asteroids with least turning delay.");
+                std::vector<Target> sorted_targets = target_asteroids_list;
+                if (!other_ships.empty()) {
+                    double frontrun_score_multiplier = ship_state.bullets_remaining > 0 ? 25.0 : 15.0;
+                    std::sort(sorted_targets.begin(), sorted_targets.end(), [&](const Target& t1, const Target& t2) {
+                        auto score = [&](const Target& t) {
+                            return double(t.aiming_timesteps_required)*2.0 +
+                                ASTEROID_SIZE_SHOT_PRIORITY[t.asteroid.size] +
+                                t.interception_time_s +
+                                t.asteroid_dist_during_interception/400.0 +
+                                frontrun_score_multiplier*std::min(0.5, std::max(0.0, t.interception_time_s - get_adversary_interception_time_lower_bound(t.asteroid, other_ships, game_state))) +
+                                ((t.asteroid.size == 1 ? 20.0 : -20.0) * (t.asteroid_will_get_hit_by_my_mine ? 1.0 : 0.0)) +
+                                ((t.asteroid.size != 1 ? 20.0 : -20.0) * (t.asteroid_will_get_hit_by_their_mine ? 1.0 : 0.0));
+                        };
+                        return score(t1) < score(t2);
+                    });
+                } else {
+                    std::sort(sorted_targets.begin(), sorted_targets.end(), [&](const Target& t1, const Target& t2) {
+                        auto score = [&](const Target& t) {
+                            return double(t.aiming_timesteps_required)*2.0
+                                + ASTEROID_SIZE_SHOT_PRIORITY[t.asteroid.size]
+                                + t.asteroid_dist_during_interception/400.0
+                                + ((t.asteroid.size == 1 ? 20.0 : -20.0) * (t.asteroid_will_get_hit_by_my_mine ? 1.0 : 0.0));
+                        };
+                        return score(t1) < score(t2);
+                    });
+                }
+                for (const Target& confirmed_target : sorted_targets) {
+                    Asteroid least_shot_delay_asteroid = confirmed_target.asteroid;
+                    double least_shot_delay_asteroid_shooting_angle_error_deg = confirmed_target.shooting_angle_error_deg;
+                    double least_shot_delay_asteroid_interception_time_s = confirmed_target.interception_time_s;
+                    int64_t least_shot_delay_asteroid_aiming_timesteps = confirmed_target.aiming_timesteps_required;
+
+                    std::tie(actual_asteroid_hit, aiming_move_sequence, target_asteroid,
+                        target_asteroid_shooting_angle_error_deg, target_asteroid_interception_time_s,
+                        target_asteroid_turning_timesteps, timesteps_until_bullet_hit_asteroid, ship_state_after_aiming) =
+                        simulate_shooting_at_target(least_shot_delay_asteroid, least_shot_delay_asteroid_shooting_angle_error_deg,
+                            least_shot_delay_asteroid_interception_time_s, least_shot_delay_asteroid_aiming_timesteps);
+                    if (actual_asteroid_hit.has_value()) {
+                        assert(timesteps_until_bullet_hit_asteroid.has_value());
+                        int64_t len_aiming_move_sequence = aiming_move_sequence.size();
+                        actual_asteroid_hit_when_firing = time_travel_asteroid(actual_asteroid_hit.value(), len_aiming_move_sequence - timesteps_until_bullet_hit_asteroid.value(), game_state);
+                        if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps + len_aiming_move_sequence, game_state, actual_asteroid_hit_when_firing)) {
+                            break;
+                        }
+                    }
+                }
+            } else {
+                explanation_messages.push_back("There's nothing I can feasibly shoot at!");
+                int turn_direction = 0; double idle_thrust = 0.0;
+                if (asteroids_still_exist) {
+                    if (fast_randint(1, 10) == 1) {
+                        explanation_messages.push_back("Asteroids exist but we can't hit them. Moving around a bit randomly.");
+                        asteroids_shot -= 1;
+                    }
+                }
+                bool sim_complete_without_crash = update(idle_thrust, SHIP_MAX_TURN_RATE*double(turn_direction), false, false);
+                assert(is_close_to_zero(ship_state.speed));
+                return sim_complete_without_crash;
+            }
+        }
+
+        if (!actual_asteroid_hit.has_value() ||
+            !check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
+                asteroids_pending_death,
+                initial_timestep + future_timesteps + aiming_move_sequence.size(),
+                game_state,
+                time_travel_asteroid((actual_asteroid_hit.has_value() ? actual_asteroid_hit.value() : Asteroid()), aiming_move_sequence.size() - (timesteps_until_bullet_hit_asteroid.has_value() ? timesteps_until_bullet_hit_asteroid.value() : 0), game_state))) {
+            fire_next_timestep_flag = false;
+
+            int turn_direction = 0; double idle_thrust = 0.0;
+            if (asteroids_still_exist) {
+                if (fast_randint(1, 10) == 1) {
+                    explanation_messages.push_back("Asteroids exist but we can't hit them. Moving around a bit randomly.");
+                    asteroids_shot -= 1;
+                }
+            }
+            bool sim_complete_without_crash = update(idle_thrust, SHIP_MAX_TURN_RATE*double(turn_direction), false, false);
+            assert(is_close_to_zero(ship_state.speed));
+            return sim_complete_without_crash;
+        } else {
+            assert(timesteps_until_bullet_hit_asteroid.has_value());
+            if (ENABLE_SANITY_CHECKS) {
+                assert(check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
+                    asteroids_pending_death, initial_timestep + future_timesteps + timesteps_until_bullet_hit_asteroid.value(), game_state, actual_asteroid_hit.value()));
+                assert(check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
+                    asteroids_pending_death, initial_timestep + future_timesteps + aiming_move_sequence.size(), game_state,
+                    time_travel_asteroid(actual_asteroid_hit.value(), aiming_move_sequence.size() - timesteps_until_bullet_hit_asteroid.value(), game_state)));
+            }
+            actual_asteroid_hit_at_present_time = time_travel_asteroid(actual_asteroid_hit.value(), -timesteps_until_bullet_hit_asteroid.value(), game_state);
+            if (game_state_plotter.has_value() && GAMESTATE_PLOTTING && NEXT_TARGET_PLOTTING && (!START_GAMESTATE_PLOTTING_AT_SECOND.has_value() || START_GAMESTATE_PLOTTING_AT_SECOND.value()*FPS <= double(initial_timestep + future_timesteps))) {
+                actual_asteroid_hit_at_present_time = time_travel_asteroid(actual_asteroid_hit.value(), -timesteps_until_bullet_hit_asteroid.value() - 1, game_state);
+                game_state_plotter.value().update_plot(nullptr, nullptr, nullptr, nullptr,
+                    std::vector<Asteroid>{actual_asteroid_hit_at_present_time},
+                    nullptr, nullptr, nullptr, false, NEW_TARGET_PLOT_PAUSE_TIME_S, "FEASIBLE TARGETS");
+            }
+            if (actual_asteroid_hit_at_present_time.size != 1) {
+                for (const Asteroid& sp : forecast_asteroid_bullet_splits_from_heading(actual_asteroid_hit_at_present_time, timesteps_until_bullet_hit_asteroid.value(), ship_state_after_aiming.heading, game_state))
+                    forecasted_asteroid_splits.push_back(sp);
+            }
+            bool sim_complete_without_crash = apply_move_sequence(aiming_move_sequence);
+            if (sim_complete_without_crash) {
+                asteroids_shot += 1;
+                fire_next_timestep_flag = true;
+                assert(future_timesteps == future_timesteps); // Remove if wrong
+                asteroids_pending_death_history[initial_timestep + future_timesteps] = asteroids_pending_death;
+                track_asteroid_we_shot_at(asteroids_pending_death, initial_timestep + future_timesteps, game_state, timesteps_until_bullet_hit_asteroid.value() - aiming_move_sequence.size(), actual_asteroid_hit_when_firing);
+            } else {
+                fire_next_timestep_flag = false;
+            }
+            assert(is_close_to_zero(ship_state.speed));
+            return sim_complete_without_crash;
+        }
+    }
+
+    std::tuple<std::optional<Asteroid>, int64_t, bool>
+    bullet_sim(
+        const std::optional<Ship>& ship_state = std::nullopt,
+        bool fire_first_timestep = false,
+        int64_t fire_after_timesteps = 0,
+        bool skip_half_of_first_cycle = false,
+        const std::optional<int64_t>& current_move_index = std::nullopt,
+        const std::optional<std::vector<Action>>& whole_move_sequence = std::nullopt,
+        int64_t timestep_limit = INT_INF,
+        const std::optional<std::vector<Asteroid>>& asteroids_to_check = std::nullopt
+        ) const
+    {
+        // This simulates shooting at an asteroid to tell us whether we'll hit it, when we hit it, and which asteroid we hit
+
+        // Copy/shallow copy
+        std::vector<Asteroid> asteroids;
+        if (asteroids_to_check.has_value()) {
+            for (const auto& a : asteroids_to_check.value())
+                if (a.alive) asteroids.push_back(a.copy());
+        } else {
+            for (const auto& a : game_state.asteroids)
+                if (a.alive) asteroids.push_back(a.copy());
+        }
+        std::vector<Mine> mines;
+        for (const auto& m : game_state.mines)
+            if (m.alive) mines.push_back(m.copy());
+        std::vector<Bullet> bullets;
+        for (const auto& b : game_state.bullets)
+            if (b.alive) bullets.push_back(b.copy());
+
+        Ship initial_ship_state = get_ship_state();
+        if (ship_state.has_value() && ENABLE_SANITY_CHECKS) {
+            assert(check_coordinate_bounds(game_state, ship_state.value().x, ship_state.value().y));
+        }
+
+        std::optional<Ship> bullet_sim_ship_state;
+        if (whole_move_sequence.has_value())
+            bullet_sim_ship_state = get_ship_state();
+
+        std::optional<Bullet> my_bullet = std::nullopt;
+        bool ship_not_collided_with_asteroid = true;
+        int64_t timesteps_until_bullet_hit_asteroid = skip_half_of_first_cycle ? -1 : 0;
+        std::set<int64_t> asteroid_remove_idxs;
+
+        while (true) {
+            // Step the simulation.
+            timesteps_until_bullet_hit_asteroid += 1;
+            if (timesteps_until_bullet_hit_asteroid > timestep_limit) {
+                return std::make_tuple(std::nullopt, int64_t(-1), ship_not_collided_with_asteroid);
+            }
+
+            // (plotting code skipped for clarity but you can add it here)
+
+            // Advance bullets
+            if (!(skip_half_of_first_cycle && timesteps_until_bullet_hit_asteroid == 0)) {
+                for (auto& b : bullets) {
+                    if (b.alive) {
+                        double new_bullet_x = b.x + b.vx * DELTA_TIME;
+                        double new_bullet_y = b.y + b.vy * DELTA_TIME;
+                        if (0.0 <= new_bullet_x && new_bullet_x <= game_state.map_size_x && 0.0 <= new_bullet_y && new_bullet_y <= game_state.map_size_y) {
+                            b.x = new_bullet_x;
+                            b.y = new_bullet_y;
+                        } else {
+                            b.alive = false;
+                        }
+                    }
+                }
+                if (my_bullet.has_value()) {
+                    double my_new_bullet_x = my_bullet->x + my_bullet->vx * DELTA_TIME;
+                    double my_new_bullet_y = my_bullet->y + my_bullet->vy * DELTA_TIME;
+                    if (0.0 <= my_new_bullet_x && my_new_bullet_x <= game_state.map_size_x && 0.0 <= my_new_bullet_y && my_new_bullet_y <= game_state.map_size_y) {
+                        my_bullet->x = my_new_bullet_x;
+                        my_bullet->y = my_new_bullet_y;
+                    } else {
+                        return std::make_tuple(std::nullopt, int64_t(-1), ship_not_collided_with_asteroid);
+                    }
+                }
+                for (auto& m : mines)
+                    if (m.alive)
+                        m.remaining_time -= DELTA_TIME;
+                for (auto& a : asteroids) {
+                    if (a.alive) {
+                        a.x = mod(a.x + a.vx * DELTA_TIME, game_state.map_size_x);
+                        a.y = mod(a.y + a.vy * DELTA_TIME, game_state.map_size_y);
+                    }
+                }
+            }
+
+            // Create the initial bullet we fire, if locked in
+            if (fire_first_timestep && timesteps_until_bullet_hit_asteroid + (skip_half_of_first_cycle ? 0 : -1) == 0) {
+                double rad_heading = initial_ship_state.heading * DEG_TO_RAD;
+                double cos_heading = std::cos(rad_heading);
+                double sin_heading = std::sin(rad_heading);
+                double bullet_x = initial_ship_state.x + SHIP_RADIUS * cos_heading;
+                double bullet_y = initial_ship_state.y + SHIP_RADIUS * sin_heading;
+                if (0.0 <= bullet_x && bullet_x <= game_state.map_size_x && 0.0 <= bullet_y && bullet_y <= game_state.map_size_y) {
+                    Bullet initial_timestep_fire_bullet(
+                        bullet_x, bullet_y, BULLET_SPEED*cos_heading, BULLET_SPEED*sin_heading,
+                        initial_ship_state.heading, BULLET_MASS, -BULLET_LENGTH*cos_heading, -BULLET_LENGTH*sin_heading
+                    );
+                    bullets.push_back(initial_timestep_fire_bullet);
+                }
+            }
+
+            if (!my_bullet.has_value() && timesteps_until_bullet_hit_asteroid + (skip_half_of_first_cycle ? 0 : -1) == fire_after_timesteps) {
+                double bullet_fired_from_ship_heading, bullet_fired_from_ship_position_x, bullet_fired_from_ship_position_y;
+                if (ship_state.has_value()) {
+                    bullet_fired_from_ship_heading = ship_state->heading;
+                    bullet_fired_from_ship_position_x = ship_state->x;
+                    bullet_fired_from_ship_position_y = ship_state->y;
+                } else {
+                    bullet_fired_from_ship_heading = this->ship_state.heading;
+                    bullet_fired_from_ship_position_x = this->ship_state.x;
+                    bullet_fired_from_ship_position_y = this->ship_state.y;
+                }
+                double rad_heading = bullet_fired_from_ship_heading * DEG_TO_RAD;
+                double cos_heading = std::cos(rad_heading);
+                double sin_heading = std::sin(rad_heading);
+                double bullet_x = bullet_fired_from_ship_position_x + SHIP_RADIUS * cos_heading;
+                double bullet_y = bullet_fired_from_ship_position_y + SHIP_RADIUS * sin_heading;
+                if (!(0.0 <= bullet_x && bullet_x <= game_state.map_size_x && 0.0 <= bullet_y && bullet_y <= game_state.map_size_y)) {
+                    return std::make_tuple(std::nullopt, int64_t(-1), ship_not_collided_with_asteroid);
+                }
+                my_bullet = Bullet(bullet_x, bullet_y, BULLET_SPEED * cos_heading, BULLET_SPEED * sin_heading,
+                                bullet_fired_from_ship_heading, BULLET_MASS, -BULLET_LENGTH * cos_heading, -BULLET_LENGTH * sin_heading);
+            }
+
+            if (whole_move_sequence.has_value()) {
+                assert(current_move_index.has_value());
+                assert(bullet_sim_ship_state.has_value());
+                int idx = current_move_index.value() + timesteps_until_bullet_hit_asteroid + (skip_half_of_first_cycle ? 0 : -1);
+                if (idx < static_cast<int>(whole_move_sequence->size())) {
+                    double thrust = (*whole_move_sequence)[idx].thrust;
+                    double turn_rate = (*whole_move_sequence)[idx].turn_rate;
+                    double drag_amount = SHIP_DRAG * DELTA_TIME;
+                    if (drag_amount > std::abs(bullet_sim_ship_state->speed)) {
+                        bullet_sim_ship_state->speed = 0.0;
+                    } else {
+                        bullet_sim_ship_state->speed -= drag_amount * sign(bullet_sim_ship_state->speed);
+                    }
+                    if (ENABLE_SANITY_CHECKS) {
+                        assert(-SHIP_MAX_THRUST <= thrust && thrust <= SHIP_MAX_THRUST);
+                    }
+                    bullet_sim_ship_state->speed += thrust*DELTA_TIME;
+                    // Clamping omitted, could add if desired
+                    if (ENABLE_SANITY_CHECKS) {
+                        assert(-SHIP_MAX_TURN_RATE <= turn_rate && turn_rate <= SHIP_MAX_TURN_RATE);
+                    }
+                    bullet_sim_ship_state->heading += turn_rate*DELTA_TIME;
+                    bullet_sim_ship_state->heading = std::fmod(bullet_sim_ship_state->heading + 360.0, 360.0);
+                    double rad_heading = bullet_sim_ship_state->heading * DEG_TO_RAD;
+                    bullet_sim_ship_state->vx = std::cos(rad_heading) * bullet_sim_ship_state->speed;
+                    bullet_sim_ship_state->vy = std::sin(rad_heading) * bullet_sim_ship_state->speed;
+                    bullet_sim_ship_state->x = mod(bullet_sim_ship_state->x + bullet_sim_ship_state->vx * DELTA_TIME, game_state.map_size_x);
+                    bullet_sim_ship_state->y = mod(bullet_sim_ship_state->y + bullet_sim_ship_state->vy * DELTA_TIME, game_state.map_size_y);
+                }
+            }
+
+            // Check bullet/asteroid collisions
+            size_t len_bullets = bullets.size();
+            std::vector<Bullet*> all_bullets;
+            for (auto& b : bullets) all_bullets.push_back(&b);
+            if (my_bullet.has_value()) all_bullets.push_back(&my_bullet.value());
+            for (size_t b_idx = 0; b_idx < all_bullets.size(); ++b_idx) {
+                Bullet* b = all_bullets[b_idx];
+                if (b->alive) {
+                    double b_tail_x = b->x + b->tail_delta_x;
+                    double b_tail_y = b->y + b->tail_delta_y;
+                    for (auto& a : asteroids) {
+                        if (a.alive) {
+                            if (asteroid_bullet_collision(b->x, b->y, b_tail_x, b_tail_y, a.x, a.y, a.radius)) {
+                                if (b_idx == len_bullets) {
+                                    // This bullet is my bullet!
+                                    return std::make_tuple(std::optional<Asteroid>(a), timesteps_until_bullet_hit_asteroid, ship_not_collided_with_asteroid);
+                                } else {
+                                    b->alive = false;
+                                    if (a.size != 1) {
+                                        auto split_result = forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b->vx, b->vy, game_state);
+                                        for (const auto& new_ast : split_result) asteroids.push_back(new_ast);
+                                    }
+                                    a.alive = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check mine/asteroid collisions
+            std::vector<Asteroid> new_asteroids;
+            for (auto& mine : mines) {
+                if (mine.alive && mine.remaining_time < EPS) {
+                    mine.alive = false;
+                    for (auto& asteroid : asteroids) {
+                        if (asteroid.alive) {
+                            double delta_x = asteroid.x - mine.x;
+                            double delta_y = asteroid.y - mine.y;
+                            double separation = asteroid.radius + MINE_BLAST_RADIUS;
+                            if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                                if (asteroid.size != 1) {
+                                    auto result = forecast_asteroid_mine_instantaneous_splits(asteroid, mine, game_state);
+                                    new_asteroids.insert(new_asteroids.end(), result.begin(), result.end());
+                                }
+                                asteroid.alive = false;
+                            }
+                        }
+                    }
+                }
+            }
+            asteroids.insert(asteroids.end(), new_asteroids.begin(), new_asteroids.end());
+
+            // Check ship/asteroid collisions
+            if (ship_not_collided_with_asteroid) {
+                double ship_position_x, ship_position_y;
+                if (whole_move_sequence.has_value() && bullet_sim_ship_state.has_value()) {
+                    ship_position_x = bullet_sim_ship_state->x;
+                    ship_position_y = bullet_sim_ship_state->y;
+                } else if (ship_state.has_value()) {
+                    ship_position_x = ship_state->x;
+                    ship_position_y = ship_state->y;
+                } else {
+                    ship_position_x = this->ship_state.x;
+                    ship_position_y = this->ship_state.y;
+                }
+                for (auto& asteroid : asteroids) {
+                    if (asteroid.alive) {
+                        double delta_x = ship_position_x - asteroid.x;
+                        double delta_y = ship_position_y - asteroid.y;
+                        double separation = SHIP_RADIUS + asteroid.radius;
+                        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                            if (asteroid.size != 1) {
+                                auto shipsplitres = forecast_asteroid_ship_splits(asteroid, 0, 0.0, 0.0, game_state);
+                                asteroids.insert(asteroids.end(), shipsplitres.begin(), shipsplitres.end());
+                            }
+                            asteroid.alive = false;
+                            ship_not_collided_with_asteroid = false;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        // unreachable
+    }
+
+    bool apply_move_sequence(const std::vector<Action>& move_sequence, bool allow_free_firing = false, bool allow_free_mining = false) {
+        if (sim_id == 24111) {
+            std::cout << "Applying move seq in 24111 ship_state=" << ship_state.str()
+                    << " move_sequence.size=" << move_sequence.size()
+                    << " allow_free_firing=" << allow_free_firing
+                    << " allow_free_mining=" << allow_free_mining << std::endl;
+        }
+        // assert is_close_to_zero(ship_state.speed)
+        bool sim_was_safe = true;
+        for (const Action& move : move_sequence) {
+            double thrust = move.thrust;
+            double turn_rate = move.turn_rate;
+            // Using std::optional<bool> for tri-state logic (matches None/True/False in Python)
+            std::optional<bool> fire = allow_free_firing ? std::nullopt : std::optional<bool>(move.fire);
+            std::optional<bool> drop_mine = allow_free_mining ? std::nullopt : std::optional<bool>(move.drop_mine);
+
+            // Call update
+            if (!update(thrust, turn_rate, fire, drop_mine)) {
+                sim_was_safe = false;
+                break;
+            }
+            // print after-thrust speed if desired (debug)
+        }
+        if (ENABLE_SANITY_CHECKS) {
+            assert(is_close_to_zero(ship_state.speed)
+                /* If you want a string message, you can add: */
+                && "When returning in apply move sequence, the ship speed is not zero!"
+            );
+        }
+        if (sim_id == 24111) {
+            std::cout << "24111 sim_was_safe=" << sim_was_safe << std::endl;
+        }
+        return sim_was_safe;
+    }
+
+    bool simulate_maneuver(const std::vector<Action>& move_sequence, bool allow_free_firing, bool allow_free_mining) {
+        intended_move_sequence = move_sequence; // Record intended move sequence in case maneuvers are interrupted
+
+        //flag = false;
+        //if (!is_close_to_zero(ship_state.speed) && sim_id == 333) {
+        //    std::cout << "When starting in simulate maneuver where the sim was safe, the ship speed is not zero! ship_state.speed=" << ship_state.speed
+        //              << ", ship_state.vx=" << ship_state.vx << ", ship_state.vy=" << ship_state.vy
+        //              << ". The whole move sequence is REDACTED move_sequence" << std::endl;
+        //    flag = true;
+        //}
+
+        for (const Action& move : move_sequence) {
+            double thrust = move.thrust;
+            double turn_rate = move.turn_rate;
+            bool fire = move.fire;
+            bool drop_mine = move.drop_mine;
+            // if (sim_id == 23215) {
+            //     std::cout << "Calling update from sim maneuver: with thrust=" << thrust << ", turn_rate=" << turn_rate << ", allow_firing=" << allow_free_firing << std::endl;
+            // }
+            if (!update(thrust,
+                        turn_rate,
+                        allow_free_firing ? std::nullopt : std::optional<bool>(fire),
+                        allow_free_mining ? std::nullopt : std::optional<bool>(drop_mine),
+                        move_sequence))
+            {
+                return false;
+            }
+            //if (flag) { ... }
+            //if (sim_id == 333) {
+            //    std::cout << "In sim " << sim_id << " After thrusting by " << thrust << " the true simmed ship speed is " << ship_state.speed << std::endl;
+            //}
+        }
+        if (ENABLE_SANITY_CHECKS) {
+            assert(is_close_to_zero(ship_state.speed) &&
+                "When returning in simulate maneuver where the sim was safe, the ship speed is not zero!");
+        }
+        return true;
+    }
+
+    bool update(
+        double thrust = 0.0,
+        double turn_rate = 0.0,
+        std::optional<bool> fire = std::nullopt,
+        std::optional<bool> drop_mine = std::nullopt,
+        std::optional<std::vector<Action>> whole_move_sequence = std::nullopt,
+        bool wait_out_mines = false)
+    {
+        // REMOVE_FOR_COMPETITION
+        total_sim_timesteps += 1;
+
+        if (ENABLE_BAD_LUCK_EXCEPTION && random_uniform_0_1() < BAD_LUCK_EXCEPTION_PROBABILITY) {
+            throw std::runtime_error("Bad luck exception!");
+        }
+
+        std::optional<bool> return_value = std::nullopt;
+
+        // Track state sequence and forecasted split history
+        if (!wait_out_mines) {
+            std::vector<Asteroid> forecasted_splits_copy;
+            for (const auto& a : forecasted_asteroid_splits) forecasted_splits_copy.push_back(a.copy());
+            forecasted_asteroid_splits_history.push_back(forecasted_splits_copy);
+            if (ENABLE_SANITY_CHECKS) {
+                for (const auto& a : forecasted_asteroid_splits_history.back()) { assert(a.alive); }
+            }
+            if (PRUNE_SIM_STATE_SEQUENCE && future_timesteps != 0) {
+                state_sequence.push_back(SimState(
+                    initial_timestep + future_timesteps,
+                    ship_state.copy()
+                    // lightweight mode: skip game_state, asteroids_pending_death, etc.
+                ));
+            } else {
+                state_sequence.push_back(SimState(
+                    initial_timestep + future_timesteps,
+                    ship_state.copy(),
+                    get_game_state(),
+                    asteroids_pending_death, // shallow copy is fine here
+                    forecasted_splits_copy
+                ));
+            }
+        }
+
+        if (whole_move_sequence && ENABLE_SANITY_CHECKS) {
+            const Action& action = (*whole_move_sequence)[future_timesteps];
+            assert(action.thrust == thrust);
+            assert(action.turn_rate == turn_rate);
+            // Could also assert fire/drop_mine if you wish.
+        }
+
+        // Plotting (REMOVE_FOR_COMPETITION)
+        if (plot_this_sim && game_state_plotter.has_value()) {
+            std::vector<Asteroid> flattened_asteroids_pending_death;
+            for (const auto& kv : asteroids_pending_death)
+                for (const auto& ast : kv.second)
+                    flattened_asteroids_pending_death.push_back(ast);
+            game_state_plotter->update_plot(
+                game_state.asteroids, ship_state, game_state.bullets, {}, {},
+                flattened_asteroids_pending_death, forecasted_asteroid_splits, game_state.mines,
+                true, 0.1, "SIM UPDATE TS " + std::to_string(initial_timestep + future_timesteps));
+        }
+
+        // Bullets step (advance and out-of-bounds cull)
+        for (auto& b : game_state.bullets) {
+            if (b.alive) {
+                double nx = b.x + b.vx * DELTA_TIME;
+                double ny = b.y + b.vy * DELTA_TIME;
+                if (0.0 <= nx && nx <= game_state.map_size_x && 0.0 <= ny && ny <= game_state.map_size_y) {
+                    b.x = nx;
+                    b.y = ny;
+                } else {
+                    b.alive = false;
+                }
+            }
+        }
+        // Mines step
+        for (auto& m : game_state.mines) {
+            if (m.alive) {
+                if (ENABLE_SANITY_CHECKS) { assert(m.remaining_time > EPS - DELTA_TIME); }
+                m.remaining_time -= DELTA_TIME;
+            }
+        }
+        // Asteroids step (with wrap)
+        for (auto& a : game_state.asteroids) {
+            if (a.alive) {
+                a.x = std::fmod(a.x + a.vx * DELTA_TIME + game_state.map_size_x, game_state.map_size_x);
+                a.y = std::fmod(a.y + a.vy * DELTA_TIME + game_state.map_size_y, game_state.map_size_y);
+            }
+        }
+
+        // ==========================
+        //           SHIP
+        // ==========================
+        bool fire_this_timestep = false, drop_mine_this_timestep = false;
+        if (!wait_out_mines) {
+            forecasted_asteroid_splits = maintain_forecasted_asteroids(forecasted_asteroid_splits, game_state);
+
+            // ================ HANDLE FIRING ================
+            if (ship_state.bullets_remaining != 0) {
+                if (fire_first_timestep && future_timesteps == 0) {
+                    assert(respawn_maneuver_pass_number == 0 ||
+                        (respawn_maneuver_pass_number == 2 && initial_timestep + future_timesteps > last_timestep_colliding));
+                    if (verify_first_shot) {
+                        std::optional<Asteroid> actual_asteroid_hit;
+                        int64_t timesteps_until_bullet_hit_asteroid;
+                        bool ship_was_safe;
+                        std::tie(actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, ship_was_safe) = bullet_sim(
+                            std::nullopt, false, 0, true, future_timesteps, whole_move_sequence, INT_INF, std::nullopt
+                        );
+                        if (!actual_asteroid_hit.has_value()) {
+                            fire_this_timestep = false;
+                            cancel_firing_first_timestep = true;
+                        } else {
+                            fire_this_timestep = true;
+                        }
+                    } else { fire_this_timestep = true; }
+                } else if (!fire.has_value()) {
+                    // ----------- BEGIN BULLET "CONVENIENT FIRE" LOGIC -----------
+                    int64_t timesteps_until_can_fire = std::max<int64_t>(0, FIRE_COOLDOWN_TS - (initial_timestep + future_timesteps - last_timestep_fired));
+                    fire_this_timestep = false;
+                    double ship_heading_rad = ship_state.heading * DEG_TO_RAD;
+                    bool feasible_targets_exist = false;
+                    
+                    std::vector<Asteroid> culled_targets_for_simulation;
+                    std::vector<int64_t> culled_target_idxs_for_simulation;
+                    double max_interception_time = 0.0;
+
+                    double min_positive_shot_heading_error_rad = INFINITY, second_min_positive_shot_heading_error_rad = INFINITY;
+                    double min_negative_shot_heading_error_rad = -INFINITY, second_min_negative_shot_heading_error_rad = -INFINITY, min_shot_heading_error_rad = NAN, second_min_shot_heading_error_rad = NAN;
+                    size_t len_asteroids = game_state.asteroids.size();
+                    bool avoid_targeting_this_asteroid = false, check_next_asteroid = false;
+
+                    for (size_t ast_idx = 0; ast_idx < game_state.asteroids.size() + forecasted_asteroid_splits.size(); ++ast_idx) {
+                        const Asteroid* asteroid;
+                        bool is_forecasted = false;
+                        if (ast_idx < game_state.asteroids.size()) {
+                            asteroid = &game_state.asteroids[ast_idx];
+                        } else {
+                            asteroid = &forecasted_asteroid_splits[ast_idx - game_state.asteroids.size()];
+                            is_forecasted = true;
+                        }
+                        if (!asteroid->alive) continue;
+
+                        avoid_targeting_this_asteroid = false;
+                        if (asteroid->size == 1) {
+                            for (const auto& m : game_state.mines) {
+                                if (m.alive && mine_positions_placed.count(std::make_pair(m.x, m.y))) {
+                                    Asteroid asteroid_when_mine_explodes = time_travel_asteroid_s(*asteroid, m.remaining_time, game_state);
+                                    double delta_x = asteroid_when_mine_explodes.x - m.x;
+                                    double delta_y = asteroid_when_mine_explodes.y - m.y;
+                                    double separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS;
+                                    if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                                        avoid_targeting_this_asteroid = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (avoid_targeting_this_asteroid) continue;
+
+                        bool in_culling_cone = false;
+                        if (ast_idx < len_asteroids &&
+                            heading_diff_within_threshold(ship_heading_rad, asteroid->x - ship_state.x, asteroid->y - ship_state.y, MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF_COSINE)) {
+                            culled_target_idxs_for_simulation.push_back(ast_idx);
+                            in_culling_cone = true;
+                        }
+
+                        check_next_asteroid = false;
+                        if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps + 1, game_state, *asteroid)) {
+                            std::vector<Asteroid> a_unwrap = unwrap_asteroid(*asteroid, game_state.map_size_x, game_state.map_size_y, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON, true);
+                            for (const Asteroid& a : a_unwrap) {
+                                if (check_next_asteroid) break;
+                                if (!heading_diff_within_threshold(ship_heading_rad, a.x - ship_state.x, a.y - ship_state.y, MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF_COSINE)) continue;
+
+                                // Now, do interception math
+                                bool feasible;
+                                double shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist_during_interception;
+                                std::tie(feasible, shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist_during_interception) =
+                                    calculate_interception(ship_state.x, ship_state.y, a.x, a.y, a.vx, a.vy, a.radius, ship_state.heading, game_state);
+
+                                if (feasible) {
+                                    if (shot_heading_error_rad >= 0.0) {
+                                        if (shot_heading_error_rad < min_positive_shot_heading_error_rad) {
+                                            second_min_positive_shot_heading_error_rad = min_positive_shot_heading_error_rad;
+                                            min_positive_shot_heading_error_rad = shot_heading_error_rad;
+                                        }
+                                    } else {
+                                        if (shot_heading_error_rad > min_negative_shot_heading_error_rad) {
+                                            second_min_negative_shot_heading_error_rad = min_negative_shot_heading_error_rad;
+                                            min_negative_shot_heading_error_rad = shot_heading_error_rad;
+                                        }
+                                    }
+                                    if (std::abs(shot_heading_error_rad) <= shot_heading_tolerance_rad) {
+                                        if (ast_idx < len_asteroids) {
+                                            if (culled_target_idxs_for_simulation.empty() || culled_target_idxs_for_simulation.back() != static_cast<int64_t>(ast_idx))
+                                                culled_target_idxs_for_simulation.push_back(ast_idx);
+                                        }
+                                        feasible_targets_exist = true;
+                                        if (interception_time > max_interception_time)
+                                            max_interception_time = interception_time;
+                                        check_next_asteroid = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (feasible_targets_exist) {
+                        culled_targets_for_simulation.clear();
+                        for (auto idx : culled_target_idxs_for_simulation)
+                            if (idx < static_cast<int64_t>(game_state.asteroids.size()))
+                                culled_targets_for_simulation.push_back(game_state.asteroids[idx]);
+                        int bullet_sim_timestep_limit = static_cast<int>(std::ceil(max_interception_time*FPS)) + 1;
+                        std::optional<Asteroid> actual_asteroid_hit;
+                        int64_t timesteps_until_bullet_hit_asteroid;
+                        bool ship_was_safe;
+                        std::tie(actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, ship_was_safe)
+                            = bullet_sim(std::nullopt, false, 0, true, future_timesteps, whole_move_sequence,
+                                        bullet_sim_timestep_limit,
+                                        (!culled_targets_for_simulation.empty() && game_state.mines.empty()) ?
+                                            std::optional<std::vector<Asteroid>>(culled_targets_for_simulation) : std::nullopt);
+                        if (actual_asteroid_hit.has_value() && ship_was_safe) {
+                            assert(timesteps_until_bullet_hit_asteroid >= 0);
+                            Asteroid actual_asteroid_hit_at_fire_time = time_travel_asteroid(
+                                actual_asteroid_hit.value(), -timesteps_until_bullet_hit_asteroid, game_state);
+                            if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
+                                    asteroids_pending_death, initial_timestep + future_timesteps + 1, game_state, actual_asteroid_hit_at_fire_time)) {
+                                fire_this_timestep = true;
+                                ++asteroids_shot;
+                                explanation_messages.push_back("During the maneuver, I conveniently shot asteroids.");
+                                if (actual_asteroid_hit_at_fire_time.size != 1)
+                                    for (const auto& sp : forecast_asteroid_bullet_splits_from_heading(
+                                        actual_asteroid_hit_at_fire_time, timesteps_until_bullet_hit_asteroid, ship_state.heading, game_state))
+                                        forecasted_asteroid_splits.push_back(sp);
+                                asteroids_pending_death_history[initial_timestep + future_timesteps + 1] = asteroids_pending_death;
+                                track_asteroid_we_shot_at(
+                                    asteroids_pending_death, initial_timestep + future_timesteps + 1,
+                                    game_state, timesteps_until_bullet_hit_asteroid, actual_asteroid_hit_at_fire_time);
+                            }
+                            if (fire_this_timestep && !std::isinf(game_state.time_limit) &&
+                                initial_timestep + future_timesteps + timesteps_until_bullet_hit_asteroid > std::floor(FPS*game_state.time_limit)) {
+                                fire_this_timestep = false;
+                                --asteroids_shot;
+                            }
+                        }
+                    }
+                    assert(asteroids_shot >= 0);
+
+                    // Below: aiming maneuver for next shot (random walk schedule)
+                    if (respawn_maneuver_pass_number == 0 &&
+                        (future_timesteps >= MANEUVER_SIM_DISALLOW_TARGETING_FOR_START_TIMESTEPS_AMOUNT)) {
+                        if (asteroids_shot >= RANDOM_WALK_SCHEDULE_LENGTH) {
+                            if (min_positive_shot_heading_error_rad + min_negative_shot_heading_error_rad >= 0.0)
+                                min_shot_heading_error_rad = min_negative_shot_heading_error_rad;
+                            else
+                                min_shot_heading_error_rad = min_positive_shot_heading_error_rad;
+                            if (second_min_positive_shot_heading_error_rad + second_min_negative_shot_heading_error_rad >= 0.0)
+                                second_min_shot_heading_error_rad = second_min_negative_shot_heading_error_rad;
+                            else
+                                second_min_shot_heading_error_rad = second_min_positive_shot_heading_error_rad;
+                        } else if (random_walk_schedule[asteroids_shot]) {
+                            min_shot_heading_error_rad = min_positive_shot_heading_error_rad;
+                            second_min_shot_heading_error_rad = second_min_positive_shot_heading_error_rad;
+                        } else {
+                            min_shot_heading_error_rad = min_negative_shot_heading_error_rad;
+                            second_min_shot_heading_error_rad = second_min_negative_shot_heading_error_rad;
+                        }
+                        double next_target_heading_error = NAN;
+                        if (!fire_this_timestep && !std::isinf(min_shot_heading_error_rad)) {
+                            next_target_heading_error = min_shot_heading_error_rad;
+                        }
+                        else if (fire_this_timestep && !std::isinf(second_min_shot_heading_error_rad)) {
+                            next_target_heading_error = second_min_shot_heading_error_rad;
+                        }
+                        if (!std::isnan(next_target_heading_error)) {
+                            double min_shot_heading_error_deg = next_target_heading_error*RAD_TO_DEG;
+                            double altered_turn_command =
+                                (std::abs(min_shot_heading_error_deg) <= DEGREES_TURNED_PER_TIMESTEP)
+                                ? min_shot_heading_error_deg*FPS
+                                : SHIP_MAX_TURN_RATE*sign(min_shot_heading_error_rad);
+                            turn_rate = altered_turn_command;
+                            if (whole_move_sequence) {
+                                (*whole_move_sequence.value())[future_timesteps].turn_rate = altered_turn_command;
+                            }
+                        }
+                    }
+                } else if (respawn_maneuver_pass_number == 0 &&
+                        (future_timesteps >= MANEUVER_SIM_DISALLOW_TARGETING_FOR_START_TIMESTEPS_AMOUNT || timesteps_until_can_fire == 1)) {
+                    // Next-shot aiming, even before firing is legal
+                    bool locked_in = false;
+                    double asteroid_least_shot_heading_error_deg = INFINITY;
+                    double asteroid_least_shot_heading_tolerance_deg = NAN;
+                    double ship_pred_speed = ship_state.speed,
+                        drag_amount = SHIP_DRAG*DELTA_TIME;
+                    if (drag_amount > std::abs(ship_pred_speed))
+                        ship_pred_speed = 0.0;
+                    else
+                        ship_pred_speed -= drag_amount*sign(ship_pred_speed);
+                    ship_pred_speed += std::min(std::max(-SHIP_MAX_THRUST, thrust), SHIP_MAX_THRUST)*DELTA_TIME;
+                    if (ship_pred_speed > SHIP_MAX_SPEED) ship_pred_speed = SHIP_MAX_SPEED;
+                    if (ship_pred_speed < -SHIP_MAX_SPEED) ship_pred_speed = -SHIP_MAX_SPEED;
+                    double rad_heading = ship_state.heading*DEG_TO_RAD;
+                    double ship_speed_ts = DELTA_TIME*(double)timesteps_until_can_fire*ship_pred_speed;
+                    double ship_predicted_pos_x = ship_state.x + ship_speed_ts*cos(rad_heading);
+                    double ship_predicted_pos_y = ship_state.y + ship_speed_ts*sin(rad_heading);
+
+                    // For both actual and forecasted asteroids
+                    for (size_t i = 0; i < game_state.asteroids.size() + forecasted_asteroid_splits.size(); ++i) {
+                        const Asteroid* asteroid;
+                        if (i < game_state.asteroids.size())
+                            asteroid = &game_state.asteroids[i];
+                        else
+                            asteroid = &forecasted_asteroid_splits[i - game_state.asteroids.size()];
+                        if (!asteroid->alive) continue;
+
+                        avoid_targeting_this_asteroid = false;
+                        if (asteroid->size == 1) {
+                            for (const auto& m : game_state.mines) {
+                                if (m.alive && mine_positions_placed.count(std::make_pair(m.x, m.y))) {
+                                    Asteroid asteroid_when_mine_explodes = time_travel_asteroid_s(*asteroid, m.remaining_time, game_state);
+                                    double delta_x = asteroid_when_mine_explodes.x - m.x;
+                                    double delta_y = asteroid_when_mine_explodes.y - m.y;
+                                    double separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS;
+                                    if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                                        avoid_targeting_this_asteroid = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (avoid_targeting_this_asteroid) continue;
+
+                        if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps + 1, game_state, *asteroid)) {
+                            std::vector<Asteroid> a_unwrap = unwrap_asteroid(*asteroid, game_state.map_size_x, game_state.map_size_y, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON, true);
+                            for (const Asteroid& a : a_unwrap) {
+                                bool feasible;
+                                double shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist;
+                                std::tie(feasible, shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist) =
+                                    calculate_interception(ship_predicted_pos_x, ship_predicted_pos_y, a.x, a.y, a.vx, a.vy, a.radius, ship_state.heading, game_state, timesteps_until_can_fire);
+                                if (feasible &&
+                                    (asteroids_shot >= RANDOM_WALK_SCHEDULE_LENGTH ||
+                                    (random_walk_schedule[asteroids_shot] && shot_heading_error_rad >= 0.0) ||
+                                    (!random_walk_schedule[asteroids_shot] && shot_heading_error_rad <= 0.0))) {
+                                    double shot_heading_error_deg = shot_heading_error_rad*RAD_TO_DEG;
+                                    double shot_heading_tolerance_deg = shot_heading_tolerance_rad*RAD_TO_DEG;
+                                    if (std::abs(shot_heading_error_deg) - shot_heading_tolerance_deg < std::abs(asteroid_least_shot_heading_error_deg)) {
+                                        asteroid_least_shot_heading_error_deg = shot_heading_error_deg;
+                                        asteroid_least_shot_heading_tolerance_deg = shot_heading_tolerance_deg;
+                                    }
+                                    assert(shot_heading_tolerance_deg >= 0.0);
+                                    if (std::abs(shot_heading_error_deg) - shot_heading_tolerance_deg <= DEGREES_TURNED_PER_TIMESTEP) {
+                                        locked_in = true;
+                                        double altered_turn_command;
+                                        if (std::abs(shot_heading_error_deg) <= DEGREES_TURNED_PER_TIMESTEP) {
+                                            altered_turn_command = shot_heading_error_deg*FPS;
+                                            assert(std::abs(altered_turn_command) <= SHIP_MAX_TURN_RATE);
+                                        } else {
+                                            altered_turn_command = SHIP_MAX_TURN_RATE*sign(shot_heading_error_deg);
+                                        }
+                                        turn_rate = altered_turn_command;
+                                        if (whole_move_sequence)
+                                            (*whole_move_sequence.value())[future_timesteps].turn_rate = altered_turn_command;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (!locked_in && !std::isinf(asteroid_least_shot_heading_error_deg) && !std::isnan(asteroid_least_shot_heading_tolerance_deg)) {
+                            double altered_turn_command = SHIP_MAX_TURN_RATE*sign(asteroid_least_shot_heading_error_deg);
+                            turn_rate = altered_turn_command;
+                            if (whole_move_sequence)
+                                (*whole_move_sequence.value())[future_timesteps].turn_rate = altered_turn_command;
+                        }
+                    }
+                }
+                else {
+                    // Prescribed fire (via input sequence)
+                    if (verify_maneuver_shots && fire.value()) {
+                        std::optional<Asteroid> actual_asteroid_hit;
+                        int64_t timesteps_until_bullet_hit_asteroid;
+                        bool ship_was_safe;
+                        std::tie(actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, ship_was_safe) = bullet_sim(
+                            std::nullopt, false, 0, true, future_timesteps, whole_move_sequence, INT_INF, std::nullopt
+                        );
+                        if (!actual_asteroid_hit.has_value()) {
+                            debug_print("Didn't hit anything; not firing.");
+                            fire_this_timestep = false;
+                        } else {
+                            debug_print("VERIFIED THE SHOT WORKS");
+                            fire_this_timestep = true;
+                            asteroids_shot += 1;
+                        }
+                    } else {
+                        fire_this_timestep = fire.value();
+                        if (fire.value()) asteroids_shot += 1;
+                    }
+                }
+            }
+            else {
+                fire_this_timestep = false;
+            }
+
+            // Create bullet if needed
+            if (fire_this_timestep) {
+                last_timestep_fired = initial_timestep + future_timesteps;
+                ship_state.is_respawning = false;
+                respawn_timer = 0.0;
+                if (ship_state.bullets_remaining != -1) --ship_state.bullets_remaining;
+                double rad_heading = ship_state.heading * DEG_TO_RAD;
+                double cos_head = cos(rad_heading), sin_head = sin(rad_heading);
+                double bullet_x = ship_state.x + SHIP_RADIUS * cos_head;
+                double bullet_y = ship_state.y + SHIP_RADIUS * sin_head;
+                if (0.0 <= bullet_x && bullet_x <= game_state.map_size_x && 0.0 <= bullet_y && bullet_y <= game_state.map_size_y) {
+                    Bullet new_bullet(
+                        bullet_x, bullet_y, BULLET_SPEED*cos_head, BULLET_SPEED*sin_head,
+                        ship_state.heading, BULLET_MASS, -BULLET_LENGTH*cos_head, -BULLET_LENGTH*sin_head
+                    );
+                    game_state.bullets.push_back(new_bullet);
+                }
+            }
+
+            // --- Drop mine logic
+            if (ship_state.mines_remaining != 0 && last_timestep_mined <= initial_timestep + future_timesteps - MINE_COOLDOWN_TS) {
+                if (!drop_mine.has_value()) {
+                    // Determine whether we want to drop a mine
+                    bool should_drop_a_mine = false;
+
+                    if (last_timestep_mined <= initial_timestep + future_timesteps - MINE_COOLDOWN_TS - MINE_DROP_COOLDOWN_FUDGE_TS &&
+                        !halt_shooting && future_timesteps % MINE_OPPORTUNITY_CHECK_INTERVAL_TS == 0)
+                        should_drop_a_mine = check_mine_opportunity(ship_state, game_state, other_ships);
+
+                    if (!std::isinf(game_state.time_limit)) {
+                        if (initial_timestep + future_timesteps + 90 > std::floor(FPS * game_state.time_limit)) should_drop_a_mine = false;
+                        if (!halt_shooting && initial_timestep + future_timesteps + 90 == std::floor(FPS * game_state.time_limit) &&
+                            count_asteroids_in_mine_blast_radius(game_state, ship_state.x, ship_state.y, lround(MINE_FUSE_TIME * FPS)) > 0) should_drop_a_mine = true;
+                    }
+                    drop_mine_this_timestep = should_drop_a_mine;
+                } else {
+                    drop_mine_this_timestep = drop_mine.value();
+                }
+
+                if (drop_mine_this_timestep) {
+                    sim_placed_a_mine = true;
+                    last_timestep_mined = initial_timestep + future_timesteps;
+                    explanation_messages.push_back(
+                        "This is a good chance to drop a mine to hit some asteroids and even the other ship. Bombs away!");
+                    ship_state.is_respawning = false;
+                    respawn_timer = 0.0;
+                    Mine new_mine(ship_state.x, ship_state.y, MINE_MASS, MINE_FUSE_TIME, MINE_FUSE_TIME);
+                    mine_positions_placed_history[initial_timestep + future_timesteps + 1] = mine_positions_placed;
+                    mine_positions_placed.insert(std::make_pair(ship_state.x, ship_state.y));
+                    game_state.mines.push_back(new_mine);
+                    --ship_state.mines_remaining;
+                    if (ENABLE_SANITY_CHECKS) assert(ship_state.mines_remaining >= 0);
+                }
+            }
+            else {
+                assert(!drop_mine.has_value() || (drop_mine == false));
+                drop_mine_this_timestep = false;
+            }
+
+            // Respawn timer update
+            if (respawn_timer <= 0) respawn_timer = 0.0;
+            else respawn_timer -= DELTA_TIME;
+            if (!respawn_timer) {
+                ship_state.is_respawning = false;
+                assert(respawn_timer == 0.0);
+            }
+            // Ship dynamics
+            double drag_amount = SHIP_DRAG * DELTA_TIME;
+            if (std::abs(ship_state.speed) < drag_amount) ship_state.speed = 0.0;
+            else ship_state.speed -= drag_amount * sign(ship_state.speed);
+
+            if (ENABLE_SANITY_CHECKS) { assert(-SHIP_MAX_THRUST <= thrust && thrust <= SHIP_MAX_THRUST); }
+            ship_state.speed += thrust * DELTA_TIME;
+            if (ENABLE_SANITY_CHECKS) {
+                assert(-SHIP_MAX_SPEED-EPS <= ship_state.speed && ship_state.speed <= SHIP_MAX_SPEED+EPS);
+                if (ship_state.speed > SHIP_MAX_SPEED) ship_state.speed = SHIP_MAX_SPEED;
+                else if (ship_state.speed < -SHIP_MAX_SPEED) ship_state.speed = -SHIP_MAX_SPEED;
+                assert(-SHIP_MAX_SPEED <= ship_state.speed && ship_state.speed <= SHIP_MAX_SPEED);
+                assert(-SHIP_MAX_TURN_RATE <= turn_rate && turn_rate <= SHIP_MAX_TURN_RATE);
+            }
+            ship_state.heading += turn_rate * DELTA_TIME;
+            ship_state.heading = fmod(ship_state.heading + 360.0, 360.0);
+            double rad_heading = ship_state.heading * DEG_TO_RAD;
+            ship_state.vx = cos(rad_heading) * ship_state.speed;
+            ship_state.vy = sin(rad_heading) * ship_state.speed;
+            ship_state.x = fmod(ship_state.x + ship_state.vx * DELTA_TIME + game_state.map_size_x, game_state.map_size_x);
+            ship_state.y = fmod(ship_state.y + ship_state.vy * DELTA_TIME + game_state.map_size_y, game_state.map_size_y);
+        }
+
+        // --- Bullet/Asteroid collisions ---
+        for (auto& b : game_state.bullets) {
+            if (b.alive) {
+                double b_tail_x = b.x + b.tail_delta_x;
+                double b_tail_y = b.y + b.tail_delta_y;
+                for (auto& a : game_state.asteroids) {
+                    if (a.alive && asteroid_bullet_collision(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius)) {
+                        b.alive = false;
+                        if (a.size != 1)
+                            for (const auto& sp : forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, game_state))
+                                game_state.asteroids.push_back(sp);
+                        a.alive = false;
+                        break;
+                    }
+                }
+            }
+        }
+        // Ship action record
+        if (!wait_out_mines)
+            ship_move_sequence.push_back(Action(
+                initial_timestep + future_timesteps,
+                thrust, turn_rate, fire_this_timestep, drop_mine_this_timestep
+            ));
+
+        // --- Mine/Asteroid and Mine/Ship collisions ---
+        std::vector<Asteroid> new_asteroids;
+        bool mine_got_destroyed = false;
+        for (auto& mine : game_state.mines) {
+            if (mine.alive && mine.remaining_time < EPS) {
+                mine.alive = false; mine_got_destroyed = true;
+                for (auto& asteroid : game_state.asteroids) {
+                    if (asteroid.alive) {
+                        double delta_x = asteroid.x - mine.x;
+                        double delta_y = asteroid.y - mine.y;
+                        double separation = asteroid.radius + MINE_BLAST_RADIUS;
+                        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                            if (asteroid.size != 1)
+                                for (const auto& sp : forecast_asteroid_mine_instantaneous_splits(asteroid, mine, game_state))
+                                    new_asteroids.push_back(sp);
+                            asteroid.alive = false;
+                        }
+                    }
+                }
+                if (!wait_out_mines) {
+                    if (!ship_state.is_respawning) {
+                        double delta_x = ship_state.x - mine.x;
+                        double delta_y = ship_state.y - mine.y;
+                        double separation = SHIP_RADIUS + MINE_BLAST_RADIUS;
+                        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                            return_value = false;
+                            ship_crashed = true;
+                            --ship_state.lives_remaining;
+                            ship_state.is_respawning = true;
+                            ship_state.speed = 0.0;
+                            ship_state.vx = 0.0; ship_state.vy = 0.0;
+                            respawn_timer = 3.0;
+                        }
+                    }
+                    else if (respawn_maneuver_pass_number == 1) {
+                        double delta_x = ship_state.x - mine.x;
+                        double delta_y = ship_state.y - mine.y;
+                        double separation = SHIP_RADIUS + MINE_BLAST_RADIUS;
+                        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                            last_timestep_colliding = initial_timestep + future_timesteps;
+                        }
+                    }
+                }
+            }
+        }
+        if (mine_got_destroyed && wait_out_mines) {
+            std::vector<Mine> new_mines;
+            for (const auto& m : game_state.mines)
+                if (m.alive) new_mines.push_back(m);
+            game_state.mines = new_mines;
+        }
+        if (!new_asteroids.empty())
+            for (const auto& a : new_asteroids)
+                game_state.asteroids.push_back(a);
+
+        if (!wait_out_mines) {
+            // --- Ship/Asteroid collisions ---
+            if (!ship_state.is_respawning) {
+                if (ENABLE_SANITY_CHECKS && respawn_maneuver_pass_number == 0)
+                    assert(!return_value.has_value());
+                for (auto& asteroid : game_state.asteroids) {
+                    if (asteroid.alive) {
+                        double delta_x = ship_state.x - asteroid.x;
+                        double delta_y = ship_state.y - asteroid.y;
+                        double separation = SHIP_RADIUS + asteroid.radius;
+                        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                            if (asteroid.size != 1)
+                                for (const auto& sp : forecast_asteroid_ship_splits(asteroid, 0, ship_state.vx, ship_state.vy, game_state))
+                                    game_state.asteroids.push_back(sp);
+                            asteroid.alive = false;
+                            return_value = false;
+                            ship_crashed = true;
+                            --ship_state.lives_remaining;
+                            ship_state.is_respawning = true;
+                            ship_state.speed = 0.0;
+                            ship_state.vx = 0.0; ship_state.vy = 0.0;
+                            respawn_timer = 3.0;
+                            break;
+                        }
+                    }
+                }
+            }
+            else if (respawn_maneuver_pass_number == 1) {
+                assert(halt_shooting);
+                for (const auto& asteroid : game_state.asteroids) {
+                    if (asteroid.alive) {
+                        double delta_x = ship_state.x - asteroid.x;
+                        double delta_y = ship_state.y - asteroid.y;
+                        double separation = SHIP_RADIUS + asteroid.radius;
+                        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                            last_timestep_colliding = initial_timestep + future_timesteps;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Timers and simulation frame increment/postprocessing
+        if (!wait_out_mines) {
+            future_timesteps += 1;
+            game_state.sim_frame += 1;
+        }
+        respawn_timer_history.push_back(respawn_timer);
+
+        // Final return
+        if (!return_value.has_value()) return true;
+        return return_value.value();
+    }
+
+    bool rotate_heading(double heading_difference_deg, bool shoot_on_first_timestep = false) {
+        double target_heading = std::fmod(ship_state.heading + heading_difference_deg + 360.0, 360.0);
+        double still_need_to_turn = heading_difference_deg;
+
+        while (std::abs(still_need_to_turn) > SHIP_MAX_TURN_RATE * DELTA_TIME + EPS) {
+            assert(-SHIP_MAX_TURN_RATE <= SHIP_MAX_TURN_RATE * sign(heading_difference_deg) &&
+                SHIP_MAX_TURN_RATE * sign(heading_difference_deg) <= SHIP_MAX_TURN_RATE);
+
+            if (!update(0.0, SHIP_MAX_TURN_RATE * sign(heading_difference_deg), shoot_on_first_timestep, false)) {
+                return false;
+            }
+            shoot_on_first_timestep = false;
+            still_need_to_turn -= SHIP_MAX_TURN_RATE * sign(heading_difference_deg) * DELTA_TIME;
+        }
+
+        assert(-SHIP_MAX_TURN_RATE <= still_need_to_turn * FPS && still_need_to_turn * FPS <= SHIP_MAX_TURN_RATE);
+
+        if (!update(0.0, still_need_to_turn * FPS, shoot_on_first_timestep, false)) {
+            return false;
+        }
+
+        if (ENABLE_SANITY_CHECKS) {
+            assert(std::abs(angle_difference_deg(target_heading, ship_state.heading)) <= GRAIN);
+        }
+        return true;
+    }
+
+    std::vector<Action> get_rotate_heading_move_sequence(double heading_difference_deg, bool shoot_on_first_timestep = false) const {
+        std::vector<Action> move_sequence;
+        if (std::abs(heading_difference_deg) < GRAIN) {
+            // We still need a null sequence here, so that we don't end up with a 0 frame maneuver!
+            move_sequence.push_back(Action{0.0, 0.0, shoot_on_first_timestep});
+            return move_sequence;
+        }
+        double still_need_to_turn = heading_difference_deg;
+        while (std::abs(still_need_to_turn) > SHIP_MAX_TURN_RATE * DELTA_TIME) {
+            assert(-SHIP_MAX_TURN_RATE <= SHIP_MAX_TURN_RATE * sign(heading_difference_deg)
+                && SHIP_MAX_TURN_RATE * sign(heading_difference_deg) <= SHIP_MAX_TURN_RATE);
+            move_sequence.push_back(Action{0.0, SHIP_MAX_TURN_RATE * sign(heading_difference_deg), shoot_on_first_timestep});
+            shoot_on_first_timestep = false;
+            still_need_to_turn -= SHIP_MAX_TURN_RATE * sign(heading_difference_deg) * DELTA_TIME;
+        }
+        if (std::abs(still_need_to_turn) > EPS) {
+            assert(-SHIP_MAX_TURN_RATE <= still_need_to_turn * FPS && still_need_to_turn * FPS <= SHIP_MAX_TURN_RATE);
+            move_sequence.push_back(Action{0.0, still_need_to_turn * FPS, shoot_on_first_timestep});
+        }
+        return move_sequence;
+    }
+
+    bool accelerate(double target_speed, double turn_rate = 0.0) {
+        if (sim_id == 4271) {
+            std::cout << "Accelerating to speed " << target_speed << " while our speed is already " << ship_state.speed << std::endl;
+        }
+        // Keep in mind speed can be negative
+        // Drag will always slow down the ship
+        while (std::abs(ship_state.speed - target_speed) > EPS) {
+            double drag = -SHIP_DRAG * sign(ship_state.speed);
+            double drag_amount = SHIP_DRAG * DELTA_TIME;
+            if (drag_amount > std::abs(ship_state.speed)) {
+                // The drag amount is reduced if it would make the ship cross 0 speed on its own
+                double adjust_drag_by = std::abs((drag_amount - std::abs(ship_state.speed)) * FPS);
+                drag -= adjust_drag_by * sign(drag);
+            }
+            double delta_speed_to_target = target_speed - ship_state.speed;
+            double thrust_amount = delta_speed_to_target * FPS - drag;
+            // Clamp thrust
+            thrust_amount = std::min(std::max(-SHIP_MAX_THRUST, thrust_amount), SHIP_MAX_THRUST);
+
+            if (!update(thrust_amount, turn_rate)) {
+                if (sim_id == 4271) {
+                    std::cout << "AHA!" << std::endl;
+                }
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool cruise(int64_t cruise_time, double cruise_turn_rate = 0.0) {
+        // Maintain current speed
+        for (int64_t i = 0; i < cruise_time; ++i) {
+            if (sim_id == 4271) {
+                std::cout << "In respawn sim that'll crash, future_timesteps=" << future_timesteps
+                        << " respawn_timer=" << respawn_timer
+                        << " ship_state=" << ship_state.str() << std::endl;
+            }
+            if (!update(sign(ship_state.speed) * SHIP_DRAG, cruise_turn_rate)) {
+                if (sim_id == 4271) {
+                    std::cout << "AHA CRUISE FAILED SOMEHOW?!!!! " << ship_state.str() << " ";
+                    // Assuming respawn_timer_history is a vector<double>
+                    std::cout << "[";
+                    for (size_t k = 0; k < respawn_timer_history.size(); ++k) {
+                        if (k > 0) std::cout << ", ";
+                        std::cout << respawn_timer_history[k];
+                    }
+                    std::cout << "]" << std::endl;
+                }
+                return false;
+            }
+        }
+        return true;
+    }
+
+    std::vector<Action> get_move_sequence() const {
+        if (ENABLE_SANITY_CHECKS) {
+            int64_t last_ts_shot = -10;
+            for (const Action& move : ship_move_sequence) {
+                if (move.fire) {
+                    assert(move.timestep > last_ts_shot);
+                    if (move.timestep - last_ts_shot < 3) {
+                        // Printing the whole sequence for debugging
+                        std::cout << "ship_move_sequence = [";
+                        for (const auto& act : ship_move_sequence) {
+                            std::cout << "(t=" << act.timestep << ",f=" << act.fire << "), ";
+                        }
+                        std::cout << "]\n";
+                        throw std::runtime_error("Uhh wth");
+                    }
+                    last_ts_shot = move.timestep;
+                }
+            }
+        }
+        return ship_move_sequence;
+    }
+
+    std::vector<Action> get_intended_move_sequence() const {
+        if (!intended_move_sequence.empty()) {
+            return intended_move_sequence;
+        } else {
+            return ship_move_sequence;
+        }
+    }
+
+    std::vector<SimState> get_state_sequence() {
+        if (!state_sequence.empty() &&
+            state_sequence.back().timestep != initial_timestep + future_timesteps) {
+            assert(state_sequence.back().timestep + 1 == initial_timestep + future_timesteps);
+            // Build deep copies
+            std::vector<Asteroid> forecasted_splits_copy;
+            for (const auto& a : forecasted_asteroid_splits)
+                forecasted_splits_copy.push_back(a.copy());
+
+            SimState new_state(
+                initial_timestep + future_timesteps,
+                ship_state.copy(),
+                get_game_state(),
+                asteroids_pending_death,
+                forecasted_splits_copy
+            );
+            state_sequence.push_back(new_state);
+            for (const auto& a : forecasted_asteroid_splits) {
+                assert(a.alive);
+            }
+        }
+        return state_sequence;
+    }
+
+    int64_t get_sequence_length() const {
+        // debug_print
+        if (ENABLE_SANITY_CHECKS) { // REMOVE_FOR_COMPETITION
+            size_t ship_moves = ship_move_sequence.size();
+            size_t states = state_sequence.size();
+            if (!(ship_moves + 1 == states || ship_moves == states)) {
+                std::cout << "len(ship_move_sequence): " << ship_moves << ", len(state_sequence): " << states << std::endl;
+            }
+            assert(ship_moves + 1 == states || ship_moves == states);
+        }
+        return static_cast<int64_t>(state_sequence.size());
+    }
+
+    int64_t get_future_timesteps() const {
+        return future_timesteps;
+    }
+
+    std::pair<double, double> get_position() const {
+        return std::make_pair(ship_state.x, ship_state.y);
+    }
+
+    int64_t get_last_timestep_fired() const {
+        return last_timestep_fired;
+    }
+
+    int64_t get_last_timestep_mined() const {
+        return last_timestep_mined;
+    }
+
+    std::pair<double, double> get_velocity() const {
+        return std::make_pair(ship_state.vx, ship_state.vy);
+    }
+
+    double get_heading() const {
+        return static_cast<double>(ship_state.heading);
+    }
+};
+
+
+
+
+
+
+
+
+
+
+
+
 class NeoController {
 private:
     int _ship_id = 0;
@@ -3166,6 +5728,8 @@ public:
         this->last_timestep_ship_is_respawning = ship_state.is_respawning;
         return std::make_tuple(thrust, turn_rate, fire, drop_mine);
     }
+
+
 };
 
 PYBIND11_MODULE(neo_controller, m) {
