@@ -5092,18 +5092,18 @@ public:
         }
 
         // Compose the best move sequence, enqueue it, and update planning state
-        auto best_move_sequence = best_action_sim.get_move_sequence();
+        std::vector<Action> best_move_sequence = best_action_sim.get_move_sequence();
         debug_print("Best sim ID: " + std::to_string(best_action_sim.get_sim_id()) + ", with index "
             + std::to_string(best_fitness_this_planning_period_index) + " and fitness " + std::to_string(best_action_fitness));
-        auto best_action_sim_state_sequence = best_action_sim.get_state_sequence();
+        std::vector<SimState> best_action_sim_state_sequence = best_action_sim.get_state_sequence();
         if (VALIDATE_ALL_SIMULATED_STATES && !PRUNE_SIM_STATE_SEQUENCE) { // REMOVE_FOR_COMPETITION
-            for (const auto& state : best_action_sim_state_sequence) {
+            for (const SimState& state : best_action_sim_state_sequence) {
                 simulated_gamestate_history[state.timestep] = state;
             }
         }
         if (PRINT_EXPLANATIONS) {
             auto explanations = best_action_sim.get_explanations();
-            for (const auto& exp : explanations)
+            for (const std::string& exp : explanations)
                 print_explanation(exp, current_timestep);
             if (random_double() < 0.1) {
                 print_explanation("I currently feel " + std::to_string(weighted_average(overall_fitness_record) * 100.0)
@@ -5145,6 +5145,7 @@ public:
         }
 
         // Update planning state for next tick
+        /*
         game_state_to_base_planning = BasePlanningGameState{
             best_action_sim_last_state.timestep,
             lives_remaining_that_we_did_respawn_maneuver_for.find(new_ship_state.lives_remaining) == lives_remaining_that_we_did_respawn_maneuver_for.end() && new_ship_state.is_respawning,
@@ -5157,7 +5158,7 @@ public:
             best_action_sim.get_last_timestep_mined(),
             best_action_sim.get_mine_positions_placed(),
             new_fire_next_timestep_flag
-        };
+        };*/
 
 
         // Histories
@@ -5189,7 +5190,7 @@ public:
         if (CONTINUOUS_LOOKAHEAD_PLANNING) {
             assert(best_move_sequence.front().timestep == game_state.sim_frame);
         }
-        for (const auto& move : best_move_sequence) {
+        for (const Action& move : best_move_sequence) {
             if (ENABLE_SANITY_CHECKS) {
                 assert(actioned_timesteps.count(move.timestep) == 0 && "DUPLICATE TIMESTEPS IN ENQUEUED MOVES");
                 actioned_timesteps.insert(move.timestep);
@@ -5226,9 +5227,20 @@ public:
         return true;
     }
 
-    void plan_maneuver_iteration(bool plan_stationary, const std::string& state_type, bool other_ships_exist)
+    void plan_action_continuous(bool other_ships_exist, bool base_state_is_exact, bool plan_stationary)
     {
+        // other_ships_exist: True means it's multiagent, False means single agent
+        // base_state_is_exact: Whether the base state is the current exact state or a future deterministic state, or a future predicted state which could be invalid due to the other ship
+        
+        // Simulate and look for a good move
+        // We have two options. Stay put and focus on targetting asteroids, or we can come up with an avoidance maneuver and target asteroids along the way if convenient
+        // We simulate both options, and take the one with the higher fitness score
+        // If we stay still, we can potentially keep shooting asteroids that are on collision course with us without having to move
+        // But if we're overwhelmed, it may be a lot better to move to a safer spot
+        // The third scenario is that even if we're safe where we are, we may be able to be on the offensive and seek out asteroids to lay mines, so that can also increase the fitness function of moving, making it better than staying still
+        // Our number one priority is to stay alive. Second priority is to shoot as much as possible. And if we can, lay mines without putting ourselves in danger.
         // --- Respawn maneuver branch ---
+        std::string state_type = base_state_is_exact ? "exact" : "predicted";
         if (game_state_to_base_planning->respawning) {
             double random_ship_heading_angle, ship_accel_turn_rate, ship_cruise_speed, ship_cruise_turn_rate;
             int ship_cruise_timesteps;
@@ -5636,11 +5648,13 @@ public:
                 }
 
                 if (action_queue.empty()) {
+                    // Only when we're at the end of our sequence, do we run the stationary targeting sim once. Basically we just keep doing stationary targeting unless we have a better maneuver found
                     plan_action_continuous(false, true, iterations_boost, true);
                     plan_action_continuous(false, true, iterations_boost, false);
                     bool success = decide_next_action_continuous(game_state, ship_state, true);
                     assert(success);
                 } else {
+                    // We're still in the middle of a maneuver sequence. Run some planning iterations, and switch over to the new sequence if it's better than our fitness
                     plan_action_continuous(false, true, iterations_boost, false);
                     bool success = decide_next_action_continuous(game_state, ship_state, false);
                     debug_print(success ? "Switched to a better maneuver" : "Didn't find better maneuvers");
@@ -5669,11 +5683,13 @@ public:
                     false
                 );
                 if (action_queue.empty()) {
+                    // Only when we're at the end of our sequence, do we run the stationary targeting sim once. Basically we just keep doing stationary targeting unless we have a better maneuver found
                     plan_action_continuous(false, true, iterations_boost, true);
                     plan_action_continuous(false, true, iterations_boost, false);
                     bool success = decide_next_action_continuous(game_state, ship_state, true);
                     assert(success);
                 } else {
+                    // We're still in the middle of a maneuver sequence. Run some planning iterations, and switch over to the new sequence if it's better than our fitness
                     plan_action_continuous(false, true, iterations_boost, false);
                     bool success = decide_next_action_continuous(game_state, ship_state, false);
                     debug_print(success ? "Switched to a better maneuver" : "Didn't find better maneuvers");
