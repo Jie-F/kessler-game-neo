@@ -17,17 +17,16 @@
 #include <deque>
 #include <utility> // for std::pair
 #include <iostream>
+#include <numbers>
 
 namespace py = pybind11;
 
 using i64 = int64_t;
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+constexpr double pi = std::numbers::pi;
 
-const double inf = std::numeric_limits<double>::infinity();
-//const double nan = std::numeric_limits<double>::quiet_NaN();
+constexpr double inf = std::numeric_limits<double>::infinity();
+constexpr double nan = std::numeric_limits<double>::quiet_NaN();
 
 // Build Info
 constexpr const char* BUILD_NUMBER = "2025-06-04 Neo - Jie Fan (jie.f@pm.me)";
@@ -38,8 +37,8 @@ constexpr bool PRINT_EXPLANATIONS = false;
 constexpr double EXPLANATION_MESSAGE_SILENCE_INTERVAL_S = 2.0;
 
 // Safety&Performance Flags
-inline bool STATE_CONSISTENCY_CHECK_AND_RECOVERY = true;
-inline bool CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS = true;
+constexpr bool STATE_CONSISTENCY_CHECK_AND_RECOVERY = true;
+constexpr bool CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS = true;
 constexpr bool ENABLE_SANITY_CHECKS = false;
 constexpr bool PRUNE_SIM_STATE_SEQUENCE = true;
 constexpr bool VALIDATE_SIMULATED_KEY_STATES = false;
@@ -56,7 +55,7 @@ constexpr double UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON = 8.0;
 constexpr double UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON = 2.3;
 
 // Asteroid priorities
-const std::vector<double> ASTEROID_SIZE_SHOT_PRIORITY = {std::numeric_limits<double>::quiet_NaN(), 1, 2, 3, 4};
+constexpr std::vector<double> ASTEROID_SIZE_SHOT_PRIORITY = {std::numeric_limits<double>::quiet_NaN(), 1, 2, 3, 4};
 
 // Optional weights for fitness function
 std::optional<std::tuple<double, double, double, double, double, double, double, double, double>> fitness_function_weights = std::nullopt;
@@ -70,21 +69,20 @@ constexpr i64 MINE_OTHER_SHIP_ASTEROID_COUNT_EQUIVALENT = 10;
 constexpr double TARGETING_AIMING_UNDERTURN_ALLOWANCE_DEG = 6.0;
 
 // Fitness Weights (default)
-const std::tuple<double,double,double,double,double,double,double,double,double> DEFAULT_FITNESS_WEIGHTS =
-    {0.0, 0.13359801675028146, 0.1488417344765523, 0.0, 0.06974293843076491, 0.20559835937182916, 0.12775194210275548, 0.14357775694291458, 0.17088925192490204};
+constexpr std::tuple<double, double, double, double, double, double, double, double, double> DEFAULT_FITNESS_WEIGHTS = {0.0, 0.13359801675028146, 0.1488417344765523, 0.0, 0.06974293843076491, 0.20559835937182916, 0.12775194210275548, 0.14357775694291458, 0.17088925192490204};
 
 // Angle cone/culling parameters
-const double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF = 45.0;
-const double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF_COSINE = std::cos(MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF * M_PI / 180.0);
+constexpr double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF = 45.0;
+constexpr double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF_COSINE = std::cos(MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF * pi / 180.0);
 
-const double MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF = 60.0;
-const double MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF_COSINE = std::cos(MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF * M_PI / 180.0);
+constexpr double MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF = 60.0;
+constexpr double MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF_COSINE = std::cos(MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF * pi / 180.0);
 
-const double MAX_CRUISE_TIMESTEPS = 30.0;
+constexpr double MAX_CRUISE_TIMESTEPS = 30.0;
 constexpr i64 MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD = 10;
 constexpr i64 OVERALL_FITNESS_ROLLING_AVERAGE_PERIOD = 5;
-const double AIMING_CONE_FITNESS_CONE_WIDTH_HALF = 18.0;
-const double AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE = std::cos(AIMING_CONE_FITNESS_CONE_WIDTH_HALF * M_PI / 180.0);
+constexpr double AIMING_CONE_FITNESS_CONE_WIDTH_HALF = 18.0;
+constexpr double AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE = std::cos(AIMING_CONE_FITNESS_CONE_WIDTH_HALF * pi / 180.0);
 
 constexpr i64 MANEUVER_SIM_DISALLOW_TARGETING_FOR_START_TIMESTEPS_AMOUNT = 10;
 constexpr double ASTEROID_AIM_BUFFER_PIXELS = 1.0;
@@ -98,7 +96,7 @@ constexpr double MINIMUM_DELTA_TIME_FRACTION_BUDGET = 0.55;
 constexpr bool ENABLE_PERFORMANCE_CONTROLLER = false;
 
 // Per-lives/per-fitness LUTs (represent as vector of vectors)
-const std::vector<std::vector<i64>> MIN_RESPAWN_PER_TIMESTEP_SEARCH_ITERATIONS_LUT = {
+constexpr std::vector<std::vector<i64>> MIN_RESPAWN_PER_TIMESTEP_SEARCH_ITERATIONS_LUT = {
     {80, 55, 14},
     {70, 40, 13},
     {60, 28, 12},
@@ -110,7 +108,7 @@ const std::vector<std::vector<i64>> MIN_RESPAWN_PER_TIMESTEP_SEARCH_ITERATIONS_L
     {13, 9, 6},
     {12, 8, 5}
 };
-const std::vector<std::vector<i64>> MIN_RESPAWN_PER_PERIOD_SEARCH_ITERATIONS_LUT = {
+constexpr std::vector<std::vector<i64>> MIN_RESPAWN_PER_PERIOD_SEARCH_ITERATIONS_LUT = {
     {1000, 900, 440},
     {950, 810, 430},
     {925, 780, 420},
@@ -122,7 +120,7 @@ const std::vector<std::vector<i64>> MIN_RESPAWN_PER_PERIOD_SEARCH_ITERATIONS_LUT
     {730, 620, 360},
     {700, 600, 350}
 };
-const std::vector<std::vector<i64>> MIN_MANEUVER_PER_TIMESTEP_SEARCH_ITERATIONS_LUT = {
+constexpr std::vector<std::vector<i64>> MIN_MANEUVER_PER_TIMESTEP_SEARCH_ITERATIONS_LUT = {
     {85, 65, 30},
     {65, 52, 25},
     {55, 40, 20},
@@ -134,7 +132,7 @@ const std::vector<std::vector<i64>> MIN_MANEUVER_PER_TIMESTEP_SEARCH_ITERATIONS_
     {7, 4, 3},
     {6, 3, 2}
 };
-const std::vector<std::vector<i64>> MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_LUT = {
+constexpr std::vector<std::vector<i64>> MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_LUT = {
     {300, 230, 105},
     {230, 185, 88},
     {193, 140, 70},
@@ -146,7 +144,7 @@ const std::vector<std::vector<i64>> MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_LU
     {14, 11, 10},
     {11, 11, 7}
 };
-const std::vector<std::vector<i64>> MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_IF_WILL_DIE_LUT = {
+constexpr std::vector<std::vector<i64>> MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_IF_WILL_DIE_LUT = {
     {860, 680, 340},
     {830, 660, 330},
     {800, 640, 320},
@@ -165,9 +163,9 @@ constexpr i64 PLOT_MANEUVER_MIN_TRACE_FOR_PLOT = 30;
 constexpr bool REALITY_STATE_DUMP = false;
 constexpr bool SIMULATION_STATE_DUMP = false;
 constexpr bool KEY_STATE_DUMP = false;
-inline bool GAMESTATE_PLOTTING = false;
+constexpr bool GAMESTATE_PLOTTING = false;
 constexpr bool BULLET_SIM_PLOTTING = false;
-inline bool NEXT_TARGET_PLOTTING = false;
+constexpr bool NEXT_TARGET_PLOTTING = false;
 constexpr bool MANEUVER_SIM_PLOTTING = false;
 constexpr double START_GAMESTATE_PLOTTING_AT_SECOND = 0.0;
 constexpr double NEW_TARGET_PLOT_PAUSE_TIME_S = 0.5;
@@ -184,58 +182,57 @@ constexpr double GRAIN = 0.001;
 constexpr double EPS = 1e-10;
 constexpr i64 INT_NEG_INF = -1000000;
 constexpr i64 INT_INF = 1000000;
-const double RAD_TO_DEG = 180.0/M_PI;
-const double DEG_TO_RAD = M_PI/180.0;
-const double TAU = 2.0*M_PI;
+constexpr double RAD_TO_DEG = 180.0/pi;
+constexpr double DEG_TO_RAD = pi/180.0;
+constexpr double TAU = 2.0*pi;
 
 // Kessler game constants
 constexpr i64 FIRE_COOLDOWN_TS = 3;
 constexpr i64 MINE_COOLDOWN_TS = 30;
-const double FPS = 30.0;
-const double DELTA_TIME = 1.0/FPS;
-const double SHIP_FIRE_TIME = 1.0/10.0; // seconds
-const double BULLET_SPEED = 800.0;
+constexpr double FPS = 30.0;
+constexpr double DELTA_TIME = 1.0/FPS;
+constexpr double SHIP_FIRE_TIME = 1.0/10.0; // seconds
+constexpr double BULLET_SPEED = 800.0;
 constexpr double BULLET_MASS = 1.0;
-const double BULLET_LENGTH = 12.0;
-const double BULLET_LENGTH_RECIPROCAL = 1.0/BULLET_LENGTH;
-const double TWICE_BULLET_LENGTH_RECIPROCAL = 2.0/BULLET_LENGTH;
-const double SHIP_MAX_TURN_RATE = 180.0;
-const double SHIP_MAX_TURN_RATE_RAD = DEG_TO_RAD*SHIP_MAX_TURN_RATE;
-const double SHIP_MAX_TURN_RATE_RAD_RECIPROCAL = 1.0/SHIP_MAX_TURN_RATE_RAD;
-const double SHIP_MAX_TURN_RATE_DEG_TS = DELTA_TIME*SHIP_MAX_TURN_RATE;
-const double SHIP_MAX_TURN_RATE_RAD_TS = DEG_TO_RAD*SHIP_MAX_TURN_RATE_DEG_TS;
-const double SHIP_MAX_THRUST = 480.0;
-const double SHIP_DRAG = 80.0;
-const double SHIP_MAX_SPEED = 240.0;
-const double SHIP_RADIUS = 20.0;
-const double SHIP_MASS = 300.0;
-const i64 TIMESTEPS_UNTIL_SHIP_ACHIEVES_MAX_SPEED =
-    static_cast<i64>(std::ceil(SHIP_MAX_SPEED/(SHIP_MAX_THRUST - SHIP_DRAG)*FPS));
-const double MINE_BLAST_RADIUS = 150.0;
-const double MINE_RADIUS = 12.0;
-const double MINE_BLAST_PRESSURE = 2000.0;
-const double MINE_FUSE_TIME = 3.0;
-const double MINE_MASS = 25.0;
+constexpr double BULLET_LENGTH = 12.0;
+constexpr double BULLET_LENGTH_RECIPROCAL = 1.0/BULLET_LENGTH;
+constexpr double TWICE_BULLET_LENGTH_RECIPROCAL = 2.0/BULLET_LENGTH;
+constexpr double SHIP_MAX_TURN_RATE = 180.0;
+constexpr double SHIP_MAX_TURN_RATE_RAD = DEG_TO_RAD*SHIP_MAX_TURN_RATE;
+constexpr double SHIP_MAX_TURN_RATE_RAD_RECIPROCAL = 1.0/SHIP_MAX_TURN_RATE_RAD;
+constexpr double SHIP_MAX_TURN_RATE_DEG_TS = DELTA_TIME*SHIP_MAX_TURN_RATE;
+constexpr double SHIP_MAX_TURN_RATE_RAD_TS = DEG_TO_RAD*SHIP_MAX_TURN_RATE_DEG_TS;
+constexpr double SHIP_MAX_THRUST = 480.0;
+constexpr double SHIP_DRAG = 80.0;
+constexpr double SHIP_MAX_SPEED = 240.0;
+constexpr double SHIP_RADIUS = 20.0;
+constexpr double SHIP_MASS = 300.0;
+constexpr i64 TIMESTEPS_UNTIL_SHIP_ACHIEVES_MAX_SPEED = static_cast<i64>(std::ceil(SHIP_MAX_SPEED/(SHIP_MAX_THRUST - SHIP_DRAG)*FPS));
+constexpr double MINE_BLAST_RADIUS = 150.0;
+constexpr double MINE_RADIUS = 12.0;
+constexpr double MINE_BLAST_PRESSURE = 2000.0;
+constexpr double MINE_FUSE_TIME = 3.0;
+constexpr double MINE_MASS = 25.0;
 
-const std::vector<double> ASTEROID_RADII_LOOKUP = {0, 8, 16, 24, 32};
-const std::vector<double> ASTEROID_AREA_LOOKUP = {
-    M_PI*ASTEROID_RADII_LOOKUP[0]*ASTEROID_RADII_LOOKUP[0],
-    M_PI*ASTEROID_RADII_LOOKUP[1]*ASTEROID_RADII_LOOKUP[1],
-    M_PI*ASTEROID_RADII_LOOKUP[2]*ASTEROID_RADII_LOOKUP[2],
-    M_PI*ASTEROID_RADII_LOOKUP[3]*ASTEROID_RADII_LOOKUP[3],
-    M_PI*ASTEROID_RADII_LOOKUP[4]*ASTEROID_RADII_LOOKUP[4]};
-const std::vector<double> ASTEROID_MASS_LOOKUP = {
-    0.25*M_PI*std::pow(8*0,2),
-    0.25*M_PI*std::pow(8*1,2),
-    0.25*M_PI*std::pow(8*2,2),
-    0.25*M_PI*std::pow(8*3,2),
-    0.25*M_PI*std::pow(8*4,2)
+constexpr std::vector<double> ASTEROID_RADII_LOOKUP = {0, 8, 16, 24, 32};
+constexpr std::vector<double> ASTEROID_AREA_LOOKUP = {
+    pi*ASTEROID_RADII_LOOKUP[0]*ASTEROID_RADII_LOOKUP[0],
+    pi*ASTEROID_RADII_LOOKUP[1]*ASTEROID_RADII_LOOKUP[1],
+    pi*ASTEROID_RADII_LOOKUP[2]*ASTEROID_RADII_LOOKUP[2],
+    pi*ASTEROID_RADII_LOOKUP[3]*ASTEROID_RADII_LOOKUP[3],
+    pi*ASTEROID_RADII_LOOKUP[4]*ASTEROID_RADII_LOOKUP[4]};
+constexpr std::vector<double> ASTEROID_MASS_LOOKUP = {
+    0.25*pi*std::pow(8*0,2),
+    0.25*pi*std::pow(8*1,2),
+    0.25*pi*std::pow(8*2,2),
+    0.25*pi*std::pow(8*3,2),
+    0.25*pi*std::pow(8*4,2)
 };
 constexpr double RESPAWN_INVINCIBILITY_TIME_S = 3.0;
-const std::vector<int> ASTEROID_COUNT_LOOKUP = {0, 1, 4, 13, 40};
-const double DEGREES_BETWEEN_SHOTS = double(FIRE_COOLDOWN_TS)*SHIP_MAX_TURN_RATE*DELTA_TIME;
-const double DEGREES_TURNED_PER_TIMESTEP = SHIP_MAX_TURN_RATE*DELTA_TIME;
-const double SHIP_RADIUS_PLUS_SIZE_4_ASTEROID_RADIUS = SHIP_RADIUS + ASTEROID_RADII_LOOKUP[4];
+constexpr std::vector<int> ASTEROID_COUNT_LOOKUP = {0, 1, 4, 13, 40};
+constexpr double DEGREES_BETWEEN_SHOTS = double(FIRE_COOLDOWN_TS)*SHIP_MAX_TURN_RATE*DELTA_TIME;
+constexpr double DEGREES_TURNED_PER_TIMESTEP = SHIP_MAX_TURN_RATE*DELTA_TIME;
+constexpr double SHIP_RADIUS_PLUS_SIZE_4_ASTEROID_RADIUS = SHIP_RADIUS + ASTEROID_RADII_LOOKUP[4];
 
 // FIS Settings
 constexpr i64 ASTEROIDS_HIT_VERY_GOOD = 65;
@@ -657,6 +654,15 @@ GameState create_game_state_from_dict(py::dict game_state_dict) {
 // Thread-safe random (can adjust as needed for your codebase)
 inline static thread_local std::mt19937 rng(std::random_device{}());
 inline static thread_local std::uniform_real_distribution<> std_uniform(0.0, 1.0);
+
+inline double pymod(double x, double y)
+{
+    return std::fmod(std::fmod(x, y) + y, y);
+    // Or, equivalently and more numerically stable:
+    // double result = std::fmod(x, y);
+    // if (result < 0) result += y;
+    // return result;
+}
 
 inline double random_double() {
     return std_uniform(rng);
@@ -1126,11 +1132,9 @@ inline std::vector<Ship> get_other_ships(const GameState& game_state, int64_t se
 
 // Angle difference (radians): wraps to [-pi, +pi]
 inline double angle_difference_rad(double angle1, double angle2) {
-    constexpr double pi = M_PI;
-    constexpr double tau = 2.0 * M_PI;
-    double diff = std::fmod(angle1 - angle2 + pi, tau);
+    double diff = std::fmod(angle1 - angle2 + pi, TAU);
     // fmod may return negative, wrap up by tau if so
-    if (diff < 0) diff += tau;
+    if (diff < 0) diff += TAU;
     return diff - pi;
 }
 
@@ -1616,6 +1620,65 @@ inline std::tuple<
     return std::make_tuple(false, nan, nan, nan, nan, nan, nan);
 }
 
+// === 5. Actual splitting logic
+inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_splits(
+    const Asteroid& a, int64_t timesteps_until_appearance, double vfx, double vfy, double v, double split_angle, const GameState& game_state)
+{
+    double theta = std::atan2(vfy, vfx) * RAD_TO_DEG; // DO NOT use an approximation!
+    int64_t new_size = a.size - 1;
+    double new_mass = ASTEROID_MASS_LOOKUP[new_size];
+    double new_radius = ASTEROID_RADII_LOOKUP[new_size];
+
+    double angle_left = (theta + split_angle) * DEG_TO_RAD;
+    double angle_center = theta * DEG_TO_RAD;
+    double angle_right = (theta - split_angle) * DEG_TO_RAD;
+
+    double cos_angle_left = std::cos(angle_left);
+    double sin_angle_left = std::sin(angle_left);
+    double cos_angle_center = std::cos(angle_center);
+    double sin_angle_center = std::sin(angle_center);
+    double cos_angle_right = std::cos(angle_right);
+    double sin_angle_right = std::sin(angle_right);
+
+    if (timesteps_until_appearance == 0) {
+        return std::make_tuple(
+            Asteroid(
+                a.x, a.y, v * cos_angle_left, v * sin_angle_left,
+                new_size, new_mass, new_radius, 0),
+            Asteroid(
+                a.x, a.y, v * cos_angle_center, v * sin_angle_center,
+                new_size, new_mass, new_radius, 0),
+            Asteroid(
+                a.x, a.y, v * cos_angle_right, v * sin_angle_right,
+                new_size, new_mass, new_radius, 0)
+        );
+    } else {
+        double dt = DELTA_TIME * static_cast<double>(timesteps_until_appearance);
+        // For fmod; ensure positive modulus results like Python’s %
+        auto wrap = [](double x, double mod) {
+            double r = std::fmod(x, mod);
+            return r < 0 ? r + mod : r;
+        };
+        return std::make_tuple(
+            Asteroid(
+                wrap(a.x + a.vx * dt - dt * cos_angle_left * v, game_state.map_size_x),
+                wrap(a.y + a.vy * dt - dt * sin_angle_left * v, game_state.map_size_y),
+                v * cos_angle_left, v * sin_angle_left,
+                new_size, new_mass, new_radius, timesteps_until_appearance),
+            Asteroid(
+                wrap(a.x + a.vx * dt - dt * cos_angle_center * v, game_state.map_size_x),
+                wrap(a.y + a.vy * dt - dt * sin_angle_center * v, game_state.map_size_y),
+                v * cos_angle_center, v * sin_angle_center,
+                new_size, new_mass, new_radius, timesteps_until_appearance),
+            Asteroid(
+                wrap(a.x + a.vx * dt - dt * cos_angle_right * v, game_state.map_size_x),
+                wrap(a.y + a.vy * dt - dt * sin_angle_right * v, game_state.map_size_y),
+                v * cos_angle_right, v * sin_angle_right,
+                new_size, new_mass, new_radius, timesteps_until_appearance)
+        );
+    }
+}
+
 // === 1. Heading-based bullet splits
 inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_bullet_splits_from_heading(
     const Asteroid& a,
@@ -1676,65 +1739,6 @@ inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_ship_splits(
     double vfy = (1.0 / (SHIP_MASS + asteroid.mass)) * (SHIP_MASS * ship_vy + asteroid.mass * asteroid.vy);
     double v = std::sqrt(vfx * vfx + vfy * vfy);
     return forecast_asteroid_splits(asteroid, timesteps_until_appearance, vfx, vfy, v, 15.0, game_state);
-}
-
-// === 5. Actual splitting logic
-inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_splits(
-    const Asteroid& a, int64_t timesteps_until_appearance, double vfx, double vfy, double v, double split_angle, const GameState& game_state)
-{
-    double theta = std::atan2(vfy, vfx) * RAD_TO_DEG; // DO NOT use an approximation!
-    int64_t new_size = a.size - 1;
-    double new_mass = ASTEROID_MASS_LOOKUP[new_size];
-    double new_radius = ASTEROID_RADII_LOOKUP[new_size];
-
-    double angle_left = (theta + split_angle) * DEG_TO_RAD;
-    double angle_center = theta * DEG_TO_RAD;
-    double angle_right = (theta - split_angle) * DEG_TO_RAD;
-
-    double cos_angle_left = std::cos(angle_left);
-    double sin_angle_left = std::sin(angle_left);
-    double cos_angle_center = std::cos(angle_center);
-    double sin_angle_center = std::sin(angle_center);
-    double cos_angle_right = std::cos(angle_right);
-    double sin_angle_right = std::sin(angle_right);
-
-    if (timesteps_until_appearance == 0) {
-        return std::make_tuple(
-            Asteroid(
-                a.x, a.y, v * cos_angle_left, v * sin_angle_left,
-                new_size, new_mass, new_radius, 0),
-            Asteroid(
-                a.x, a.y, v * cos_angle_center, v * sin_angle_center,
-                new_size, new_mass, new_radius, 0),
-            Asteroid(
-                a.x, a.y, v * cos_angle_right, v * sin_angle_right,
-                new_size, new_mass, new_radius, 0)
-        );
-    } else {
-        double dt = DELTA_TIME * static_cast<double>(timesteps_until_appearance);
-        // For fmod; ensure positive modulus results like Python’s %
-        auto wrap = [](double x, double mod) {
-            double r = std::fmod(x, mod);
-            return r < 0 ? r + mod : r;
-        };
-        return std::make_tuple(
-            Asteroid(
-                wrap(a.x + a.vx * dt - dt * cos_angle_left * v, game_state.map_size_x),
-                wrap(a.y + a.vy * dt - dt * sin_angle_left * v, game_state.map_size_y),
-                v * cos_angle_left, v * sin_angle_left,
-                new_size, new_mass, new_radius, timesteps_until_appearance),
-            Asteroid(
-                wrap(a.x + a.vx * dt - dt * cos_angle_center * v, game_state.map_size_x),
-                wrap(a.y + a.vy * dt - dt * sin_angle_center * v, game_state.map_size_y),
-                v * cos_angle_center, v * sin_angle_center,
-                new_size, new_mass, new_radius, timesteps_until_appearance),
-            Asteroid(
-                wrap(a.x + a.vx * dt - dt * cos_angle_right * v, game_state.map_size_x),
-                wrap(a.y + a.vy * dt - dt * sin_angle_right * v, game_state.map_size_y),
-                v * cos_angle_right, v * sin_angle_right,
-                new_size, new_mass, new_radius, timesteps_until_appearance)
-        );
-    }
 }
 
 // --- Maintain split asteroids' forecast ---
@@ -3517,13 +3521,12 @@ public:
             actual_asteroid_hit_at_present_time = time_travel_asteroid(actual_asteroid_hit.value(), -timesteps_until_bullet_hit_asteroid.value(), game_state);
             if (game_state_plotter.has_value() && GAMESTATE_PLOTTING && NEXT_TARGET_PLOTTING && (!START_GAMESTATE_PLOTTING_AT_SECOND.has_value() || START_GAMESTATE_PLOTTING_AT_SECOND.value()*FPS <= double(initial_timestep + future_timesteps))) {
                 actual_asteroid_hit_at_present_time = time_travel_asteroid(actual_asteroid_hit.value(), -timesteps_until_bullet_hit_asteroid.value() - 1, game_state);
-                game_state_plotter.value().update_plot(nullptr, nullptr, nullptr, nullptr,
-                    std::vector<Asteroid>{actual_asteroid_hit_at_present_time},
-                    nullptr, nullptr, nullptr, false, NEW_TARGET_PLOT_PAUSE_TIME_S, "FEASIBLE TARGETS");
+                game_state_plotter.value().update_plot(nullptr, nullptr, nullptr, nullptr,std::vector<Asteroid>{actual_asteroid_hit_at_present_time},nullptr, nullptr, nullptr, false, NEW_TARGET_PLOT_PAUSE_TIME_S, "FEASIBLE TARGETS");
             }
             if (actual_asteroid_hit_at_present_time.size != 1) {
-                for (const Asteroid& sp : forecast_asteroid_bullet_splits_from_heading(actual_asteroid_hit_at_present_time, timesteps_until_bullet_hit_asteroid.value(), ship_state_after_aiming.heading, game_state))
+                for (const Asteroid& sp : forecast_asteroid_bullet_splits_from_heading(actual_asteroid_hit_at_present_time, timesteps_until_bullet_hit_asteroid.value(), ship_state_after_aiming.heading, game_state)) {
                     forecasted_asteroid_splits.push_back(sp);
+                }
             }
             bool sim_complete_without_crash = apply_move_sequence(aiming_move_sequence);
             if (sim_complete_without_crash) {
@@ -3622,8 +3625,8 @@ public:
                         m.remaining_time -= DELTA_TIME;
                 for (auto& a : asteroids) {
                     if (a.alive) {
-                        a.x = mod(a.x + a.vx * DELTA_TIME, game_state.map_size_x);
-                        a.y = mod(a.y + a.vy * DELTA_TIME, game_state.map_size_y);
+                        a.x = pymod(a.x + a.vx * DELTA_TIME, game_state.map_size_x);
+                        a.y = pymod(a.y + a.vy * DELTA_TIME, game_state.map_size_y);
                     }
                 }
             }
