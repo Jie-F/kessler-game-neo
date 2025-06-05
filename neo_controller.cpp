@@ -58,7 +58,7 @@ constexpr double UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON = 2.3;
 constexpr std::vector<double> ASTEROID_SIZE_SHOT_PRIORITY = {std::numeric_limits<double>::quiet_NaN(), 1, 2, 3, 4};
 
 // Optional weights for fitness function
-std::optional<std::tuple<double, double, double, double, double, double, double, double, double>> fitness_function_weights = std::nullopt;
+std::optional<std::array<double, 9>> fitness_function_weights = std::nullopt;
 
 // Mine settings
 constexpr i64 MINE_DROP_COOLDOWN_FUDGE_TS = 61;
@@ -69,7 +69,7 @@ constexpr i64 MINE_OTHER_SHIP_ASTEROID_COUNT_EQUIVALENT = 10;
 constexpr double TARGETING_AIMING_UNDERTURN_ALLOWANCE_DEG = 6.0;
 
 // Fitness Weights (default)
-constexpr std::tuple<double, double, double, double, double, double, double, double, double> DEFAULT_FITNESS_WEIGHTS = {0.0, 0.13359801675028146, 0.1488417344765523, 0.0, 0.06974293843076491, 0.20559835937182916, 0.12775194210275548, 0.14357775694291458, 0.17088925192490204};
+constexpr std::array<double, 9> DEFAULT_FITNESS_WEIGHTS = {0.0, 0.13359801675028146, 0.1488417344765523, 0.0, 0.06974293843076491, 0.20559835937182916, 0.12775194210275548, 0.14357775694291458, 0.17088925192490204};
 
 // Angle cone/culling parameters
 constexpr double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF = 45.0;
@@ -96,66 +96,69 @@ constexpr double MINIMUM_DELTA_TIME_FRACTION_BUDGET = 0.55;
 constexpr bool ENABLE_PERFORMANCE_CONTROLLER = false;
 
 // Per-lives/per-fitness LUTs (represent as vector of vectors)
-constexpr std::vector<std::vector<i64>> MIN_RESPAWN_PER_TIMESTEP_SEARCH_ITERATIONS_LUT = {
-    {80, 55, 14},
-    {70, 40, 13},
-    {60, 28, 12},
-    {50, 26, 11},
-    {45, 14, 10},
-    {16, 12, 9},
-    {15, 11, 8},
-    {14, 10, 7},
-    {13, 9, 6},
-    {12, 8, 5}
-};
-constexpr std::vector<std::vector<i64>> MIN_RESPAWN_PER_PERIOD_SEARCH_ITERATIONS_LUT = {
-    {1000, 900, 440},
-    {950, 810, 430},
-    {925, 780, 420},
-    {900, 730, 410},
-    {850, 715, 400},
-    {815, 680, 390},
-    {790, 660, 380},
-    {760, 640, 370},
-    {730, 620, 360},
-    {700, 600, 350}
-};
-constexpr std::vector<std::vector<i64>> MIN_MANEUVER_PER_TIMESTEP_SEARCH_ITERATIONS_LUT = {
-    {85, 65, 30},
-    {65, 52, 25},
-    {55, 40, 20},
-    {45, 25, 15},
-    {25, 12, 9},
-    {20, 9, 6},
-    {14, 7, 5},
-    {8, 5, 4},
-    {7, 4, 3},
-    {6, 3, 2}
-};
-constexpr std::vector<std::vector<i64>> MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_LUT = {
-    {300, 230, 105},
-    {230, 185, 88},
-    {193, 140, 70},
-    {160, 88, 55},
-    {88, 42, 32},
-    {56, 28, 21},
-    {35, 25, 18},
-    {25, 18, 14},
-    {14, 11, 10},
-    {11, 11, 7}
-};
-constexpr std::vector<std::vector<i64>> MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_IF_WILL_DIE_LUT = {
-    {860, 680, 340},
-    {830, 660, 330},
-    {800, 640, 320},
-    {770, 620, 310},
-    {740, 600, 300},
-    {710, 580, 290},
-    {690, 560, 280},
-    {660, 540, 270},
-    {630, 520, 260},
-    {600, 500, 250}
-};
+constexpr std::array<std::array<i64, 3>, 10> MIN_RESPAWN_PER_TIMESTEP_SEARCH_ITERATIONS_LUT = {{
+    {{80, 55, 14}},
+    {{70, 40, 13}},
+    {{60, 28, 12}},
+    {{50, 26, 11}},
+    {{45, 14, 10}},
+    {{16, 12, 9}},
+    {{15, 11, 8}},
+    {{14, 10, 7}},
+    {{13, 9, 6}},
+    {{12, 8, 5}}
+}};
+
+constexpr std::array<std::array<i64, 3>, 10> MIN_RESPAWN_PER_PERIOD_SEARCH_ITERATIONS_LUT = {{
+    {{1000, 900, 440}},
+    {{950, 810, 430}},
+    {{925, 780, 420}},
+    {{900, 730, 410}},
+    {{850, 715, 400}},
+    {{815, 680, 390}},
+    {{790, 660, 380}},
+    {{760, 640, 370}},
+    {{730, 620, 360}},
+    {{700, 600, 350}}
+}};
+
+constexpr std::array<std::array<i64, 3>, 10> MIN_MANEUVER_PER_TIMESTEP_SEARCH_ITERATIONS_LUT = {{
+    {{85, 65, 30}},
+    {{65, 52, 25}},
+    {{55, 40, 20}},
+    {{45, 25, 15}},
+    {{25, 12, 9}},
+    {{20, 9, 6}},
+    {{14, 7, 5}},
+    {{8, 5, 4}},
+    {{7, 4, 3}},
+    {{6, 3, 2}}
+}};
+constexpr std::array<std::array<i64, 3>, 10> MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_LUT = {{
+    {{300, 230, 105}},
+    {{230, 185, 88}},
+    {{193, 140, 70}},
+    {{160, 88, 55}},
+    {{88, 42, 32}},
+    {{56, 28, 21}},
+    {{35, 25, 18}},
+    {{25, 18, 14}},
+    {{14, 11, 10}},
+    {{11, 11, 7}}
+}};
+constexpr std::array<std::array<i64, 3>, 10> MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_IF_WILL_DIE_LUT = {{
+    {{860, 680, 340}},
+    {{830, 660, 330}},
+    {{800, 640, 320}},
+    {{770, 620, 310}},
+    {{740, 600, 300}},
+    {{710, 580, 290}},
+    {{690, 560, 280}},
+    {{660, 540, 270}},
+    {{630, 520, 260}},
+    {{600, 500, 250}}
+}};
+
 
 // State dumping for debug
 constexpr bool PLOT_MANEUVER_TRACES = false;
@@ -967,6 +970,16 @@ double weighted_average(const std::vector<T>& numbers, const std::vector<T>* wei
         if (numbers.empty()) return 0.0;
         return std::accumulate(numbers.begin(), numbers.end(), 0.0) / numbers.size();
     }
+}
+
+template <typename... Args>
+std::vector<double> tuple_to_vector(const std::tuple<Args...>& tpl) {
+    std::vector<double> vec;
+    vec.reserve(sizeof...(Args));
+    std::apply([&vec](const Args&... args) {
+        (vec.push_back(args), ...);
+    }, tpl);
+    return vec;
 }
 
 // Weighted harmonic mean
@@ -3113,17 +3126,26 @@ public:
         }
 
         // Store the breakdown, and compute the overall fitness
-        std::tuple<double, double, double, double, double, double, double, double, double> fitness_breakdown_tuple(
-            asteroid_safe_time_fitness, mine_safe_time_fitness, asteroids_fitness, sequence_length_fitness,
-            other_ship_proximity_fitness, crash_fitness, asteroid_aiming_cone_fitness, placed_mine_fitness,
-            overall_safe_time_fitness);
-        fitness_breakdown = fitness_breakdown_tuple;
+        std::array<double, 9> fitness_breakdown_array = {
+            asteroid_safe_time_fitness,
+            mine_safe_time_fitness,
+            asteroids_fitness,
+            sequence_length_fitness,
+            other_ship_proximity_fitness,
+            crash_fitness,
+            asteroid_aiming_cone_fitness,
+            placed_mine_fitness,
+            overall_safe_time_fitness
+        };
+
+        std::vector<double> fitness_breakdown(fitness_breakdown_array.begin(), fitness_breakdown_array.end());
 
         // Pick weights
-        const std::vector<double>& fitness_weights = (fitness_function_weights != nullptr) ? 
-            (*fitness_function_weights) : DEFAULT_FITNESS_WEIGHTS;
+        std::vector<double> fitness_weights = fitness_function_weights.has_value()
+            ? std::vector<double>(fitness_function_weights->begin(), fitness_function_weights->end())
+            : std::vector<double>(DEFAULT_FITNESS_WEIGHTS.begin(), DEFAULT_FITNESS_WEIGHTS.end());
 
-        double overall_fitness = weighted_harmonic_mean(fitness_breakdown_tuple, fitness_weights, 1.0);
+        double overall_fitness = weighted_harmonic_mean(fitness_breakdown, fitness_weights, 1.0);
         assert((overall_fitness >= 0.0 && overall_fitness <= 1.0) || asteroids_fitness < 0.0);
 
         if (overall_fitness > 0.9) {
@@ -3189,7 +3211,7 @@ public:
                     (int64_t(initial_timestep) + int64_t(future_timesteps) + int64_t(aiming_move_sequence.size()) - int64_t(last_timestep_fired)));
             }
             for (int64_t i = 0; i < timesteps_until_can_fire; ++i)
-                aiming_move_sequence.push_back(Action{0.0, 0.0, false});
+                aiming_move_sequence.push_back(Action{0.0, 0.0, false, false, 0});
 
             int64_t asteroid_advance_timesteps = int64_t(aiming_move_sequence.size());
             if (ENABLE_SANITY_CHECKS) {
@@ -3197,7 +3219,7 @@ public:
             }
             if (asteroid_advance_timesteps < target_asteroid_turning_timesteps) {
                 for (int64_t i = 0; i < (target_asteroid_turning_timesteps - asteroid_advance_timesteps); ++i)
-                    aiming_move_sequence.push_back(Action{0.0, 0.0, false});
+                    aiming_move_sequence.push_back(Action{0.0, 0.0, false, false, 0});
             }
             Asteroid target_asteroid = time_travel_asteroid(target_asteroid_original, asteroid_advance_timesteps, game_state);
 
@@ -3206,10 +3228,19 @@ public:
 
             std::optional<Asteroid> actual_asteroid_hit;
             std::optional<int64_t> timesteps_until_bullet_hit_asteroid;
-            std::ignore = bullet_sim(ship_state_after_aiming, fire_first_timestep, aiming_move_sequence.size(), actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, nullptr);
-            return std::make_tuple(actual_asteroid_hit, aiming_move_sequence, target_asteroid,
-                target_asteroid_shooting_angle_error_deg, target_asteroid_interception_time_s,
-                target_asteroid_turning_timesteps, timesteps_until_bullet_hit_asteroid, ship_state_after_aiming);
+            bool ignored_bool;
+            auto [actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, ignored_bool] =
+                bullet_sim(ship_state_after_aiming, fire_first_timestep, aiming_move_sequence.size());
+            return std::make_tuple(
+                actual_asteroid_hit,
+                aiming_move_sequence,
+                target_asteroid,
+                target_asteroid_shooting_angle_error_deg,
+                target_asteroid_interception_time_s,
+                target_asteroid_turning_timesteps,
+                timesteps_until_bullet_hit_asteroid,
+                ship_state_after_aiming
+            );
         };
 
         // --- Target acquisition loop ---
@@ -3752,8 +3783,9 @@ public:
                             double separation = asteroid.radius + MINE_BLAST_RADIUS;
                             if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
                                 if (asteroid.size != 1) {
-                                    auto result = forecast_asteroid_mine_instantaneous_splits(asteroid, mine, game_state);
-                                    new_asteroids.insert(new_asteroids.end(), result.begin(), result.end());
+                                    std::apply([&](const auto&... sp) {
+                                        (new_asteroids.push_back(sp), ...);
+                                    }, forecast_asteroid_mine_instantaneous_splits(asteroid, mine, game_state));
                                 }
                                 asteroid.alive = false;
                             }
@@ -3776,15 +3808,16 @@ public:
                     ship_position_x = this->ship_state.x;
                     ship_position_y = this->ship_state.y;
                 }
-                for (auto& asteroid : asteroids) {
+                for (Asteroid& asteroid : asteroids) {
                     if (asteroid.alive) {
                         double delta_x = ship_position_x - asteroid.x;
                         double delta_y = ship_position_y - asteroid.y;
                         double separation = SHIP_RADIUS + asteroid.radius;
                         if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
                             if (asteroid.size != 1) {
-                                auto shipsplitres = forecast_asteroid_ship_splits(asteroid, 0, 0.0, 0.0, game_state);
-                                asteroids.insert(asteroids.end(), shipsplitres.begin(), shipsplitres.end());
+                                std::apply([&](const auto&... ast) {
+                                    (asteroids.push_back(ast), ...);
+                                }, forecast_asteroid_ship_splits(asteroid, 0, 0.0, 0.0, game_state));
                             }
                             asteroid.alive = false;
                             ship_not_collided_with_asteroid = false;
@@ -3990,7 +4023,7 @@ public:
         // ==========================
         //           SHIP
         // ==========================
-        bool fire_this_timestep = false
+        bool fire_this_timestep = false;
         bool drop_mine_this_timestep = false;
         if (!wait_out_mines) {
             forecasted_asteroid_splits = maintain_forecasted_asteroids(forecasted_asteroid_splits, game_state);
@@ -4399,16 +4432,18 @@ public:
         }
 
         // --- Bullet/Asteroid collisions ---
-        for (auto& b : game_state.bullets) {
+        for (Bullet& b : game_state.bullets) {
             if (b.alive) {
                 double b_tail_x = b.x + b.tail_delta_x;
                 double b_tail_y = b.y + b.tail_delta_y;
                 for (auto& a : game_state.asteroids) {
                     if (a.alive && asteroid_bullet_collision(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius)) {
                         b.alive = false;
-                        if (a.size != 1)
-                            for (const auto& sp : forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, game_state))
-                                game_state.asteroids.push_back(sp);
+                        if (a.size != 1) {
+                            std::apply([&](const auto&... sp) {
+                                (game_state.asteroids.push_back(sp), ...);
+                            }, forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, game_state));
+                        }
                         a.alive = false;
                         break;
                     }
@@ -4434,9 +4469,11 @@ public:
                         double delta_y = asteroid.y - mine.y;
                         double separation = asteroid.radius + MINE_BLAST_RADIUS;
                         if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
-                            if (asteroid.size != 1)
-                                for (const auto& sp : forecast_asteroid_mine_instantaneous_splits(asteroid, mine, game_state))
-                                    new_asteroids.push_back(sp);
+                            if (asteroid.size != 1) {
+                                std::apply([&](const auto&... sp) {
+                                    (new_asteroids.push_back(sp), ...);
+                                }, forecast_asteroid_mine_instantaneous_splits(asteroid, mine, game_state));
+                            }
                             asteroid.alive = false;
                         }
                     }
@@ -4488,9 +4525,11 @@ public:
                         double delta_y = ship_state.y - asteroid.y;
                         double separation = SHIP_RADIUS + asteroid.radius;
                         if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
-                            if (asteroid.size != 1)
-                                for (const auto& sp : forecast_asteroid_ship_splits(asteroid, 0, ship_state.vx, ship_state.vy, game_state))
-                                    game_state.asteroids.push_back(sp);
+                            if (asteroid.size != 1) {
+                                std::apply([&](const auto&... sp) {
+                                    (game_state.asteroids.push_back(sp), ...);
+                                }, forecast_asteroid_ship_splits(asteroid, 0, ship_state.vx, ship_state.vy, game_state));
+                            }
                             asteroid.alive = false;
                             return_value = false;
                             ship_crashed = true;
@@ -4563,20 +4602,20 @@ public:
         std::vector<Action> move_sequence;
         if (std::abs(heading_difference_deg) < GRAIN) {
             // We still need a null sequence here, so that we don't end up with a 0 frame maneuver!
-            move_sequence.push_back(Action{0.0, 0.0, shoot_on_first_timestep});
+            move_sequence.push_back(Action{0.0, 0.0, shoot_on_first_timestep, false, 0});
             return move_sequence;
         }
         double still_need_to_turn = heading_difference_deg;
         while (std::abs(still_need_to_turn) > SHIP_MAX_TURN_RATE * DELTA_TIME) {
             assert(-SHIP_MAX_TURN_RATE <= SHIP_MAX_TURN_RATE * sign(heading_difference_deg)
                 && SHIP_MAX_TURN_RATE * sign(heading_difference_deg) <= SHIP_MAX_TURN_RATE);
-            move_sequence.push_back(Action{0.0, SHIP_MAX_TURN_RATE * sign(heading_difference_deg), shoot_on_first_timestep});
+            move_sequence.push_back(Action{0.0, SHIP_MAX_TURN_RATE * sign(heading_difference_deg), shoot_on_first_timestep, false, 0});
             shoot_on_first_timestep = false;
             still_need_to_turn -= SHIP_MAX_TURN_RATE * sign(heading_difference_deg) * DELTA_TIME;
         }
         if (std::abs(still_need_to_turn) > EPS) {
             assert(-SHIP_MAX_TURN_RATE <= still_need_to_turn * FPS && still_need_to_turn * FPS <= SHIP_MAX_TURN_RATE);
-            move_sequence.push_back(Action{0.0, still_need_to_turn * FPS, shoot_on_first_timestep});
+            move_sequence.push_back(Action{0.0, still_need_to_turn * FPS, shoot_on_first_timestep, false, 0});
         }
         return move_sequence;
     }

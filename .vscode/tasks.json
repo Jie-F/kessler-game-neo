@@ -6,7 +6,7 @@
       "type": "shell",
       "command": "cl",
       "args": [
-        "/LD", "/Od", "/EHsc", "/std:c++17",
+        "/LD", "/Od", "/EHsc", "/std:c++20",
         "neo_controller.cpp",
         "/I", "C:\\Program Files\\Python312\\Include",
         "/I", "C:\\Users\\Jie Fan\\AppData\\Roaming\\Python\\Python312\\site-packages\\pybind11\\include",
