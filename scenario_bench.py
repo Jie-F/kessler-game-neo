@@ -20,12 +20,15 @@ from src.kesslergame.controller_gamepad import GamepadController
 from neo_controller import NeoController
 #from src.neo_controller_cont_working import NeoController 
 from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
+from benchmark_controller import BenchmarkController
 
-BENCHMARK_TIME_LIMIT = 120.0
-BENCHMARK_TIME_LIMIT = 3.0
+BENCHMARK_TIME_LIMIT = 300.0
+#BENCHMARK_TIME_LIMIT = 3.0
 
 global color_text
 color_text = True
+
+TRIALS = 100
 
 def color_print(text='', color='white', style='normal', same=False, previous=False) -> None:
     global color_text
@@ -67,6 +70,9 @@ def color_print(text='', color='white', style='normal', same=False, previous=Fal
 width, height = (1000, 800)
 
 GRAPHICS = False
+
+#controllers_used = [NeoController(), NeoControllerWCCI()]
+controllers_used = [BenchmarkController()]
 
 # Define Game Settings
 game_settings = {'perf_tracker': True,
@@ -278,9 +284,9 @@ color_print(f'\nUsing seed {randseed}', 'green')
 random.seed(randseed)
 
 benchmark_scenario = Scenario(name="Benchmark Scenario",
-                                num_asteroids=100,
+                                num_asteroids=200,
                                 ship_states=[
-                                    {'position': (width/2, height/2), 'angle': 0.0, 'lives': 10000, 'team': 1, 'mines_remaining': 10000},
+                                    {'position': (width/2.0, height/2.0), 'angle': 0.0, 'lives': 1000000, 'team': 1, 'mines_remaining': 1000000},
                                 ],
                                 map_size=(width, height),
                                 seed=0,
@@ -289,16 +295,18 @@ benchmark_scenario = Scenario(name="Benchmark Scenario",
 scenario_to_run = xfc_2021_portfolio[11]
 scenario_to_run = benchmark_scenario
 
-for i in range(1):
+run_times = []
+
+for i in range(TRIALS):
     print()
     print()
-    pre = time.perf_counter()
+    
     if scenario_to_run is not None:
         print(f"Evaluating scenario {scenario_to_run.name}")
-
-    controllers_used = [NeoController(), NeoControllerWCCI()]
+    pre_time = time.perf_counter()
     score, perf_data = game.run(scenario=scenario_to_run, controllers=controllers_used)
-
+    post_time = time.perf_counter()
+    run_times.append(post_time - pre_time)
     # Print out some general info about the result
     num_teams = len(score.teams)
     if score:
@@ -306,7 +314,7 @@ for i in range(1):
         if num_teams > 1:
             team2 = score.teams[1]
         asts_hit = [team.asteroids_hit for team in score.teams]
-        color_print('Scenario eval time: '+str(time.perf_counter()-pre), 'green')
+        color_print('Scenario eval time: '+str(run_times[-1]), 'green')
         color_print(score.stop_reason, 'green')
         color_print(f"Scenario in-game time: {score.sim_time:.02f} s", 'green')
         color_print('Asteroids hit: ' + str(asts_hit), 'green')
@@ -350,3 +358,7 @@ for i in range(1):
     print(f"Team 1, 2 accuracies: ({team_1_bullets_hit/(team_1_shots_fired + 0.000000000000001)}, {team_2_bullets_hit/(team_2_shots_fired + 0.000000000000001)})")
     print(f"Team 1, 2 shot efficiencies: ({team_1_shot_efficiency:.02%}, {team_2_shot_efficiency:.02%})")
     print(f"Team 1, 2 shot efficiencies inc. mines/ship hits: ({team_1_shot_efficiency_including_mines:.02%}, {team_2_shot_efficiency_including_mines:.02%})")
+
+print(f"Run times are: {run_times}")
+print(f"The average time over {TRIALS} trials is {sum(run_times)/len(run_times)} s")
+assert len(run_times) == TRIALS, f"Looks like not all trials completed!"

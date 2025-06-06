@@ -304,10 +304,6 @@ struct Asteroid {
     int64_t int_hash() const {
         return static_cast<int64_t>(1'000'000'000.0*float_hash());
     }
-    Asteroid copy() const {
-        if(!alive) throw std::runtime_error("Trying to copy unalive object");
-        return *this;
-    }
 };
 
 // Unwrap cache
@@ -350,7 +346,6 @@ struct Ship {
             + ", max_speed=" + std::to_string(max_speed) + ", drag=" + std::to_string(drag) + ")";
     }
     std::string repr() const { return str(); }
-    Ship copy() const { return *this; }
     bool operator==(const Ship& other) const {
         return is_respawning == other.is_respawning
             && x == other.x && y == other.y && vx == other.vx && vy == other.vy
@@ -380,10 +375,6 @@ struct Mine {
             + ", remaining_time=" + std::to_string(remaining_time) + ")";
     }
     std::string repr() const { return str(); }
-    Mine copy() const {
-        if (!alive) throw std::runtime_error("Trying to copy unalive object");
-        return *this;
-    }
     bool operator==(const Mine& other) const {
         return x == other.x && y == other.y && mass == other.mass &&
             fuse_time == other.fuse_time && remaining_time == other.remaining_time;
@@ -404,10 +395,6 @@ struct Bullet {
             + ", tail_delta=(" + std::to_string(tail_delta_x) + ", " + std::to_string(tail_delta_y) + "))";
     }
     std::string repr() const { return str(); }
-    Bullet copy() const {
-        if (!alive) throw std::runtime_error("Trying to copy unalive object");
-        return *this;
-    }
     bool operator==(const Bullet& other) const {
         return x == other.x && y == other.y && vx == other.vx && vy == other.vy &&
             heading == other.heading && mass == other.mass && tail_delta_x == other.tail_delta_x &&
@@ -472,15 +459,37 @@ struct GameState {
     std::string repr() const { return str(); }
     GameState copy() const {
         std::vector<Asteroid> alive_asteroids;
-        for(const auto& a : asteroids) if(a.alive) alive_asteroids.push_back(a.copy());
+        alive_asteroids.reserve(asteroids.size());
+        for (const auto& a : asteroids)
+            if (a.alive)
+                alive_asteroids.push_back(a);
+
         std::vector<Bullet> alive_bullets;
-        for(const auto& b : bullets) if(b.alive) alive_bullets.push_back(b.copy());
+        alive_bullets.reserve(bullets.size());
+        for (const auto& b : bullets)
+            if (b.alive)
+                alive_bullets.push_back(b);
+
         std::vector<Mine> alive_mines;
-        for(const auto& m : mines) if(m.alive) alive_mines.push_back(m.copy());
+        alive_mines.reserve(mines.size());
+        for (const auto& m : mines)
+            if (m.alive)
+                alive_mines.push_back(m);
+
         std::vector<Ship> ships_copy;
-        for(const auto& s : ships) ships_copy.push_back(s.copy());
-        return GameState(alive_asteroids, ships_copy, alive_bullets, alive_mines,
-            map_size_x, map_size_y, time, delta_time, sim_frame, time_limit);
+        ships_copy.reserve(ships.size());
+        for (const auto& s : ships)
+            ships_copy.push_back(s);
+
+        return GameState(
+            std::move(alive_asteroids),
+            std::move(ships_copy),
+            std::move(alive_bullets),
+            std::move(alive_mines),
+            map_size_x, map_size_y,
+            time, delta_time,
+            sim_frame, time_limit
+        );
     }
     bool operator==(const GameState& other) const {
         if (asteroids.size() != other.asteroids.size())
@@ -604,7 +613,7 @@ struct SimState {
     SimState copy() const {
         return SimState(
             timestep,
-            ship_state.copy(),
+            ship_state,
             game_state ? std::optional<GameState>{game_state->copy()} : std::nullopt,
             asteroids_pending_death, // Shallow copy; for full deep copy you can implement as needed
             forecasted_asteroid_splits ? std::optional<std::vector<Asteroid>>{std::vector<Asteroid>(forecasted_asteroid_splits->begin(), forecasted_asteroid_splits->end())} : std::nullopt
@@ -1430,7 +1439,7 @@ inline std::vector<Asteroid> unwrap_asteroid(
     }
     // Gotta calculate it. Not in the cache.
     std::vector<Asteroid> unwrapped_asteroids;
-    unwrapped_asteroids.push_back(asteroid.copy());
+    unwrapped_asteroids.push_back(asteroid);
     if (std::abs(asteroid.vx) < EPS && std::abs(asteroid.vy) < EPS) {
         // An asteroid that is stationary will never move across borders and wrap
         if (use_cache) unwrap_cache[ast_hash] = unwrapped_asteroids; // Cache this
@@ -2484,7 +2493,7 @@ void track_asteroid_we_shot_at(
     }
 
     // Create a copy of the asteroid so we don't mess up the original object
-    Asteroid asteroid = original_asteroid.copy();
+    Asteroid asteroid = original_asteroid;
 
     // Wrap asteroid position
     asteroid.x = pymod(asteroid.x, game_state.map_size_x);
@@ -2496,7 +2505,7 @@ void track_asteroid_we_shot_at(
         auto& list_for_timestep = asteroids_pending_death[timestep];
         if (list_for_timestep.empty()) {
             // New timestep entry
-            list_for_timestep.push_back(asteroid.copy());
+            list_for_timestep.push_back(asteroid);
         } else {
             if (ENABLE_SANITY_CHECKS) { // REMOVE_FOR_COMPETITION
                 if (is_asteroid_in_list(list_for_timestep, asteroid, game_state)) { // REMOVE_FOR_COMPETITION
@@ -2515,7 +2524,7 @@ void track_asteroid_we_shot_at(
                         " appeared in the list of pending death when it wasn't supposed to! I'm on future ts " +
                         std::to_string(future_timesteps) + " when tracking. This probably means we're reshooting at the same asteroid we already shot at!").c_str());
             }
-            list_for_timestep.push_back(asteroid.copy());
+            list_for_timestep.push_back(asteroid);
         }
 
         // Advance the asteroid to the next position, unless last iteration
@@ -2676,30 +2685,30 @@ public:
         }
 
         game_state = game_state_.copy();
-        ship_state = ship_state_.copy();
+        ship_state = ship_state_;
 
         // Deep copy game state asteroids/bullets/mines/ships
         game_state.asteroids.clear();
         for (const auto& a : game_state_.asteroids) {
-            game_state.asteroids.push_back(a.copy());
+            game_state.asteroids.push_back(a);
         }
         for (const auto& a : game_state.asteroids) {
             assert(a.alive);
         }
         game_state.ships.clear();
         for (const auto& s : game_state_.ships) {
-            game_state.ships.push_back(s.copy());
+            game_state.ships.push_back(s);
         }
         game_state.bullets.clear();
         for (const auto& b : game_state_.bullets) {
-            game_state.bullets.push_back(b.copy());
+            game_state.bullets.push_back(b);
         }
         for (const auto& b : game_state.bullets) {
             assert(b.alive);
         }
         game_state.mines.clear();
         for (const auto& m : game_state_.mines) {
-            game_state.mines.push_back(m.copy());
+            game_state.mines.push_back(m);
         }
         for (const auto& m : game_state.mines) {
             assert(m.alive);
@@ -2726,7 +2735,7 @@ public:
         // forecasted_asteroid_splits: deep copy
         forecasted_asteroid_splits.clear();
         for (const auto& a : local_forecasted_asteroid_splits) {
-            forecasted_asteroid_splits.push_back(a.copy());
+            forecasted_asteroid_splits.push_back(a);
         }
         for (const auto& a : forecasted_asteroid_splits) {
             assert(a.alive);
@@ -2821,7 +2830,7 @@ public:
     }
 
     Ship get_ship_state() const {
-        return ship_state.copy();
+        return ship_state;
     }
 
     GameState get_game_state() const {
@@ -3283,11 +3292,11 @@ public:
         if (!game_state.mines.empty()) {
             backed_up_game_state_before_post_mutation = game_state.copy();
             backed_up_game_state_before_post_mutation->asteroids.clear();
-            for (const auto& a : game_state.asteroids) if (a.alive) backed_up_game_state_before_post_mutation->asteroids.push_back(a.copy());
+            for (const auto& a : game_state.asteroids) if (a.alive) backed_up_game_state_before_post_mutation->asteroids.push_back(a);
             backed_up_game_state_before_post_mutation->mines.clear();
-            for (const auto& m : game_state.mines) if (m.alive) backed_up_game_state_before_post_mutation->mines.push_back(m.copy());
+            for (const auto& m : game_state.mines) if (m.alive) backed_up_game_state_before_post_mutation->mines.push_back(m);
             backed_up_game_state_before_post_mutation->bullets.clear();
-            for (const auto& b : game_state.bullets) if (b.alive) backed_up_game_state_before_post_mutation->bullets.push_back(b.copy());
+            for (const auto& b : game_state.bullets) if (b.alive) backed_up_game_state_before_post_mutation->bullets.push_back(b);
 
             while (!game_state.mines.empty()) {
                 additional_timesteps_to_blow_up_mines += 1;
@@ -3602,7 +3611,7 @@ public:
                         }
                         target_asteroids_list.emplace_back(
                             Target{
-                                asteroid.copy(), feasible, shooting_angle_error_deg, aiming_timesteps_required,
+                                asteroid, feasible, shooting_angle_error_deg, aiming_timesteps_required,
                                 interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception,
                                 imminent_collision_time_s, asteroid_will_get_hit_by_my_mine, asteroid_will_get_hit_by_their_mine
                             });
@@ -3866,17 +3875,17 @@ public:
         std::vector<Asteroid> asteroids;
         if (asteroids_to_check.has_value()) {
             for (const auto& a : asteroids_to_check.value())
-                if (a.alive) asteroids.push_back(a.copy());
+                if (a.alive) asteroids.push_back(a);
         } else {
             for (const auto& a : game_state.asteroids)
-                if (a.alive) asteroids.push_back(a.copy());
+                if (a.alive) asteroids.push_back(a);
         }
         std::vector<Mine> mines;
         for (const auto& m : game_state.mines)
-            if (m.alive) mines.push_back(m.copy());
+            if (m.alive) mines.push_back(m);
         std::vector<Bullet> bullets;
         for (const auto& b : game_state.bullets)
-            if (b.alive) bullets.push_back(b.copy());
+            if (b.alive) bullets.push_back(b);
 
         Ship initial_ship_state = get_ship_state();
         if (ship_state.has_value() && ENABLE_SANITY_CHECKS) {
@@ -4192,7 +4201,7 @@ public:
         // Track state sequence and forecasted split history
         if (!wait_out_mines) {
             std::vector<Asteroid> forecasted_splits_copy;
-            for (const auto& a : forecasted_asteroid_splits) forecasted_splits_copy.push_back(a.copy());
+            for (const auto& a : forecasted_asteroid_splits) forecasted_splits_copy.push_back(a);
             forecasted_asteroid_splits_history.push_back(forecasted_splits_copy);
             if (ENABLE_SANITY_CHECKS) {
                 for (const auto& a : forecasted_asteroid_splits_history.back()) { assert(a.alive); }
@@ -4200,13 +4209,13 @@ public:
             if (PRUNE_SIM_STATE_SEQUENCE && future_timesteps != 0) {
                 state_sequence.push_back(SimState(
                     initial_timestep + future_timesteps,
-                    ship_state.copy()
+                    ship_state
                     // lightweight mode: skip game_state, asteroids_pending_death, etc.
                 ));
             } else {
                 state_sequence.push_back(SimState(
                     initial_timestep + future_timesteps,
-                    ship_state.copy(),
+                    ship_state,
                     get_game_state(),
                     asteroids_pending_death, // shallow copy is fine here
                     forecasted_splits_copy
@@ -4989,11 +4998,11 @@ public:
             // Build deep copies
             std::vector<Asteroid> forecasted_splits_copy;
             for (const auto& a : forecasted_asteroid_splits)
-                forecasted_splits_copy.push_back(a.copy());
+                forecasted_splits_copy.push_back(a);
 
             SimState new_state(
                 initial_timestep + future_timesteps,
-                ship_state.copy(),
+                ship_state,
                 get_game_state(),
                 asteroids_pending_death,
                 forecasted_splits_copy
@@ -5219,7 +5228,7 @@ public:
         assert(best_fitness_this_planning_period_index != INT_NEG_INF); // REMOVE_FOR_COMPETITION
 
         debug_print("\nDeciding next action! We're picking out of " + std::to_string(sims_this_planning_period.size()) + " total sims");
-
+        std::cout << "Deciding next action! We're picking out of " << std::to_string(sims_this_planning_period.size()) << " total sims on ts" << std::to_string(this->current_timestep) << std::endl;
         // Assume a helper function to pretty-print fitnesses if desired.
 
         // (Optional plotting omitted, see Python for matplotlib calls.)
