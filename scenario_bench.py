@@ -22,7 +22,7 @@ from neo_controller import NeoController
 from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
 
 BENCHMARK_TIME_LIMIT = 120.0
-#BENCHMARK_TIME_LIMIT = 30.0
+BENCHMARK_TIME_LIMIT = 3.0
 
 global color_text
 color_text = True
@@ -66,12 +66,12 @@ def color_print(text='', color='white', style='normal', same=False, previous=Fal
 
 width, height = (1000, 800)
 
-GRAPHICS = True
+GRAPHICS = False
 
 # Define Game Settings
 game_settings = {'perf_tracker': True,
                  'graphics_type': GraphicsType.NoGraphics if not GRAPHICS else GraphicsType.Tkinter,#UnrealEngine,Tkinter,NoGraphics
-                 'realtime_multiplier': 1.0,
+                 'realtime_multiplier': 0.0,
                  'graphics_obj': None,
                  'frequency': 30.0,
                  'UI_settings': 'all'}

@@ -5589,7 +5589,7 @@ public:
                 // TODO: There's a hardcoded false in the arguments to the following sim. Investigate!!!
                 // assert not game_state_to_base_planning['fire_next_timestep_flag']
                 assert(!planning_state.fire_next_timestep_flag); // REMOVE_FOR_COMPETITION
-                std::cout << "Making a matrix in respawn starting on ts " << planning_state.timestep << std::endl;
+                //std::cout << "Making a matrix in respawn starting on ts " << planning_state.timestep << std::endl;
                 Matrix maneuver_sim(
                     planning_state.game_state,
                     planning_state.ship_state,
@@ -5669,7 +5669,7 @@ public:
 
             if (plan_stationary && planning_state.ship_state.bullets_remaining != 0 && ship_is_stationary) {
                 //this->performance_controller_start_iteration();
-                std::cout << "Making a stationary targ matrix starting on ts " << planning_state.timestep << std::endl;
+                //std::cout << "Making a stationary targ matrix starting on ts " << planning_state.timestep << std::endl;
                 Matrix stationary_targetting_sim(
                     planning_state.game_state,
                     planning_state.ship_state,

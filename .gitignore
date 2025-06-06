@@ -170,3 +170,6 @@ src/kesslergame/graphics/images/
 *.ilk
 
 *.exp
+
+# VS 2022
+.vs/
