@@ -20,6 +20,26 @@
         "isDefault": true
       },
       "problemMatcher": []
+    },
+    {
+      "label": "Build neo_controller.pyd (MSVC Release)",
+      "type": "shell",
+      "command": "cl",
+      "args": [
+        "/LD", "/O2", "/EHsc", "/std:c++20",
+        "neo_controller.cpp",
+        "/I", "C:\\Program Files\\Python312\\Include",
+        "/I", "C:\\Users\\Jie Fan\\AppData\\Roaming\\Python\\Python312\\site-packages\\pybind11\\include",
+        "/link",
+        "/OUT:neo_controller.pyd",
+        "/LIBPATH:C:\\Program Files\\Python312\\libs",
+        "python312.lib"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "problemMatcher": []
     }
   ]
 }

@@ -540,18 +540,20 @@ struct Action {
 
     Action() = default;
 
-    // Full constructor you already have
     Action(double thrust, double turn_rate, bool fire, bool drop_mine, int64_t timestep)
-        : thrust(thrust), turn_rate(turn_rate), fire(fire), drop_mine(drop_mine), timestep(timestep) {}
+        : thrust(thrust), turn_rate(turn_rate), fire(fire), drop_mine(drop_mine), timestep(timestep) {
+        validate();
+    }
 
-    // New: 3-argument constructor (thrust, turn_rate, fire), use defaults for drop_mine, timestep
     Action(double thrust, double turn_rate, bool fire)
-        : thrust(thrust), turn_rate(turn_rate), fire(fire), drop_mine(false), timestep(0) {}
+        : thrust(thrust), turn_rate(turn_rate), fire(fire), drop_mine(false), timestep(0) {
+        validate();
+    }
 
-    // Optional: add other useful constructors if you want
-    // e.g. 2-argument constructor (thrust, turn_rate) with defaults for others
     Action(double thrust, double turn_rate)
-        : thrust(thrust), turn_rate(turn_rate), fire(false), drop_mine(false), timestep(0) {}
+        : thrust(thrust), turn_rate(turn_rate), fire(false), drop_mine(false), timestep(0) {
+        validate();
+    }
 
     std::string str() const {
         return "Action(thrust=" + std::to_string(thrust)
@@ -561,8 +563,20 @@ struct Action {
             + ", timestep=" + std::to_string(timestep) + ")";
     }
 
-    std::string repr() const { return str(); }
-    Action copy() const { return *this; }
+    std::string repr() const {
+        return str();
+    }
+
+    Action copy() const {
+        return *this;
+    }
+
+private:
+    void validate() const {
+        assert(thrust >= -SHIP_MAX_THRUST && thrust <= SHIP_MAX_THRUST && "Thrust out of bounds");
+        assert(turn_rate >= -SHIP_MAX_TURN_RATE && turn_rate <= SHIP_MAX_TURN_RATE && "Turn rate out of bounds");
+        assert(timestep >= 0 && "Timestep is negative");
+    }
 };
 
 
@@ -702,7 +716,7 @@ struct BasePlanningGameState {
 
 // Thread-safe random (can adjust as needed for your codebase)
 //inline static thread_local std::mt19937 rng(std::random_device{}());
-inline static thread_local std::mt19937 rng(0);
+inline static thread_local std::mt19937 rng(1);
 inline static thread_local std::uniform_real_distribution<> std_uniform(0.0, 1.0);
 
 inline double pymod(double x, double y)
@@ -1247,7 +1261,7 @@ get_ship_maneuver_move_sequence(double ship_heading_angle, double ship_cruise_sp
     double ship_speed = ship_starting_speed;
 
     // --- update helper ---
-    void update = [&](double thrust, double turn_rate) {
+    auto update = [&](double thrust, double turn_rate) {
         // Apply drag, stop at zero if needed
         double drag_amount = SHIP_DRAG * DELTA_TIME;
         if (drag_amount > std::abs(ship_speed)) {
@@ -1269,7 +1283,7 @@ get_ship_maneuver_move_sequence(double ship_heading_angle, double ship_cruise_sp
     };
 
     // --- rotate_heading helper ---
-    void rotate_heading = [&](double heading_difference_deg) {
+    auto rotate_heading = [&](double heading_difference_deg) {
         if (std::abs(heading_difference_deg) < GRAIN)
             return;
         double still_need_to_turn = heading_difference_deg;
@@ -1286,7 +1300,7 @@ get_ship_maneuver_move_sequence(double ship_heading_angle, double ship_cruise_sp
     };
 
     // --- accelerate helper ---
-    void accelerate = [&](double target_speed, double turn_rate) {
+    auto accelerate = [&](double target_speed, double turn_rate) {
         while (std::abs(target_speed - ship_speed) > EPS) {
             double drag = -SHIP_DRAG * sign(ship_speed);
             double drag_amount = SHIP_DRAG * DELTA_TIME;
@@ -1302,7 +1316,7 @@ get_ship_maneuver_move_sequence(double ship_heading_angle, double ship_cruise_sp
     };
 
     // --- cruise helper ---
-    void cruise = [&](int64_t cruise_timesteps, double cruise_turn_rate) {
+    auto cruise = [&](int64_t cruise_timesteps, double cruise_turn_rate) {
         for (int64_t i=0; i < cruise_timesteps; ++i) {
             update(sign(ship_speed)*SHIP_DRAG, cruise_turn_rate);
         }
@@ -4719,10 +4733,7 @@ public:
         }
         // Ship action record
         if (!wait_out_mines)
-            ship_move_sequence.push_back(Action(
-                initial_timestep + future_timesteps,
-                thrust, turn_rate, fire_this_timestep, drop_mine_this_timestep
-            ));
+            ship_move_sequence.push_back(Action(thrust, turn_rate, fire_this_timestep, drop_mine_this_timestep, initial_timestep + future_timesteps));
 
         // --- Mine/Asteroid and Mine/Ship collisions ---
         std::vector<Asteroid> new_asteroids;
@@ -5228,8 +5239,7 @@ public:
             double first_pass_fitness = sims_this_planning_period.at(best_fitness_this_planning_period_index).fitness;
             bool first_pass_sim_fire_next_timestep_flag = first_pass_sim.get_fire_next_timestep_flag();
 
-            // Construct second-pass simulation. The Matrix constructor signatures and methods would be 
-            // as per your implementation -- adjust as needed.
+            // Construct second-pass simulation
             best_action_sim = Matrix(
                 game_state,
                 ship_state,
@@ -5255,7 +5265,7 @@ public:
             best_action_fitness_breakdown = best_action_sim.get_fitness_breakdown();
             best_action_maneuver_tuple = sims_this_planning_period.at(best_fitness_this_planning_period_index).maneuver_tuple;
 
-            // If second pass was worse for some reason, revert to first pass.
+            // If second pass was significantly worse for some reason, revert to first pass.
             if (first_pass_fitness > best_action_fitness + 0.015) {
                 best_action_sim = sims_this_planning_period.at(best_fitness_this_planning_period_index).sim;
                 best_action_fitness = first_pass_fitness;
@@ -5280,13 +5290,13 @@ public:
                 actioned_timesteps.clear(); // REMOVE_FOR_COMPETITION
                 fire_next_timestep_schedule.clear();
             } else {
-                sims_this_planning_period.clear();
-                best_fitness_this_planning_period = -inf;
-                best_fitness_this_planning_period_index = INT_NEG_INF;
-                second_best_fitness_this_planning_period = -inf;
-                second_best_fitness_this_planning_period_index = INT_NEG_INF;
-                stationary_targetting_sim_index = INT_NEG_INF;
-                base_gamestate_analysis.reset();
+                this->sims_this_planning_period.clear();
+                this->best_fitness_this_planning_period = -inf;
+                this->best_fitness_this_planning_period_index = INT_NEG_INF;
+                this->second_best_fitness_this_planning_period = -inf;
+                this->second_best_fitness_this_planning_period_index = INT_NEG_INF;
+                this->stationary_targetting_sim_index = INT_NEG_INF;
+                this->base_gamestate_analysis.reset();
                 unwrap_cache.clear();
                 return false;
             }
@@ -5416,7 +5426,7 @@ public:
         forecasted_asteroid_splits_schedule = best_action_sim.get_forecasted_asteroid_splits_history();
         mine_positions_placed_schedule = best_action_sim.get_mine_positions_placed_history();
         int64_t last_timestep_fired = best_action_sim.get_last_timestep_fired();
-        std::cout << last_timestep_fired << std::endl;
+        //std::cout << last_timestep_fired << std::endl;
         if (new_fire_next_timestep_flag) {
             fire_next_timestep_schedule.insert(best_move_sequence.back().timestep + 1);
             debug_print("Just added " + std::to_string(best_move_sequence.back().timestep + 1) + " to fire_next_timestep_schedule.");
@@ -5437,7 +5447,15 @@ public:
 
         assert(action_queue.empty());
         if (CONTINUOUS_LOOKAHEAD_PLANNING) {
-            assert(best_move_sequence.front().timestep == game_state.sim_frame);
+            if (best_move_sequence.front().timestep != game_state.sim_frame) {
+                std::cerr << "Assertion failed: best_move_sequence.front().timestep == game_state.sim_frame\n";
+                std::cerr << "best_move_sequence.front().timestep = " << best_move_sequence.front().timestep << "\n";
+                std::cerr << "game_state.sim_frame = " << game_state.sim_frame << "\n";
+                for (const auto& m : best_move_sequence) {
+                    std::cerr << m << std::endl;
+                }
+                assert(false);
+            }
         }
         for (const Action& move : best_move_sequence) {
             if (ENABLE_SANITY_CHECKS) {
@@ -5468,13 +5486,13 @@ public:
         current_sequence_fitness = best_action_fitness;
 
         // Reset planning bookkeeping
-        sims_this_planning_period.clear();
-        best_fitness_this_planning_period = -inf;
-        best_fitness_this_planning_period_index = INT_NEG_INF;
-        second_best_fitness_this_planning_period = -inf;
-        second_best_fitness_this_planning_period_index = INT_NEG_INF;
-        stationary_targetting_sim_index = INT_NEG_INF;
-        base_gamestate_analysis.reset();
+        this->sims_this_planning_period.clear();
+        this->best_fitness_this_planning_period = -inf;
+        this->best_fitness_this_planning_period_index = INT_NEG_INF;
+        this->second_best_fitness_this_planning_period = -inf;
+        this->second_best_fitness_this_planning_period_index = INT_NEG_INF;
+        this->stationary_targetting_sim_index = INT_NEG_INF;
+        this->base_gamestate_analysis.reset();
 
         unwrap_cache.clear();
         return true;
@@ -5571,7 +5589,7 @@ public:
                 // TODO: There's a hardcoded false in the arguments to the following sim. Investigate!!!
                 // assert not game_state_to_base_planning['fire_next_timestep_flag']
                 assert(!planning_state.fire_next_timestep_flag); // REMOVE_FOR_COMPETITION
-
+                std::cout << "Making a matrix in respawn starting on ts " << planning_state.timestep << std::endl;
                 Matrix maneuver_sim(
                     planning_state.game_state,
                     planning_state.ship_state,
@@ -5651,7 +5669,7 @@ public:
 
             if (plan_stationary && planning_state.ship_state.bullets_remaining != 0 && ship_is_stationary) {
                 //this->performance_controller_start_iteration();
-
+                std::cout << "Making a stationary targ matrix starting on ts " << planning_state.timestep << std::endl;
                 Matrix stationary_targetting_sim(
                     planning_state.game_state,
                     planning_state.ship_state,
@@ -5810,7 +5828,7 @@ public:
                     random_ship_heading_angle, ship_cruise_speed, ship_accel_turn_rate,
                     ship_cruise_timesteps, ship_cruise_turn_rate, planning_state.ship_state.speed
                 );
-
+                //std::cout << "Making a matrix starting on ts " << planning_state.timestep << std::endl;
                 Matrix maneuver_sim(
                     planning_state.game_state,
                     planning_state.ship_state,
@@ -5879,7 +5897,7 @@ public:
 
         ++this->current_timestep;
         bool recovering_from_crash = false;
-
+        //std::cout << "Calling actions on timestep " << this->current_timestep << std::endl;
         Ship ship_state = create_ship_from_dict(ship_state_dict);
         GameState game_state = create_game_state_from_dict(game_state_dict);
 
