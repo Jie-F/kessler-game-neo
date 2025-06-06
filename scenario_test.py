@@ -18,7 +18,7 @@ from src.kesslergame import Scenario, KesslerGame, GraphicsType
 from src.kesslergame.controller_gamepad import GamepadController
 from examples.test_controller import TestController
 from neo_controller import NeoController
-from test_controller import TestController as CPPController
+#from test_controller import TestController as CPPController
 
 parser = argparse.ArgumentParser(description='Run Kessler Game with optional CLI flags.')
 parser.add_argument('-invisible', action='store_true', help='Use NoGraphics for the game visualization.')

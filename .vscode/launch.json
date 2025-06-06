@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Debug script with C++ extension",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "C:\\Program Files\\Python312\\python.exe",
+      "args": ["${workspaceFolder}/scenario_test.py"],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "preLaunchTask": "Build neo_controller.pyd (MSVC)",
+      "logging": {
+        "engineLogging": true
+      },
+      "exceptionBreakpoints": {
+        "cppExceptions": true
+      }
+    }
+  ]
+}
