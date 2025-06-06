@@ -1,24 +1,102 @@
-// neo_controller.cpp
+// _____   __           
+// ___  | / /__________ 
+// __   |/ /_  _ \  __ \
+// _  /|  / /  __/ /_/ /
+// /_/ |_/  \___/\____/ 
 
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
-#include <pybind11/complex.h>
-#include <pybind11/functional.h>
-#include <cmath>
-#include <vector>
-#include <tuple>
-#include <map>
-#include <string>
-#include <limits>
+// Kessler controller
+// Jie Fan (jie.f@pm.me)
+
+// TODO: Show stats at the end
+// DONE: Verify that frontrun protection's working (shot stealing protection), because it still feels like it's not totally working!
+// DONE: Make it so during a respawn maneuver, if I'm no longer gonna hit anything, I can begin to shoot!
+// TODO: Use the tolerance in the shot for the target selection so I don't just aim for the center all the time
+// KINDA DONE: Add error handling as a catch-all
+// TODO: Analyze each base state, and store analysis results. Like the heuristic FIS, except use more random search. Density affects the movement speed and cruise timesteps. Tune stuff much better.
+// TODO: Add error checks, so that if Neo thinks its done but there's still asteroids left, it'll realize that and re-ingest the updated state and finish off its job. This should NEVER happen though, but in the 1/1000000 chance a new bug happens during the competition, this would catch it.
+// DONE: Tune gc to maybe speed stuff up
+// DONE: Match collision checks with Kessler, including <= vs <
+// DONE: Add iteration boosting algorithm to do more iterations in critical moments
+// DONE: If we're chilling, have mines and lives, go and do some damage!
+// WON'T FIX: Optimally, the target selection will consider mines blowing up asteroids, and having forecasted asteroids there. But this is a super specific condition and it's very complex to implement correctly, so maybe let's just skip this lol. It's probably not worth spending 50 hours implementing something that will rarely come up, and there's plenty of other asteroids I can shoot, and not just ones coming off of a mine blast.
+// WON'T FIX: Remove unnecessary class attributes such as ship thrust range, asteroid mass, to speed up class creation and copying
+// DONE: Differentiate between my mine and adversary's mine, to know whether to shoot size 1's or not
+// TODO: Mine FIS currently doesn't take into account if an asteroid will ALREADY get hit by a mine, and drop another one anyway
+// DONE: When validating a sim is good when there's another ship, make sure the shots hit! The other ship might have shot those asteroids already.
+// DONE: Try a wider random search for maneuvers
+// KINDA DONE: GA to beat the random maneuver search, and narrow down the search space. In crowded areas, don't cruise for as long, for example!
+// TRIED, not faster: Add per-timestep velocities to asteroids and bullets and stuff to save a multiplication
+// TODO: Revisit the aimbot and improve things more
+// NO NEED TO FIX because Kessler changed it so that it'll wait out the bullet, as long as there's still time remaining: If we're gonna die and we're the only ship left, don't shoot a bullet if it doesn't land before I die, because it'll count as a miss
+// EHH WON'T MAKE THIS CHANGE BECAUSE IT'S KINDA BAD AND COMPLEX: Use math to see how the bullet lines up with the asteroid, to predict whether it's gonna hit before doing the bullet sim
+// DONE: get_next_extrapolated_asteroid_collision_time doesn't handle the edges properly! Collisions can't go through the edge but this can predict that. Do the checks!
+// DONE: Improve targeting during maneuvers to maintain random maneuvers. Each sim should target differently, not just always aim at the closest asteroid! But we need to maintain cohesion in the targets from one iteration to the next, so Neo doesn't switch targets randomly within the sim.
+// PROBABLY NOT WORTH ADDING: Add corner camping hardcoded logic
+// PROBABLY NOT WORTH ADDING: Add closing ring freezing
+
+
+// POST-XFC 2024 IMPROVEMENT IDEAS:
+// DONE (I THINK): Make it so that if the other ship steals my shots, I realize sooner and avoid shooting.
+// Currently Neo takes up to 2 planning periods to realize, but if I do a second pass check of the planned actions and make sure all shots land,
+// then I can reduce this down to up to 1 planning period of delay. Neo can be only 96% accurate with a good adversary, so hopefully this can be bumped to like 98%.
+// This is VERY important in scenarios with a bullet limit since a missed shot is a missed point
+
+// DONE: Inspired by OMUlettes taking out the Fuzzifiers by crashing into them, I want to implement the following hard-coded logic:
+// if the other ship is on its last life and I have at least 2 lives:
+//     SLAM INTO THE OTHER SHIP AND TAKE THEIR LAST LIFE
+
+// TODO: Improve avoiding shooting size-1 asteroids within the blast radius of my own mine.
+// Currently it avoids targeting these, but it could still accidentally hit such asteroids in the way of their intended target
+
+// DONE: Improve handling low bullet limits. Currently Neo just kinda chills and doesn't use its remaining mines effectively.
+// Improving its behavior here can help get a bit more score. Even sacrificing lives to get a couple more hits could be a good strat.
+
+// TODO: Ration mines better. Some scenarios Neo uses them too sparingly, and sometimes it dumps them all at the start, and doesn't have any left to use.
+// The former is a larger issue. If there's only 3 seconds left, Neo can dump a mine and it could get a few more hits at basically zero cost
+// The rationing issue might be solvable by scaling up and down what is considered a good number of asteroids within a blast radius. Currently these are hardcoded.
+
+// DONE: Print out a build date at the start of each run, so during the competition I can make sure the correct version of my controller is run.
+
+// WON'T FIX: Remove my training wheels artificial limitation of placing mines 3 seconds apart.
+// I can place them as low as 1 second apart, so removing this might add more strategic options.
+// But this will also give Neo more opportunities to bomb itself, so this is hard to implement well.
+
+// TODO: Consider the time limit better, and adapt my strategy based on that. Currently it's not considered (other than avoiding shooting a bullet that won't land before the time's up).
+// For example, if there's a very long time limit and I have unlimited bullets, then I probably want to focus on killing the other ship first.
+// Otherwise if there's a short time limit, I shouldn't waste time killing the other ship because even if I do,
+// I don't have time to hit all the asteroids myself, and it's better to just shoot asteroids and trust that I'm gaining score quicker than the other team is able to gain score,
+// or at least I'm no worse than the other team
+
+// DONE: Investigate why Neo just stayed on top of the mine near the end of the scenario for the closing double rings scenario
+
+// DONE: Don't place a mine if it can't explode before the time runs out
+
+// DONE: Dump mines if it can hit stuff right before the end of the scenario
+
+// DONE: Check for time running out condition to handle stuff like that better
+
+// Standard Library
 #include <algorithm>
-#include <optional>
-#include <random>
 #include <chrono>
+#include <cmath>
 #include <deque>
-#include <utility> // for std::pair
 #include <iostream>
+#include <limits>
+#include <map>
 #include <numbers>
 #include <numeric>
+#include <optional>
+#include <random>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
+
+// Third-party Library: pybind11
+#include <pybind11/complex.h>
+#include <pybind11/functional.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 namespace py = pybind11;
 
@@ -237,14 +315,14 @@ constexpr std::array<double, 5> ASTEROID_MASS_LOOKUP = {
     0.25 * pi * (8 * 4) * (8 * 4)
 };
 constexpr double RESPAWN_INVINCIBILITY_TIME_S = 3.0;
-constexpr std::array<int, 5> ASTEROID_COUNT_LOOKUP = {0, 1, 4, 13, 40};
+constexpr std::array<int64_t, 5> ASTEROID_COUNT_LOOKUP = {0, 1, 4, 13, 40};
 constexpr double DEGREES_BETWEEN_SHOTS = double(FIRE_COOLDOWN_TS)*SHIP_MAX_TURN_RATE*DELTA_TIME;
 constexpr double DEGREES_TURNED_PER_TIMESTEP = SHIP_MAX_TURN_RATE*DELTA_TIME;
 constexpr double SHIP_RADIUS_PLUS_SIZE_4_ASTEROID_RADIUS = SHIP_RADIUS + ASTEROID_RADII_LOOKUP[4];
 
 // FIS Settings
 constexpr int64_t ASTEROIDS_HIT_VERY_GOOD = 65;
-constexpr int ASTEROIDS_HIT_OKAY_CENTER = 23;
+constexpr int64_t ASTEROIDS_HIT_OKAY_CENTER = 23;
 
 // Dirty globals - reset these if sim re-initialized
 std::unordered_map<std::string, int64_t> explanation_messages_with_timestamps;
@@ -289,20 +367,20 @@ struct Asteroid {
     }
     std::string repr() const { return str(); }
     bool operator==(const Asteroid& other) const {
-        return x == other.x && y == other.y && vx == other.vx && vy == other.vy &&
-               size == other.size && mass == other.mass && radius == other.radius &&
-               timesteps_until_appearance == other.timesteps_until_appearance;
+        //return x == other.x && y == other.y && vx == other.vx && vy == other.vy && size == other.size && mass == other.mass && radius == other.radius && timesteps_until_appearance == other.timesteps_until_appearance;
+        // Simplified equality, should hold
+        return x == other.x && y == other.y && vx == other.vx && vy == other.vy && size == other.size && timesteps_until_appearance == other.timesteps_until_appearance;
     }
     std::size_t hash() const {
         double combined = x + 0.4266548291679171*y + 0.8164926348982552*vx + 0.8397584399461026*vy;
-        double scaled = combined * 1'000'000'000.0;
+        double scaled = combined * 1000000000.0;
         return static_cast<std::size_t>(scaled) + static_cast<std::size_t>(size);
     }
     double float_hash() const {
         return x + 0.4266548291679171*y + 0.8164926348982552*vx + 0.8397584399461026*vy;
     }
     int64_t int_hash() const {
-        return static_cast<int64_t>(1'000'000'000.0*float_hash());
+        return static_cast<int64_t>(1000000000.0*float_hash());
     }
 };
 
@@ -376,8 +454,8 @@ struct Mine {
     }
     std::string repr() const { return str(); }
     bool operator==(const Mine& other) const {
-        return x == other.x && y == other.y && mass == other.mass &&
-            fuse_time == other.fuse_time && remaining_time == other.remaining_time;
+        //return x == other.x && y == other.y && mass == other.mass && fuse_time == other.fuse_time && remaining_time == other.remaining_time;
+        return x == other.x && y == other.y && remaining_time == other.remaining_time;
     }
 };
 
@@ -396,9 +474,8 @@ struct Bullet {
     }
     std::string repr() const { return str(); }
     bool operator==(const Bullet& other) const {
-        return x == other.x && y == other.y && vx == other.vx && vy == other.vy &&
-            heading == other.heading && mass == other.mass && tail_delta_x == other.tail_delta_x &&
-            tail_delta_y == other.tail_delta_y;
+        //return x == other.x && y == other.y && vx == other.vx && vy == other.vy && heading == other.heading && mass == other.mass && tail_delta_x == other.tail_delta_x && tail_delta_y == other.tail_delta_y;
+        return x == other.x && y == other.y && vx == other.vx && vy == other.vy;
     }
 };
 
@@ -537,7 +614,7 @@ struct Target {
             + ", asteroid_will_get_hit_by_their_mine=" + std::to_string(asteroid_will_get_hit_by_their_mine) + ")";
     }
     std::string repr() const { return str(); }
-    Target copy() const { return *this; }
+    //Target copy() const { return *this; }
 };
 
 struct Action {
@@ -576,9 +653,9 @@ struct Action {
         return str();
     }
 
-    Action copy() const {
-        return *this;
-    }
+    //Action copy() const {
+    //    return *this;
+    //}
 
 private:
     void validate() const {
@@ -757,16 +834,16 @@ inline double sign(double x) {
     return (x >= 0.0) ? 1.0 : -1.0;
 }
 
-inline int64_t fast_randint(int64_t a, int64_t b) {
+inline int64_t randint(int64_t a, int64_t b) {
     // Generate uniform random in [a, b]
     return a + static_cast<int64_t>(std::floor((b - a + 1) * random_double()));
 }
 
-inline double fast_uniform(double a, double b) {
+inline double rand_uniform(double a, double b) {
     return a + (b - a) * random_double();
 }
 
-inline double fast_triangular(double low, double high, double mode) {
+inline double rand_triangular(double low, double high, double mode) {
     double u = random_double();
     double c = (mode - low) / (high - low);
     if (u < c) {
@@ -793,25 +870,29 @@ inline bool is_close_to_zero(double x) {
 // ------ Fast and SuperFast Trig Functions ------
 
 inline double super_fast_acos(double x) {
-    return (-0.69813170079773212*x*x - 0.87266462599716477)*x + 1.5707963267948966;
+    return (-0.69813170079773212 * x * x - 0.87266462599716477) * x + 1.5707963267948966;
 }
+
 inline double fast_acos(double x) {
     double negate = static_cast<double>(x < 0);
     x = std::abs(x);
-    double ret = (((-0.0187293*x + 0.0742610)*x - 0.2121144)*x + 1.5707288)*std::sqrt(1.0 - x);
-    return negate*pi + ret - 2.0*negate*ret;
+    double ret = (((-0.0187293 * x + 0.0742610) * x - 0.2121144) * x + 1.5707288) * std::sqrt(1.0 - x);
+    return negate * pi + ret - 2.0 * negate * ret;
 }
+
 
 inline double super_fast_asin(double x) {
     double x_square = x * x;
     return x * (0.9678828 + x_square * (0.8698691 - x_square * (2.166373 - x_square * 1.848968)));
 }
+
+
 inline double fast_asin(double x) {
     double negate = static_cast<double>(x < 0);
     x = std::abs(x);
-    double ret = (((-0.0187293*x + 0.0742610)*x - 0.2121144)*x + 1.5707288);
-    ret = 0.5*pi - std::sqrt(1.0 - x)*ret;
-    return ret - 2.0*negate*ret;
+    double ret = (((-0.0187293 * x + 0.0742610) * x - 0.2121144) * x + 1.5707288);
+    ret = 0.5 * pi - std::sqrt(1.0 - x) * ret;
+    return ret - 2.0 * negate*ret;
 }
 
 inline double super_fast_atan2(double y, double x) {
@@ -820,7 +901,7 @@ inline double super_fast_atan2(double y, double x) {
         if (y == 0.0) {
             return 0.0; // atan2(0, 0) is undefined, return 0 for simplicity
         } else {
-            return (y > 0.0 ? 0.5*pi : -0.5*pi);
+            return (y > 0.0 ? 0.5 * pi : -0.5 * pi);
         }
     }
     if (y == 0.0) {
@@ -843,9 +924,9 @@ inline double super_fast_atan2(double y, double x) {
     double atan_result = atan_input * (0.995354 - x_sq * (0.288679 - 0.079331 * x_sq));
     if (swap) {
         if (atan_input >= 0.0) {
-            atan_result = 0.5*pi - atan_result;
+            atan_result = 0.5 * pi - atan_result;
         } else {
-            atan_result = -0.5*pi - atan_result;
+            atan_result = -0.5 * pi - atan_result;
         }
     }
     if (x < 0.0) {
@@ -864,7 +945,7 @@ inline double fast_atan2(double y, double x) {
         if (y == 0.0) {
             return 0.0; // atan2(0, 0) is undefined, return 0
         } else {
-            return (y > 0.0 ? 0.5*pi : -0.5*pi);
+            return (y > 0.0 ? 0.5 * pi : -0.5 * pi);
         }
     }
     if (y == 0.0) {
@@ -887,9 +968,9 @@ inline double fast_atan2(double y, double x) {
     double atan_result = atan_input * (0.99997726 - x_sq * (0.33262347 - x_sq * (0.19354346 - x_sq * (0.11643287 - x_sq * (0.05265332 - x_sq * 0.01172120)))));
     if (swap) {
         if (atan_input >= 0.0) {
-            atan_result = 0.5*pi - atan_result;
+            atan_result = 0.5 * pi - atan_result;
         } else {
-            atan_result = -0.5*pi - atan_result;
+            atan_result = -0.5 * pi - atan_result;
         }
     }
     if (x < 0.0) {
@@ -926,36 +1007,36 @@ inline bool heading_diff_within_threshold(double a_vec_theta_rad, double b_vec_x
 
 inline int64_t get_min_respawn_per_timestep_search_iterations(int64_t lives, double average_fitness) {
     assert(0.0 <= average_fitness && average_fitness < 1.0);
-    int lives_lookup_index = static_cast<int>(std::min<int64_t>(3, lives));
-    int fitness_lookup_index = static_cast<int>(std::floor(average_fitness * 10.0));
+    size_t lives_lookup_index = static_cast<size_t>(std::min<int64_t>(3, lives));
+    size_t fitness_lookup_index = static_cast<size_t>(std::floor(average_fitness * 10.0));
     return MIN_RESPAWN_PER_TIMESTEP_SEARCH_ITERATIONS_LUT.at(fitness_lookup_index).at(lives_lookup_index - 1);
 }
 
 inline int64_t get_min_respawn_per_period_search_iterations(int64_t lives, double average_fitness) {
     assert(0.0 <= average_fitness && average_fitness < 1.0);
-    int lives_lookup_index = static_cast<int>(std::min<int64_t>(3, lives));
-    int fitness_lookup_index = static_cast<int>(std::floor(average_fitness * 10.0));
+    size_t lives_lookup_index = static_cast<size_t>(std::min<int64_t>(3, lives));
+    size_t fitness_lookup_index = static_cast<size_t>(std::floor(average_fitness * 10.0));
     return MIN_RESPAWN_PER_PERIOD_SEARCH_ITERATIONS_LUT.at(fitness_lookup_index).at(lives_lookup_index - 1);
 }
 
 inline int64_t get_min_maneuver_per_timestep_search_iterations(int64_t lives, double average_fitness) {
     assert(0.0 <= average_fitness && average_fitness < 1.0);
-    int lives_lookup_index = static_cast<int>(std::min<int64_t>(3, lives));
-    int fitness_lookup_index = static_cast<int>(std::floor(average_fitness * 10.0));
+    size_t lives_lookup_index = static_cast<size_t>(std::min<int64_t>(3, lives));
+    size_t fitness_lookup_index = static_cast<size_t>(std::floor(average_fitness * 10.0));
     return MIN_MANEUVER_PER_TIMESTEP_SEARCH_ITERATIONS_LUT.at(fitness_lookup_index).at(lives_lookup_index - 1);
 }
 
 inline int64_t get_min_maneuver_per_period_search_iterations(int64_t lives, double average_fitness) {
     assert(0.0 <= average_fitness && average_fitness < 1.0);
-    int lives_lookup_index = static_cast<int>(std::min<int64_t>(3, lives));
-    int fitness_lookup_index = static_cast<int>(std::floor(average_fitness * 10.0));
+    size_t lives_lookup_index = static_cast<size_t>(std::min<int64_t>(3, lives));
+    size_t fitness_lookup_index = static_cast<size_t>(std::floor(average_fitness * 10.0));
     return MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_LUT.at(fitness_lookup_index).at(lives_lookup_index - 1);
 }
 
 inline int64_t get_min_maneuver_per_period_search_iterations_if_will_die(int64_t lives, double average_fitness) {
     assert(0.0 <= average_fitness && average_fitness < 1.0);
-    int lives_lookup_index = static_cast<int>(std::min<int64_t>(3, lives));
-    int fitness_lookup_index = static_cast<int>(std::floor(average_fitness * 10.0));
+    size_t lives_lookup_index = static_cast<size_t>(std::min<int64_t>(3, lives));
+    size_t fitness_lookup_index = static_cast<size_t>(std::floor(average_fitness * 10.0));
     return MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_IF_WILL_DIE_LUT.at(fitness_lookup_index).at(lives_lookup_index - 1);
 }
 
@@ -968,28 +1049,18 @@ inline int64_t get_min_maneuver_per_period_search_iterations_if_will_die(int64_t
 // const int64_t MINE_OTHER_SHIP_ASTEROID_COUNT_EQUIVALENT;
 // const double MINE_FUSE_TIME, FPS;
 
-inline int64_t count_asteroids_in_mine_blast_radius(
-    const GameState& game_state, double mine_x, double mine_y, int64_t future_check_timesteps)
-{
+inline int64_t count_asteroids_in_mine_blast_radius(const GameState& game_state, double mine_x, double mine_y, int64_t future_timesteps) {
     int64_t count = 0;
-    for (const auto& a : game_state.asteroids) {
+    for (const Asteroid& a : game_state.asteroids) {
         if (a.alive) {
             // Project asteroid position into future (with correct wrapping)
-            auto wrap = [](double coord, double mod) {
-                double r = std::fmod(coord, mod);
-                return r < 0 ? r + mod : r;
-            };
-            double asteroid_future_pos_x =
-                wrap(a.x + static_cast<double>(future_check_timesteps) * a.vx * DELTA_TIME, game_state.map_size_x);
-            double asteroid_future_pos_y =
-                wrap(a.y + static_cast<double>(future_check_timesteps) * a.vy * DELTA_TIME, game_state.map_size_y);
+            double asteroid_future_pos_x = pymod(a.x + static_cast<double>(future_timesteps) * a.vx * DELTA_TIME, game_state.map_size_x);
+            double asteroid_future_pos_y = pymod(a.y + static_cast<double>(future_timesteps) * a.vy * DELTA_TIME, game_state.map_size_y);
             // Fast bounding check (no function call)
             double delta_x = asteroid_future_pos_x - mine_x;
             double delta_y = asteroid_future_pos_y - mine_y;
             double separation = a.radius + (MINE_BLAST_RADIUS - MINE_ASTEROID_COUNT_FUDGE_DISTANCE);
-            if (std::abs(delta_x) <= separation &&
-                std::abs(delta_y) <= separation &&
-                delta_x * delta_x + delta_y * delta_y <= separation * separation)
+            if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x * delta_x + delta_y * delta_y <= separation * separation)
             {
                 ++count;
             }
@@ -1004,12 +1075,11 @@ inline bool mine_fis(int64_t mines_remaining, int64_t lives_remaining, int64_t m
 
 inline bool check_mine_opportunity(const Ship& ship_state, const GameState& game_state, const std::vector<Ship>& other_ships) {
     // If there's already more than one mine on the field, don't consider laying another
-    if (game_state.mines.size() > 1)
+    if (game_state.mines.size() > 1) {
         return false;
+    }
 
-    int mine_ast_count = count_asteroids_in_mine_blast_radius(
-        game_state, ship_state.x, ship_state.y, static_cast<int>(std::round(MINE_FUSE_TIME * FPS))
-    );
+    int64_t mine_ast_count = count_asteroids_in_mine_blast_radius(game_state, ship_state.x, ship_state.y, static_cast<int>(std::round(MINE_FUSE_TIME * FPS)));
     int64_t lives_fudge = 0;
 
     for (const auto& other_ship : other_ships) {
@@ -1045,13 +1115,15 @@ inline double sigmoid(double x, double k=1.0, double x0=0.0) {
 }
 
 // Linear interpolation (with clamping)
-inline double linear(double x, std::pair<double,double> point1, std::pair<double,double> point2) {
-    double x1 = point1.first, y1 = point1.second;
-    double x2 = point2.first, y2 = point2.second;
-    assert(x1 < x2); // REMOVE_FOR_COMPETITION
-    if (x <= x1) return y1;
-    else if (x >= x2) return y2;
-    else return y1 + (x-x1)*(y2-y1)/(x2-x1);
+inline double linear(double x, double x1, double y1, double x2, double y2) {
+    assert(x1 < x2);
+    if (x <= x1) {
+        return y1;
+    } else if (x >= x2) {
+        return y2;
+    } else {
+        return y1 + (x - x1) * (y2 - y1) / (x2 - x1);
+    }
 }
 
 // Weighted average
@@ -1204,7 +1276,7 @@ void inspect_scenario(const GameState& game_state, const Ship& ship_state) {
     auto average_velocity = [&]() -> std::pair<double, double> {
         double total_x_velocity = 0.0;
         double total_y_velocity = 0.0;
-        for (const auto& a : asteroids) {
+        for (const Asteroid& a : asteroids) {
             total_x_velocity += a.vx;
             total_y_velocity += a.vy;
         }
@@ -1212,13 +1284,13 @@ void inspect_scenario(const GameState& game_state, const Ship& ship_state) {
         if (num_asteroids == 0)
             return {0.0, 0.0};
         else
-            return { total_x_velocity/num_asteroids, total_y_velocity/num_asteroids };
+            return {total_x_velocity / num_asteroids, total_y_velocity / num_asteroids};
     };
 
     auto average_speed = [&]() -> double {
         double total_speed = 0.0;
-        for (const auto& a : asteroids) {
-            total_speed += std::sqrt(a.vx*a.vx + a.vy*a.vy);
+        for (const Asteroid& a : asteroids) {
+            total_speed += std::sqrt(a.vx * a.vx + a.vy * a.vy);
         }
         int num_asteroids = static_cast<int>(asteroids.size());
         if (num_asteroids == 0)
@@ -1240,7 +1312,8 @@ void inspect_scenario(const GameState& game_state, const Ship& ship_state) {
 // Get all ships except self
 inline std::vector<Ship> get_other_ships(const GameState& game_state, int64_t self_ship_id) {
     std::vector<Ship> result;
-    result.reserve(game_state.ships.size());
+    //result.reserve(game_state.ships.size());
+    result.reserve(2);
     for (const auto& ship : game_state.ships) {
         if (ship.id != self_ship_id)
             result.push_back(ship);
@@ -1252,20 +1325,23 @@ inline std::vector<Ship> get_other_ships(const GameState& game_state, int64_t se
 inline double angle_difference_rad(double angle1, double angle2) {
     double diff = std::fmod(angle1 - angle2 + pi, TAU);
     // fmod may return negative, wrap up by tau if so
-    if (diff < 0) diff += TAU;
+    if (diff < 0.0) {
+        diff += TAU;
+    }
     return diff - pi;
 }
 
 // Angle difference (degrees): wraps to [-180, +180]
 inline double angle_difference_deg(double angle1, double angle2) {
     double diff = std::fmod(angle1 - angle2 + 180.0, 360.0);
-    if (diff < 0) diff += 360.0;
+    if (diff < 0.0) {
+        diff += 360.0;
+    }
     return diff - 180.0;
 }
 
 inline std::vector<Action>
-get_ship_maneuver_move_sequence(double ship_heading_angle, double ship_cruise_speed, double ship_accel_turn_rate, int64_t ship_cruise_timesteps, double ship_cruise_turn_rate, double ship_starting_speed = 0.0)
-{
+get_ship_maneuver_move_sequence(double ship_heading_angle, double ship_cruise_speed, double ship_accel_turn_rate, int64_t ship_cruise_timesteps, double ship_cruise_turn_rate, double ship_starting_speed = 0.0) {
     std::vector<Action> move_sequence;
     double ship_speed = ship_starting_speed;
 
@@ -1327,7 +1403,7 @@ get_ship_maneuver_move_sequence(double ship_heading_angle, double ship_cruise_sp
     // --- cruise helper ---
     auto cruise = [&](int64_t cruise_timesteps, double cruise_turn_rate) {
         for (int64_t i=0; i < cruise_timesteps; ++i) {
-            update(sign(ship_speed)*SHIP_DRAG, cruise_turn_rate);
+            update(sign(ship_speed) * SHIP_DRAG, cruise_turn_rate);
         }
     };
 
@@ -1414,7 +1490,7 @@ inline std::vector<std::pair<int64_t,int64_t>> calculate_border_crossings(
     int64_t current_universe_x = 0, current_universe_y = 0;
     int64_t universe_increment_direction_x = (vel_x > 0.0) ? 1 : -1;
     int64_t universe_increment_direction_y = (vel_y > 0.0) ? 1 : -1;
-    std::vector<std::pair<int64_t,int64_t>> universes;
+    std::vector<std::pair<int64_t, int64_t>> universes;
     for (bool crossing : border_crossing_sequence) {
         if (crossing) current_universe_x += universe_increment_direction_x;
         else          current_universe_y += universe_increment_direction_y;
@@ -1439,6 +1515,7 @@ inline std::vector<Asteroid> unwrap_asteroid(
     }
     // Gotta calculate it. Not in the cache.
     std::vector<Asteroid> unwrapped_asteroids;
+    unwrapped_asteroids.reserve(3);
     unwrapped_asteroids.push_back(asteroid);
     if (std::abs(asteroid.vx) < EPS && std::abs(asteroid.vy) < EPS) {
         // An asteroid that is stationary will never move across borders and wrap
@@ -1459,23 +1536,21 @@ inline std::vector<Asteroid> unwrap_asteroid(
             asteroid.timesteps_until_appearance
         );
     }
-    if (use_cache) unwrap_cache[ast_hash] = unwrapped_asteroids;
+    if (use_cache) {
+        unwrap_cache[ast_hash] = unwrapped_asteroids;
+    }
     return unwrapped_asteroids;
 }
 
 // --- check_coordinate_bounds ---
 inline bool check_coordinate_bounds(const GameState& game_state, double x, double y) {
-    // Python: 0.0 <= x <= max_x and 0.0 <= y <= max_y
-    return (0.0 <= x && x <= game_state.map_size_x &&
-            0.0 <= y && y <= game_state.map_size_y);
+    return (0.0 <= x && x <= game_state.map_size_x && 0.0 <= y && y <= game_state.map_size_y);
 }
 
 // --- check_coordinate_bounds_exact ---
 inline bool check_coordinate_bounds_exact(const GameState& game_state, double x, double y) {
-    double x_wrapped = std::fmod(x, game_state.map_size_x);
-    if (x_wrapped < 0) x_wrapped += game_state.map_size_x; // fmod can be negative
-    double y_wrapped = std::fmod(y, game_state.map_size_y);
-    if (y_wrapped < 0) y_wrapped += game_state.map_size_y;
+    double x_wrapped = pymod(x, game_state.map_size_x);
+    double y_wrapped = pymod(y, game_state.map_size_y);
     if (is_close(x, x_wrapped) && is_close(y, y_wrapped))
         return true;
     else
@@ -1523,32 +1598,27 @@ inline std::pair<double, double> solve_quadratic(double a, double b, double c) {
 }
 
 // Returns: {t_enter, t_exit} if potentially colliding, or {nan, nan} if no collision in future. 
-inline std::pair<double, double> collision_prediction(
-    double Oax, double Oay, double Dax, double Day, double ra,
-    double Obx, double Oby, double Dbx, double Dby, double rb)
-{
+inline std::pair<double, double> collision_prediction(double ax, double ay, double vax, double vay, double ra, double bx, double by, double vbx, double vby, double rb) {
     double separation = ra + rb;
-    double delta_x = Oax - Obx;
-    double delta_y = Oay - Oby;
+    double delta_x = ax - bx;
+    double delta_y = ay - by;
 
-    if (is_close_to_zero(Dax) && is_close_to_zero(Day) &&
-        is_close_to_zero(Dbx) && is_close_to_zero(Dby))
-    {
-        // Both stationary – just check overlap now:
-        if (std::abs(delta_x) <= separation &&
-            std::abs(delta_y) <= separation &&
-            (delta_x*delta_x + delta_y*delta_y <= separation*separation))
+    if (is_close_to_zero(vax) && is_close_to_zero(vay) && is_close_to_zero(vbx) && is_close_to_zero(vby)) {
+        // Both stationary – just check overlap now:
+        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && (delta_x * delta_x + delta_y * delta_y <= separation * separation))
         {
             // "collide now and forever"
             return std::make_pair(-inf, inf);
-        } else {
+        } 
+        else 
+        {
             // Never collide
             return std::make_pair(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
         }
     } else {
         // Relative velocity
-        double vel_delta_x = Dax - Dbx;
-        double vel_delta_y = Day - Dby;
+        double vel_delta_x = vax - vbx;
+        double vel_delta_y = vay - vby;
         double a = vel_delta_x * vel_delta_x + vel_delta_y * vel_delta_y;
         double b = 2.0 * (delta_x * vel_delta_x + delta_y * vel_delta_y);
         double c = delta_x * delta_x + delta_y * delta_y - separation * separation;
@@ -1556,24 +1626,23 @@ inline std::pair<double, double> collision_prediction(
     }
 }
 
+
 // === 1. find_time_interval_in_which_unwrapped_asteroid_is_within_main_wrap ===
-inline std::pair<double, double> find_time_interval_in_which_unwrapped_asteroid_is_within_main_wrap(
-    double ast_pos_x, double ast_pos_y, double ast_vel_x, double ast_vel_y,
-    const GameState& game_state)
-{
+inline std::pair<double, double>
+find_time_interval_in_which_unwrapped_asteroid_is_within_main_wrap(double ast_pos_x, double ast_pos_y, double ast_vel_x, double ast_vel_y, const GameState& game_state) {
     std::pair<double, double> x_interval, y_interval;
 
     if (is_close_to_zero(ast_vel_x)) {
         if (check_coordinate_bounds(game_state, ast_pos_x, 0.0)) {
-            x_interval = { -inf, inf };
+            x_interval = {-inf, inf};
         } else {
             return { std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN() };
         }
     } else {
         if (ast_vel_x > 0.0) {
-            x_interval = { -ast_pos_x/ast_vel_x, (game_state.map_size_x - ast_pos_x) / ast_vel_x };
+            x_interval = {-ast_pos_x / ast_vel_x, (game_state.map_size_x - ast_pos_x) / ast_vel_x};
         } else {
-            x_interval = { (game_state.map_size_x - ast_pos_x) / ast_vel_x, -ast_pos_x / ast_vel_x };
+            x_interval = {(game_state.map_size_x - ast_pos_x) / ast_vel_x, -ast_pos_x / ast_vel_x};
         }
     }
 
@@ -1581,13 +1650,13 @@ inline std::pair<double, double> find_time_interval_in_which_unwrapped_asteroid_
         if (check_coordinate_bounds(game_state, 0.0, ast_pos_y)) {
             y_interval = { -inf, inf };
         } else {
-            return { std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN() };
+            return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
         }
     } else {
         if (ast_vel_y > 0.0) {
-            y_interval = { -ast_pos_y/ast_vel_y, (game_state.map_size_y - ast_pos_y) / ast_vel_y };
+            y_interval = {-ast_pos_y / ast_vel_y, (game_state.map_size_y - ast_pos_y) / ast_vel_y};
         } else {
-            y_interval = { (game_state.map_size_y - ast_pos_y) / ast_vel_y, -ast_pos_y / ast_vel_y };
+            y_interval = {(game_state.map_size_y - ast_pos_y) / ast_vel_y, -ast_pos_y / ast_vel_y};
         }
     }
 
@@ -1596,11 +1665,11 @@ inline std::pair<double, double> find_time_interval_in_which_unwrapped_asteroid_
 
     // Take the intersection of intervals
     if (x_interval.second < y_interval.first || y_interval.second < x_interval.first) {
-        return { std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN() };
+        return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     } else {
         double start = std::max(x_interval.first, y_interval.first);
         double end = std::min(x_interval.second, y_interval.second);
-        return { start, end };
+        return {start, end};
     }
 }
 
@@ -1609,7 +1678,6 @@ inline double predict_next_imminent_collision_time_with_asteroid(
     double ast_pos_x, double ast_pos_y, double ast_vel_x, double ast_vel_y, double ast_radius,
     const GameState& game_state)
 {
-    // REMOVE_FOR_COMPETITION assertions:
     assert(is_close_to_zero(ship_vel_x) && is_close_to_zero(ship_vel_y));
     assert(check_coordinate_bounds(game_state, ship_pos_x, ship_pos_y));
 
@@ -1620,7 +1688,6 @@ inline double predict_next_imminent_collision_time_with_asteroid(
     if (std::isnan(start_collision_time) || std::isnan(end_collision_time)) {
         return inf;
     } else {
-        // REMOVE_FOR_COMPETITION
         assert(start_collision_time <= end_collision_time);
         if (!(SHIP_RADIUS_PLUS_SIZE_4_ASTEROID_RADIUS < ship_pos_x && ship_pos_x < game_state.map_size_x - SHIP_RADIUS_PLUS_SIZE_4_ASTEROID_RADIUS
            && SHIP_RADIUS_PLUS_SIZE_4_ASTEROID_RADIUS < ship_pos_y && ship_pos_y < game_state.map_size_y - SHIP_RADIUS_PLUS_SIZE_4_ASTEROID_RADIUS))
@@ -1667,7 +1734,7 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
     auto average_velocity = [](const std::vector<Asteroid>& asteroids) -> std::pair<double, double> {
         double total_x_velocity = 0.0;
         double total_y_velocity = 0.0;
-        for (const auto& a : asteroids) {
+        for (const Asteroid& a : asteroids) {
             assert(a.alive);
             total_x_velocity += a.vx;
             total_y_velocity += a.vy;
@@ -1720,15 +1787,15 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
         double gap_start = std::numeric_limits<double>::quiet_NaN();
 
         for (const auto& [angle, marker] : angles) {
-            assert(counter >= 0); // REMOVE_FOR_COMPETITION
+            assert(counter >= 0);
             if (marker) {
                 // Start
                 if (counter == 0 && !std::isnan(gap_start)) {
                     double gap = angle - gap_start;
-                    assert(gap >= 0.0); // REMOVE_FOR_COMPETITION
+                    assert(gap >= 0.0);
                     if (gap > largest_gap) {
                         largest_gap = gap;
-                        largest_gap_midpoint = std::fmod(0.5f * (gap_start + angle), TAU);
+                        largest_gap_midpoint = std::fmod(0.5 * (gap_start + angle), TAU);
                     }
                 }
                 counter++;
@@ -1750,9 +1817,7 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
     // Convert other ships to pseudo-asteroids:
     for (const Ship& ship : game_state.ships) {
         if (ship.id != ship_state.id) {
-            asteroids.emplace_back(Asteroid{
-                ship.x, ship.y, 0.0, 0.0,
-                0, 0.0, ship.radius
+            asteroids.emplace_back(Asteroid{ship.x, ship.y, 0.0, 0.0, 0, 0.0, ship.radius
             });
         }
     }
@@ -1822,8 +1887,7 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
     double nearby_asteroid_average_speed = (nearby_asteroid_count == 0 ? 0.0 : nearby_asteroid_total_speed / nearby_asteroid_count);
 
     auto average_directional_velocity = average_velocity(asteroids);
-    double average_directional_speed = std::sqrt(average_directional_velocity.first * average_directional_velocity.first +
-                                                average_directional_velocity.second * average_directional_velocity.second);
+    double average_directional_speed = std::sqrt(average_directional_velocity.first * average_directional_velocity.first + average_directional_velocity.second * average_directional_velocity.second);
 
     int64_t total_asteroid_count, current_asteroids_count;
     std::tie(total_asteroid_count, current_asteroids_count) = asteroid_counter(asteroids);
@@ -1844,11 +1908,6 @@ inline bool check_collision(double a_x, double a_y, double a_r, double b_x, doub
         return false;
     }
 }
-
-
-
-
-
 
 inline std::tuple<
     bool,         // feasible
@@ -1895,8 +1954,9 @@ inline std::tuple<
     auto roots = solve_quadratic(a, b, c);
     for (int i = 0; i < 2; ++i) {
         double t = (i == 0) ? std::get<0>(roots) : std::get<1>(roots);
-        if (std::isnan(t) || t < 0.0)
+        if (std::isnan(t) || t < 0.0) {
             continue;
+        }
         double x = ax_delayed + t * avx;
         double y = ay_delayed + t * avy;
         double theta = fast_atan2(y, x);
@@ -1905,7 +1965,9 @@ inline std::tuple<
         double intercept_x = x + origin_x;
         double intercept_y = y + origin_y;
         bool feasible = check_coordinate_bounds(game_state, intercept_x, intercept_y);
-        if (!feasible) continue;
+        if (!feasible) {
+            continue;
+        }
 
         double asteroid_dist = std::sqrt(x * x + y * y);
         double shot_heading_tolerance_rad;
@@ -1927,11 +1989,10 @@ inline std::tuple<
     return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
 }
 
-// === 5. Actual splitting logic
-inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_splits(
-    const Asteroid& a, int64_t timesteps_until_appearance, double vfx, double vfy, double v, double split_angle, const GameState& game_state)
-{
-    double theta = std::atan2(vfy, vfx) * RAD_TO_DEG; // DO NOT use an approximation!
+// Actual splitting logic
+inline std::tuple<Asteroid, Asteroid, Asteroid>
+forecast_asteroid_splits(const Asteroid& a, int64_t timesteps_until_appearance, double vfx, double vfy, double v, double split_angle, const GameState& game_state) {
+    double theta = std::atan2(vfy, vfx) * RAD_TO_DEG;
     int64_t new_size = a.size - 1;
     double new_mass = ASTEROID_MASS_LOOKUP[new_size];
     double new_radius = ASTEROID_RADII_LOOKUP[new_size];
@@ -1949,15 +2010,9 @@ inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_splits(
 
     if (timesteps_until_appearance == 0) {
         return std::make_tuple(
-            Asteroid(
-                a.x, a.y, v * cos_angle_left, v * sin_angle_left,
-                new_size, new_mass, new_radius, 0),
-            Asteroid(
-                a.x, a.y, v * cos_angle_center, v * sin_angle_center,
-                new_size, new_mass, new_radius, 0),
-            Asteroid(
-                a.x, a.y, v * cos_angle_right, v * sin_angle_right,
-                new_size, new_mass, new_radius, 0)
+            Asteroid(a.x, a.y, v * cos_angle_left, v * sin_angle_left, new_size, new_mass, new_radius, 0),
+            Asteroid(a.x, a.y, v * cos_angle_center, v * sin_angle_center, new_size, new_mass, new_radius, 0),
+            Asteroid(a.x, a.y, v * cos_angle_right, v * sin_angle_right, new_size, new_mass, new_radius, 0)
         );
     } else {
         double dt = DELTA_TIME * static_cast<double>(timesteps_until_appearance);
@@ -1986,13 +2041,9 @@ inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_splits(
     }
 }
 
-// === 1. Heading-based bullet splits
-inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_bullet_splits_from_heading(
-    const Asteroid& a,
-    int64_t timesteps_until_appearance,
-    double bullet_heading_deg,
-    const GameState& game_state)
-{
+// Heading-based bullet splits
+inline std::tuple<Asteroid, Asteroid, Asteroid>
+forecast_asteroid_bullet_splits_from_heading(const Asteroid& a, int64_t timesteps_until_appearance, double bullet_heading_deg, const GameState& game_state) {
     double bullet_heading_rad = bullet_heading_deg * DEG_TO_RAD;
     double bullet_vel_x = std::cos(bullet_heading_rad) * BULLET_SPEED;
     double bullet_vel_y = std::sin(bullet_heading_rad) * BULLET_SPEED;
@@ -2002,20 +2053,18 @@ inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_bullet_splits_
     return forecast_asteroid_splits(a, timesteps_until_appearance, vfx, vfy, v, 15.0, game_state);
 }
 
-// === 2. Instantaneous (velocity) bullet splits
-inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_instantaneous_asteroid_bullet_splits_from_velocity(
-    const Asteroid& a, double bullet_vx, double bullet_vy, const GameState& game_state)
-{
+// Instantaneous (velocity) bullet splits
+inline std::tuple<Asteroid, Asteroid, Asteroid>
+forecast_instantaneous_asteroid_bullet_splits_from_velocity(const Asteroid& a, double bullet_vx, double bullet_vy, const GameState& game_state) {
     double vfx = (1.0 / (BULLET_MASS + a.mass)) * (BULLET_MASS * bullet_vx + a.mass * a.vx);
     double vfy = (1.0 / (BULLET_MASS + a.mass)) * (BULLET_MASS * bullet_vy + a.mass * a.vy);
     double v = std::sqrt(vfx * vfx + vfy * vfy);
     return forecast_asteroid_splits(a, 0, vfx, vfy, v, 15.0, game_state);
 }
 
-// === 3. Mine splits
-inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_mine_instantaneous_splits(
-    const Asteroid& asteroid, const Mine& mine, const GameState& game_state)
-{
+// Mine splits
+inline std::tuple<Asteroid, Asteroid, Asteroid>
+forecast_asteroid_mine_instantaneous_splits(const Asteroid& asteroid, const Mine& mine, const GameState& game_state) {
     double delta_x = mine.x - asteroid.x;
     double delta_y = mine.y - asteroid.y;
     double dist = std::sqrt(delta_x * delta_x + delta_y * delta_y);
@@ -2038,7 +2087,7 @@ inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_mine_instantan
     return forecast_asteroid_splits(asteroid, 0, vfx, vfy, v, split_angle, game_state);
 }
 
-// === 4. Ship splits
+// Ship splits
 inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_ship_splits(
     const Asteroid& asteroid, int64_t timesteps_until_appearance, double ship_vx, double ship_vy, const GameState& game_state)
 {
@@ -2048,19 +2097,14 @@ inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_ship_splits(
     return forecast_asteroid_splits(asteroid, timesteps_until_appearance, vfx, vfy, v, 15.0, game_state);
 }
 
-// --- Maintain split asteroids' forecast ---
+// Maintain split asteroids' forecast
 inline std::vector<Asteroid> maintain_forecasted_asteroids(const std::vector<Asteroid>& forecasted_asteroid_splits, const GameState& game_state) {
     std::vector<Asteroid> updated_asteroids;
-    for (const auto& forecasted_asteroid : forecasted_asteroid_splits) {
+    for (const Asteroid& forecasted_asteroid : forecasted_asteroid_splits) {
         if (forecasted_asteroid.timesteps_until_appearance > 1) {
-            // Python's % matches always-positive modulus - adjust for negatives in C++
-            auto wrap = [](double coord, double mod) {
-                double r = std::fmod(coord, mod);
-                return r < 0 ? r + mod : r;
-            };
             updated_asteroids.emplace_back(
-                wrap(forecasted_asteroid.x + forecasted_asteroid.vx * DELTA_TIME, game_state.map_size_x),
-                wrap(forecasted_asteroid.y + forecasted_asteroid.vy * DELTA_TIME, game_state.map_size_y),
+                pymod(forecasted_asteroid.x + forecasted_asteroid.vx * DELTA_TIME, game_state.map_size_x),
+                pymod(forecasted_asteroid.y + forecasted_asteroid.vy * DELTA_TIME, game_state.map_size_y),
                 forecasted_asteroid.vx,
                 forecasted_asteroid.vy,
                 forecasted_asteroid.size,
@@ -2076,12 +2120,11 @@ inline std::vector<Asteroid> maintain_forecasted_asteroids(const std::vector<Ast
 // --- Asteroid fuzzy equality in list, including wrap handling ---
 inline bool is_asteroid_in_list(const std::vector<Asteroid>& list_of_asteroids, const Asteroid& asteroid, const GameState& game_state) {
     assert(asteroid.alive);
-    for (const auto& a : list_of_asteroids) {
+    for (const Asteroid& a : list_of_asteroids) {
+        assert(a.alive);
         // Compare with fuzzy position (including wrap-around), velocity, and size
-        bool x_match = is_close(a.x, asteroid.x) ||
-                       is_close_to_zero(game_state.map_size_x - std::abs(a.x - asteroid.x));
-        bool y_match = is_close(a.y, asteroid.y) ||
-                       is_close_to_zero(game_state.map_size_y - std::abs(a.y - asteroid.y));
+        bool x_match = is_close(a.x, asteroid.x) || is_close_to_zero(game_state.map_size_x - std::abs(a.x - asteroid.x));
+        bool y_match = is_close(a.y, asteroid.y) || is_close_to_zero(game_state.map_size_y - std::abs(a.y - asteroid.y));
         if (x_match && y_match &&
             is_close(a.vx, asteroid.vx) &&
             is_close(a.vy, asteroid.vy) &&
@@ -2092,11 +2135,7 @@ inline bool is_asteroid_in_list(const std::vector<Asteroid>& list_of_asteroids, 
     return false;
 }
 
-inline double predict_ship_mine_collision(
-    double ship_pos_x, double ship_pos_y,
-    const Mine& mine,
-    int64_t future_timesteps = 0)
-{
+inline double predict_ship_mine_collision(double ship_pos_x, double ship_pos_y, const Mine& mine, int64_t future_timesteps = 0) {
     // If mine hasn't exploded yet by that time horizon
     if (mine.remaining_time >= static_cast<double>(future_timesteps) * DELTA_TIME) {
         double delta_x = ship_pos_x - mine.x;
@@ -2655,7 +2694,7 @@ public:
           halt_shooting(halt_shooting_),
           fire_first_timestep(fire_first_timestep_),
           //game_state_plotter(game_state_plotter_),
-          sim_id(fast_randint(1, 100000)),
+          sim_id(randint(1, 100000)),
           respawn_timer(respawn_timer_),
           plot_this_sim(false),
           ship_crashed(false),
@@ -3146,7 +3185,7 @@ public:
                     assert(-EPS <= mine_collision_time && mine_collision_time <= MINE_FUSE_TIME + EPS);
                 }
                 double dist_to_ground_zero = dist(ship_state.x, ship_state.y, mine_pos.first, mine_pos.second);
-                double mine_ground_zero_fudge = linear(dist_to_ground_zero, std::make_pair(0.0, 1.0), std::make_pair(MINE_BLAST_RADIUS + SHIP_RADIUS, 0.6));
+                double mine_ground_zero_fudge = linear(dist_to_ground_zero, 0.0, 1.0, MINE_BLAST_RADIUS + SHIP_RADIUS, 0.6);
                 mines_threat_level += std::pow(MINE_FUSE_TIME - next_extrapolated_mine_collision_time, 2.0) / 9.0 * mine_ground_zero_fudge;
             }
             double mine_safe_time_fitness = sigmoid(mines_threat_level, -6.8, 0.232);
@@ -3242,8 +3281,8 @@ public:
             }
 
             for (const Ship& other_ship : other_ships) {
-                double other_ship_speed = std::sqrt(other_ship.vx*other_ship.vx + other_ship.vy*other_ship.vy);
-                double other_ship_speed_dist_mul = linear(other_ship_speed, std::make_pair(0.0, 1.0), std::make_pair(SHIP_MAX_SPEED, 0.3));
+                double other_ship_speed = std::sqrt(other_ship.vx * other_ship.vx + other_ship.vy * other_ship.vy);
+                double other_ship_speed_dist_mul = linear(other_ship_speed, 0.0, 1.0, SHIP_MAX_SPEED, 0.3);
                 std::vector<double> separation_dists;
                 for (const auto& self_pos : self_positions) {
                     double self_pos_x = self_pos.first;
@@ -3790,7 +3829,7 @@ public:
                 explanation_messages.push_back("There's nothing I can feasibly shoot at!");
                 int turn_direction = 0; double idle_thrust = 0.0;
                 if (asteroids_still_exist) {
-                    if (fast_randint(1, 10) == 1) {
+                    if (randint(1, 10) == 1) {
                         explanation_messages.push_back("Asteroids exist but we can't hit them. Moving around a bit randomly.");
                         asteroids_shot -= 1;
                     }
@@ -3811,7 +3850,7 @@ public:
 
             int turn_direction = 0; double idle_thrust = 0.0;
             if (asteroids_still_exist) {
-                if (fast_randint(1, 10) == 1) {
+                if (randint(1, 10) == 1) {
                     explanation_messages.push_back("Asteroids exist but we can't hit them. Moving around a bit randomly.");
                     asteroids_shot -= 1;
                 }
@@ -5574,14 +5613,14 @@ public:
                     ship_cruise_turn_rate = 0.0;
                     ship_cruise_timesteps = 0;
                 } else {
-                    random_ship_heading_angle = fast_uniform(-20.0, 20.0);
-                    ship_accel_turn_rate = fast_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE);
+                    random_ship_heading_angle = rand_uniform(-20.0, 20.0);
+                    ship_accel_turn_rate = rand_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE);
                     if (random_double() < 0.5)
                         ship_cruise_speed = SHIP_MAX_SPEED;
                     else
                         ship_cruise_speed = -SHIP_MAX_SPEED;
                     ship_cruise_turn_rate = 0.0;
-                    ship_cruise_timesteps = fast_randint(0, int(round(MAX_CRUISE_SECONDS * FPS)));
+                    ship_cruise_timesteps = randint(0, int(round(MAX_CRUISE_SECONDS * FPS)));
                 }
 
                 if (ENABLE_SANITY_CHECKS &&
@@ -5621,14 +5660,14 @@ public:
                     ship_cruise_timesteps, ship_cruise_turn_rate, planning_state.ship_state.speed);
 
                 while (move_seq_preview.size() >= planning_state.ship_respawn_timer * FPS) {
-                    random_ship_heading_angle = fast_uniform(-20.0, 20.0);
-                    ship_accel_turn_rate = fast_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE);
+                    random_ship_heading_angle = rand_uniform(-20.0, 20.0);
+                    ship_accel_turn_rate = rand_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE);
                     if (random_double() < 0.5)
                         ship_cruise_speed = SHIP_MAX_SPEED;
                     else
                         ship_cruise_speed = -SHIP_MAX_SPEED;
                     ship_cruise_turn_rate = 0.0;
-                    ship_cruise_timesteps = fast_randint(0, int(round(MAX_CRUISE_SECONDS * FPS)));
+                    ship_cruise_timesteps = randint(0, int(round(MAX_CRUISE_SECONDS * FPS)));
                     move_seq_preview = get_ship_maneuver_move_sequence(
                         random_ship_heading_angle, ship_cruise_speed, ship_accel_turn_rate,
                         ship_cruise_timesteps, ship_cruise_turn_rate, planning_state.ship_state.speed
@@ -5815,22 +5854,22 @@ public:
                         heuristic_maneuver = false;
                 }*/
                 if (!heuristic_maneuver || !USE_HEURISTIC_MANEUVER) {
-                    random_ship_heading_angle = fast_triangular(-DEGREES_TURNED_PER_TIMESTEP * max_pre_maneuver_turn_timesteps,
+                    random_ship_heading_angle = rand_triangular(-DEGREES_TURNED_PER_TIMESTEP * max_pre_maneuver_turn_timesteps,
                                                             DEGREES_TURNED_PER_TIMESTEP * max_pre_maneuver_turn_timesteps, 0);
-                    ship_accel_turn_rate = fast_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
+                    ship_accel_turn_rate = rand_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
                                         * (2.0 * double(rand() %2) - 1.0);
 
                     if (std::isnan(ship_cruise_speed_mode))
-                        ship_cruise_speed = fast_uniform(-SHIP_MAX_SPEED, SHIP_MAX_SPEED);
+                        ship_cruise_speed = rand_uniform(-SHIP_MAX_SPEED, SHIP_MAX_SPEED);
                     else
-                        ship_cruise_speed = fast_triangular(0, SHIP_MAX_SPEED, ship_cruise_speed_mode)
+                        ship_cruise_speed = rand_triangular(0, SHIP_MAX_SPEED, ship_cruise_speed_mode)
                                             * (2.0 * double(rand()%2) - 1.0);
-                    ship_cruise_turn_rate = fast_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
+                    ship_cruise_turn_rate = rand_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
                                             * (2.0*double(rand()%2)-1.0);
                     if (std::isnan(ship_cruise_timesteps_mode))
-                        ship_cruise_timesteps = fast_randint(0, int(round(MAX_CRUISE_TIMESTEPS)));
+                        ship_cruise_timesteps = randint(0, int(round(MAX_CRUISE_TIMESTEPS)));
                     else
-                        ship_cruise_timesteps = int(floor(fast_triangular(0.0, MAX_CRUISE_TIMESTEPS, ship_cruise_timesteps_mode)));
+                        ship_cruise_timesteps = int(floor(rand_triangular(0.0, MAX_CRUISE_TIMESTEPS, ship_cruise_timesteps_mode)));
                 }
 
                 auto preview_move_sequence = get_ship_maneuver_move_sequence(
