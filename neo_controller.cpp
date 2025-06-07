@@ -402,14 +402,14 @@ struct Ship {
     int64_t lives_remaining = 0, bullets_remaining = 0, mines_remaining = 0;
     bool can_fire = true, can_deploy_mine = true;
     double fire_rate = 0.0, mine_deploy_rate = 0.0;
-    std::pair<double,double> thrust_range = {-SHIP_MAX_THRUST, SHIP_MAX_THRUST};
-    std::pair<double,double> turn_rate_range = {-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE};
+    std::pair<double, double> thrust_range = {-SHIP_MAX_THRUST, SHIP_MAX_THRUST};
+    std::pair<double, double> turn_rate_range = {-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE};
     double max_speed = SHIP_MAX_SPEED, drag = SHIP_DRAG;
 
     Ship() = default;
     Ship(bool is_respawning, double x, double y, double vx, double vy, double speed, double heading, double mass, double radius,
          int64_t id, std::string team, int64_t lives_remaining, int64_t bullets_remaining, int64_t mines_remaining, bool can_fire, double fire_rate,
-         bool can_deploy_mine, double mine_deploy_rate, std::pair<double,double> thrust_range, std::pair<double,double> turn_rate_range,
+         bool can_deploy_mine, double mine_deploy_rate, std::pair<double, double> thrust_range, std::pair<double, double> turn_rate_range,
          double max_speed, double drag)
         : is_respawning(is_respawning), x(x), y(y), vx(vx), vy(vy), speed(speed), heading(heading),
           mass(mass), radius(radius), id(id), team(team), lives_remaining(lives_remaining),
@@ -716,8 +716,8 @@ inline std::ostream& operator<<(std::ostream& os, const Target& t) { return os <
 // ------------------------------- TYPEDDICT EQUIVALENTS -------------------------------
 
 Asteroid create_asteroid_from_dict(py::dict d) {
-    auto pos = d["position"].cast<std::pair<double,double>>();
-    auto vel = d["velocity"].cast<std::pair<double,double>>();
+    auto pos = d["position"].cast<std::pair<double, double>>();
+    auto vel = d["velocity"].cast<std::pair<double, double>>();
     return Asteroid(
         pos.first, pos.second,
         vel.first, vel.second,
@@ -727,10 +727,10 @@ Asteroid create_asteroid_from_dict(py::dict d) {
 }
 
 Ship create_ship_from_dict(py::dict d) {
-    auto pos = d.contains("position") ? d["position"].cast<std::pair<double,double>>() : std::make_pair(0.0, 0.0);
-    auto vel = d.contains("velocity") ? d["velocity"].cast<std::pair<double,double>>() : std::make_pair(0.0, 0.0);
-    auto thrust_range = d.contains("thrust_range") ? d["thrust_range"].cast<std::pair<double,double>>() : std::make_pair(-SHIP_MAX_THRUST, SHIP_MAX_THRUST);
-    auto turn_range = d.contains("turn_rate_range") ? d["turn_rate_range"].cast<std::pair<double,double>>() : std::make_pair(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE);
+    auto pos = d.contains("position") ? d["position"].cast<std::pair<double, double>>() : std::make_pair(0.0, 0.0);
+    auto vel = d.contains("velocity") ? d["velocity"].cast<std::pair<double, double>>() : std::make_pair(0.0, 0.0);
+    auto thrust_range = d.contains("thrust_range") ? d["thrust_range"].cast<std::pair<double, double>>() : std::make_pair(-SHIP_MAX_THRUST, SHIP_MAX_THRUST);
+    auto turn_range = d.contains("turn_rate_range") ? d["turn_rate_range"].cast<std::pair<double, double>>() : std::make_pair(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE);
     return Ship(
         d.contains("is_respawning") ? d["is_respawning"].cast<bool>() : false,
         pos.first, pos.second, vel.first, vel.second,
@@ -752,36 +752,51 @@ Ship create_ship_from_dict(py::dict d) {
         d.contains("drag") ? d["drag"].cast<double>() : SHIP_DRAG
     );
 }
+
 Mine create_mine_from_dict(py::dict d) {
-    auto pos = d["position"].cast<std::pair<double,double>>();
-    return Mine(pos.first, pos.second,
-                d["mass"].cast<double>(),
-                d["fuse_time"].cast<double>(),
-                d["remaining_time"].cast<double>());
+    auto pos = d["position"].cast<std::pair<double, double>>();
+    return Mine(pos.first, pos.second, d["mass"].cast<double>(), d["fuse_time"].cast<double>(), d["remaining_time"].cast<double>());
 }
+
 Bullet create_bullet_from_dict(py::dict d) {
-    auto pos = d["position"].cast<std::pair<double,double>>();
-    auto vel = d["velocity"].cast<std::pair<double,double>>();
+    auto pos = d["position"].cast<std::pair<double, double>>();
+    auto vel = d["velocity"].cast<std::pair<double, double>>();
     double heading = d["heading"].cast<double>();
     double heading_rad = heading*DEG_TO_RAD;
-    return Bullet(
-        pos.first, pos.second, vel.first, vel.second, heading, d["mass"].cast<double>(),
-        -BULLET_LENGTH*cos(heading_rad), -BULLET_LENGTH*sin(heading_rad));
+    return Bullet(pos.first, pos.second, vel.first, vel.second, heading, d["mass"].cast<double>(), -BULLET_LENGTH*cos(heading_rad), -BULLET_LENGTH*sin(heading_rad));
 }
+
 GameState create_game_state_from_dict(py::dict game_state_dict) {
+    // Asteroids
+    py::list asteroid_list = game_state_dict["asteroids"].cast<py::list>();
     std::vector<Asteroid> asteroids;
-    for(auto a : game_state_dict["asteroids"].cast<py::list>()) 
+    asteroids.reserve(asteroid_list.size());
+    for (auto a : asteroid_list)
         asteroids.push_back(create_asteroid_from_dict(a.cast<py::dict>()));
+
+    // Ships
+    py::list ship_list = game_state_dict["ships"].cast<py::list>();
     std::vector<Ship> ships;
-    for(auto s : game_state_dict["ships"].cast<py::list>())
+    ships.reserve(ship_list.size());
+    for (auto s : ship_list)
         ships.push_back(create_ship_from_dict(s.cast<py::dict>()));
+
+    // Bullets
+    py::list bullet_list = game_state_dict["bullets"].cast<py::list>();
     std::vector<Bullet> bullets;
-    for(auto b : game_state_dict["bullets"].cast<py::list>())
+    bullets.reserve(bullet_list.size());
+    for (auto b : bullet_list)
         bullets.push_back(create_bullet_from_dict(b.cast<py::dict>()));
+
+    // Mines
+    py::list mine_list = game_state_dict["mines"].cast<py::list>();
     std::vector<Mine> mines;
-    for(auto m : game_state_dict["mines"].cast<py::list>())
+    mines.reserve(mine_list.size());
+    for (auto m : mine_list)
         mines.push_back(create_mine_from_dict(m.cast<py::dict>()));
-    auto map_size = game_state_dict["map_size"].cast<std::pair<double,double>>();
+
+    // Construct GameState
+    auto map_size = game_state_dict["map_size"].cast<std::pair<double, double>>();
     return GameState(
         asteroids, ships, bullets, mines,
         map_size.first, map_size.second,
@@ -790,6 +805,7 @@ GameState create_game_state_from_dict(py::dict game_state_dict) {
         game_state_dict["sim_frame"].cast<int64_t>(),
         game_state_dict["time_limit"].cast<double>());
 }
+
 
 struct BasePlanningGameState {
     int64_t timestep;
@@ -813,11 +829,12 @@ inline static thread_local std::uniform_real_distribution<> std_uniform(0.0, 1.0
 
 inline double pymod(double x, double y)
 {
-    return std::fmod(std::fmod(x, y) + y, y);
+    //return std::fmod(std::fmod(x, y) + y, y);
     // Or, equivalently and more numerically stable:
     // double result = std::fmod(x, y);
     // if (result < 0) result += y;
     // return result;
+    return x - y * std::floor(x / y);
 }
 
 inline void reseed_rng(unsigned int seed) {
@@ -3307,7 +3324,7 @@ public:
         };
 
         // Other ship proximity
-        auto get_other_ship_proximity_fitness = [&](const std::vector<std::pair<double,double>>& self_positions) -> double {
+        auto get_other_ship_proximity_fitness = [&](const std::vector<std::pair<double, double>>& self_positions) -> double {
             bool invert_ship_affinity = false;
             // Complex logic for invert affinity -- assign as appropriate for your situation.
             if ((ship_state.bullets_remaining == 0 && ship_state.mines_remaining == 0)
@@ -5342,7 +5359,7 @@ public:
     }
     
     std::string name() const {
-        return "Neo C++";
+        return "Neo++";
     }
 
     int ship_id() const {
@@ -5358,7 +5375,7 @@ public:
     bool init_done = false;
     int64_t ship_id_internal = -1;
     int64_t current_timestep = -1;
-    std::deque<std::tuple<int64_t,double,double,bool,bool>> action_queue; // (timestep, thrust, turn_rate, fire, drop_mine)
+    std::deque<std::tuple<int64_t, double, double, bool, bool>> action_queue; // (timestep, thrust, turn_rate, fire, drop_mine)
     //std::optional<GameStatePlotter> game_state_plotter;
     std::set<int64_t> actioned_timesteps;
     std::vector<CompletedSimulation> sims_this_planning_period; // The first is stationary targeting, rest are maneuvers
@@ -5374,10 +5391,10 @@ public:
     std::set<int64_t> fire_next_timestep_schedule;
     std::unordered_map<int64_t, std::unordered_map<int64_t, std::vector<Asteroid>>> asteroids_pending_death_schedule;
     std::unordered_map<int64_t, std::vector<Asteroid>> forecasted_asteroid_splits_schedule;
-    std::unordered_map<int64_t, std::set<std::pair<double,double>>> mine_positions_placed_schedule;
+    std::unordered_map<int64_t, std::set<std::pair<double, double>>> mine_positions_placed_schedule;
 
     std::optional<BasePlanningGameState> game_state_to_base_planning;
-    std::optional<std::tuple<double,double,double,double,int64_t,double,int64_t,int64_t>> base_gamestate_analysis;
+    std::optional<std::tuple<double, double, double, double, int64_t, double, int64_t, int64_t>> base_gamestate_analysis;
     std::set<int64_t> set_of_base_gamestate_timesteps;
     std::unordered_map<int64_t, BasePlanningGameState> base_gamestates; // Key is timestep, value is the state
 
