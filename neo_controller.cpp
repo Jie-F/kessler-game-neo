@@ -2173,6 +2173,9 @@ inline bool asteroid_bullet_collision(
     double asteroid_x, double asteroid_y,
     double asteroid_radius)
 {
+    // This is an optimized version of circle_line_collision() from the Kessler source code
+    // First, do a rough check if there's no chance the collision can occur
+    // Avoid the use of min/max because it should be a bit faster
     double x_min, x_max, y_min, y_max;
     if (bullet_head_x < bullet_tail_x) {
         x_min = bullet_head_x - asteroid_radius;
@@ -2196,15 +2199,19 @@ inline bool asteroid_bullet_collision(
     }
     if (asteroid_y > y_max) return false;
 
+    // A collision is possible.
+    // Create a triangle between the center of the asteroid, and the two ends of the bullet.
+    // Inlined calculation
     // Compute distances from asteroid center to bullet head and tail
+    // a = dist(asteroid_x, asteroid_y, bullet_head_x, bullet_head_y)
     double bhdx = bullet_head_x - asteroid_x;
     double bhdy = bullet_head_y - asteroid_y;
     double a = std::sqrt(bhdx*bhdx + bhdy*bhdy);
-
+    // b = dist(asteroid_x, asteroid_y, bullet_tail_x, bullet_tail_y)
     double btdx = bullet_tail_x - asteroid_x;
     double btdy = bullet_tail_y - asteroid_y;
     double b = std::sqrt(btdx*btdx + btdy*btdy);
-
+    // c = BULLET_LENGTH
     double s = 0.5 * (a + b + BULLET_LENGTH);
     double squared_area = s * (s - a) * (s - b) * (s - BULLET_LENGTH);
 
@@ -4024,7 +4031,9 @@ public:
                 double sin_heading = std::sin(rad_heading);
                 double bullet_x = bullet_fired_from_ship_position_x + SHIP_RADIUS * cos_heading;
                 double bullet_y = bullet_fired_from_ship_position_y + SHIP_RADIUS * sin_heading;
+                // Make sure my bullet isn't being fired out into the void
                 if (!(0.0 <= bullet_x && bullet_x <= game_state.map_size_x && 0.0 <= bullet_y && bullet_y <= game_state.map_size_y)) {
+                    // My bullet got shot into the void without hitting anything :(
                     return std::make_tuple(std::nullopt, int64_t(-1), ship_not_collided_with_asteroid);
                 }
                 my_bullet = Bullet(bullet_x, bullet_y, BULLET_SPEED * cos_heading, BULLET_SPEED * sin_heading,
@@ -4036,6 +4045,7 @@ public:
                 assert(bullet_sim_ship_state.has_value());
                 int idx = current_move_index.value() + timesteps_until_bullet_hit_asteroid + (skip_half_of_first_cycle ? 0 : -1);
                 if (idx < static_cast<int>(whole_move_sequence->size())) {
+                    // Simulate ship dynamics, if we have the full future list of moves to go off of
                     double thrust = (*whole_move_sequence)[idx].thrust;
                     double turn_rate = (*whole_move_sequence)[idx].turn_rate;
                     double drag_amount = SHIP_DRAG * DELTA_TIME;
@@ -4047,16 +4057,23 @@ public:
                     if (ENABLE_SANITY_CHECKS) {
                         assert(-SHIP_MAX_THRUST <= thrust && thrust <= SHIP_MAX_THRUST);
                     }
+                    // Apply thrust
                     bullet_sim_ship_state->speed += thrust*DELTA_TIME;
                     // Clamping omitted, could add if desired
+                    // bullet_sim_ship_state.speed = min(max(-SHIP_MAX_SPEED, bullet_sim_ship_state.speed), SHIP_MAX_SPEED)
                     if (ENABLE_SANITY_CHECKS) {
                         assert(-SHIP_MAX_TURN_RATE <= turn_rate && turn_rate <= SHIP_MAX_TURN_RATE);
                     }
+                    // Update the angle based on turning rate
                     bullet_sim_ship_state->heading += turn_rate*DELTA_TIME;
+                    // Keep the angle within (0, 360)
                     bullet_sim_ship_state->heading = std::fmod(bullet_sim_ship_state->heading + 360.0, 360.0);
+                    // Use speed magnitude to get velocity vector
                     double rad_heading = bullet_sim_ship_state->heading * DEG_TO_RAD;
                     bullet_sim_ship_state->vx = std::cos(rad_heading) * bullet_sim_ship_state->speed;
                     bullet_sim_ship_state->vy = std::sin(rad_heading) * bullet_sim_ship_state->speed;
+                    // Update the position based off the velocities
+                    // Do the wrap in the same operation
                     bullet_sim_ship_state->x = pymod(bullet_sim_ship_state->x + bullet_sim_ship_state->vx * DELTA_TIME, game_state.map_size_x);
                     bullet_sim_ship_state->y = pymod(bullet_sim_ship_state->y + bullet_sim_ship_state->vy * DELTA_TIME, game_state.map_size_y);
                 }
@@ -4064,34 +4081,50 @@ public:
 
             // Check bullet/asteroid collisions
             size_t len_bullets = bullets.size();
-            std::vector<Bullet*> all_bullets;
-            for (auto& b : bullets) all_bullets.push_back(&b);
-            if (my_bullet.has_value()) all_bullets.push_back(&my_bullet.value());
-            for (size_t b_idx = 0; b_idx < all_bullets.size(); ++b_idx) {
-                Bullet* b = all_bullets[b_idx];
-                if (b->alive) {
-                    double b_tail_x = b->x + b->tail_delta_x;
-                    double b_tail_y = b->y + b->tail_delta_y;
+
+            // Helper lambda to process bullet/asteroid collision logic
+            auto process_bullet = [&](Bullet& b, size_t b_idx){
+                if (b.alive) {
+                    double b_tail_x = b.x + b.tail_delta_x;
+                    double b_tail_y = b.y + b.tail_delta_y;
                     for (auto& a : asteroids) {
                         if (a.alive) {
-                            if (asteroid_bullet_collision(b->x, b->y, b_tail_x, b_tail_y, a.x, a.y, a.radius)) {
+                            if (asteroid_bullet_collision(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius)) {
                                 if (b_idx == len_bullets) {
                                     // This bullet is my bullet!
-                                    return std::make_tuple(std::optional<Asteroid>(a), timesteps_until_bullet_hit_asteroid, ship_not_collided_with_asteroid);
+                                    return std::optional<std::tuple<std::optional<Asteroid>, int64_t, bool>>(
+                                        std::make_tuple(std::optional<Asteroid>(a), timesteps_until_bullet_hit_asteroid, ship_not_collided_with_asteroid)
+                                    );
                                 } else {
-                                    b->alive = false;
+                                    // Kill bullet
+                                    b.alive = false;
+                                    // Create asteroid splits and mark it for removal
                                     if (a.size != 1) {
                                         std::apply([&](const auto&... new_ast) {
                                             (asteroids.push_back(new_ast), ...);
-                                        }, forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b->vx, b->vy, game_state));
+                                        }, forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, game_state));
                                     }
                                     a.alive = false;
+                                    // Stop checking this bullet
                                     break;
                                 }
                             }
                         }
                     }
                 }
+                return std::optional<std::tuple<std::optional<Asteroid>, int64_t, bool>>{};
+            };
+
+            // First, process main bullets
+            for (size_t b_idx = 0; b_idx < bullets.size(); ++b_idx) {
+                auto result = process_bullet(bullets[b_idx], b_idx);
+                if (result) return *result;
+            }
+
+            // Then, process your bullet (if it exists)
+            if (my_bullet.has_value()) {
+                auto result = process_bullet(my_bullet.value(), len_bullets);
+                if (result) return *result;
             }
 
             // Check mine/asteroid collisions
