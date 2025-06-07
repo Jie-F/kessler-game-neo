@@ -91,7 +91,7 @@ width, height = (1000, 800)
 # Define Game Settings
 game_settings = {'perf_tracker': True,
                  'graphics_type': GraphicsType.NoGraphics if args.invisible else (GraphicsType.UnrealEngine if args.unreal else GraphicsType.Tkinter),#UnrealEngine,Tkinter,NoGraphics
-                 'realtime_multiplier': 0,
+                 'realtime_multiplier': 1,
                  'graphics_obj': None,
                  'frequency': 30.0,
                  'UI_settings': 'all'}
@@ -321,7 +321,16 @@ team_1_shots_fired = 0
 team_2_bullets_hit = 0
 team_2_shots_fired = 0
 
-selected_portfolio = [None]
+debug_scenario = Scenario(name="Debug scenario",
+                            asteroid_states=[{'position': (2/3*width, height/2), 'angle': 0, 'speed': 0, 'size': 2}],
+                            ship_states=[{'position': (width*0.55, height*0.55), 'angle': 0, 'lives': 3, 'team': 1, "mines_remaining": 0}],
+                            map_size=(width, height),
+                            time_limit=total_asts/10*0.8,
+                            ammo_limit_multiplier=0,
+                            stop_if_no_ammo=False
+                          )
+
+selected_portfolio = [debug_scenario]
 if args.portfolio is not None:
     match args.portfolio:
         case 'xfc2023':
@@ -340,137 +349,159 @@ if args.portfolio is not None:
 random.seed()
 
 while True:
-    for scenario in selected_portfolio[0 if not args.index else args.index:]:
-        iterations += 1
-        if args.seed is not None:
-            randseed = args.seed
-        else:
-            pass
-            randseed = random.randint(1, 1000000000)
-        color_print(f'\nUsing seed {randseed}, running test iteration {iterations}', 'green')
-        random.seed(randseed)
-        #controllers_used = [NeoController(), XFC2024NeoController()]
-        
-        #controllers_used = [XFC2024NeoController(), NeoController()]
-        #controllers_used = [NeoController(), BabyNeoController()]
+    #for scenario in selected_portfolio[0 if not args.index else args.index:]:
+    random.seed()
+    debseed = random.randint(1, 1000000000)
+    debseed = 1
+    print(f"Debseed is {debseed}")
+    random.seed(debseed)
+    debug_scenario = Scenario(name="Debug scenario",
+                                asteroid_states=[{'position': (2/3*width, height/2), 'angle': 0, 'speed': random.uniform(0, 100), 'size': 2}],
+                                ship_states=[{'position': (width*0.55, height*0.55), 'angle': 0, 'lives': 3, 'team': 1, "mines_remaining": 0}],
+                                map_size=(width, height),
+                                time_limit=total_asts/10*0.8,
+                                ammo_limit_multiplier=0,
+                                stop_if_no_ammo=False
+                            )
 
-        asteroids_random = generate_asteroids(
-                                        num_asteroids=random.randint(2, 3),
-                                        position_range_x=(0, width),
-                                        position_range_y=(0, height),
-                                        speed_range=(-300, 300, 0),
-                                        angle_range=(-1, 361),
-                                        size_range=(1, 4)
-                                    )*random.choice([1])
+    scenario = debug_scenario
+    iterations += 1
+    if args.seed is not None:
+        randseed = args.seed
+    else:
+        pass
+        randseed = random.randint(1, 1000000000)
+    color_print(f'\nUsing seed {randseed}, running test iteration {iterations}', 'green')
+    random.seed(randseed)
+    #controllers_used = [NeoController(), XFC2024NeoController()]
+    
+    #controllers_used = [XFC2024NeoController(), NeoController()]
+    #controllers_used = [NeoController(), BabyNeoController()]
 
-        # Define game scenario
-        rand_scenario = Scenario(name='Random Scenario',
-                                    #num_asteroids=200,
-                                    asteroid_states=asteroids_random,
-                                    #asteroid_states=[{'position': (width//2+10000, height*40//100), 'speed': 100, 'angle': -89, 'size': 4}],
-                                    #                {'position': (width*2//3, height*40//100), 'speed': 100, 'angle': -91, 'size': 4},
-                                    #                 {'position': (width*1//3, height*40//100), 'speed': 100, 'angle': -91, 'size': 4}],
+    asteroids_random = generate_asteroids(
+                                    num_asteroids=random.randint(2, 3),
+                                    position_range_x=(0, width),
+                                    position_range_y=(0, height),
+                                    speed_range=(-300, 300, 0),
+                                    angle_range=(-1, 361),
+                                    size_range=(1, 4)
+                                )*random.choice([1])
+
+    # Define game scenario
+    rand_scenario = Scenario(name='Random Scenario',
+                                #num_asteroids=200,
+                                asteroid_states=asteroids_random,
+                                #asteroid_states=[{'position': (width//2+10000, height*40//100), 'speed': 100, 'angle': -89, 'size': 4}],
+                                #                {'position': (width*2//3, height*40//100), 'speed': 100, 'angle': -91, 'size': 4},
+                                #                 {'position': (width*1//3, height*40//100), 'speed': 100, 'angle': -91, 'size': 4}],
+                                ship_states=[
+                                    {'position': (width//3, height//2), 'angle': 0, 'lives': 3, 'team': 1, "mines_remaining": 3},
+                                    {'position': (width*2//3, height//2), 'angle': 90, 'lives': 3, 'team': 2, "mines_remaining": 3},
+                                ],
+                                map_size=(width, height),
+                                time_limit=10.0,
+                                ammo_limit_multiplier=random.choice([0]),
+                                stop_if_no_ammo=False)
+    random.seed(randseed)
+    benchmark_scenario = Scenario(name="Benchmark Scenario",
+                                    num_asteroids=100,
                                     ship_states=[
-                                        {'position': (width//3, height//2), 'angle': 0, 'lives': 3, 'team': 1, "mines_remaining": 3},
-                                        {'position': (width*2//3, height//2), 'angle': 90, 'lives': 3, 'team': 2, "mines_remaining": 3},
+                                        {'position': (width/2, height/2), 'angle': 0.0, 'lives': 10000, 'team': 1, 'mines_remaining': 10000},
                                     ],
                                     map_size=(width, height),
-                                    time_limit=10.0,
-                                    ammo_limit_multiplier=random.choice([0]),
-                                    stop_if_no_ammo=False)
-        random.seed(randseed)
-        benchmark_scenario = Scenario(name="Benchmark Scenario",
-                                        num_asteroids=100,
-                                        ship_states=[
-                                            {'position': (width/2, height/2), 'angle': 0.0, 'lives': 10000, 'team': 1, 'mines_remaining': 10000},
-                                        ],
-                                        map_size=(width, height),
-                                        seed=0,
-                                        time_limit=120)
+                                    seed=0,
+                                    time_limit=120)
 
-        pre = time.perf_counter()
-        if scenario is not None:
-            print(f"Evaluating scenario {scenario.name}")
+    pre = time.perf_counter()
+    if scenario is not None:
+        print(f"Evaluating scenario {scenario.name}")
+    else:
+        print("Evaluating random scenario")
+    profile = args.profile
+    # my_test_scenario
+    # ex_adv_four_corners_pt1 ex_adv_asteroids_down_up_pt1 ex_adv_asteroids_down_up_pt2 adv_multi_wall_bottom_hard_1 
+    # closing_ring_scenario more_intense_closing_ring_scenario rotating_square_scenario falling_leaves_scenario shearing_pattern_scenario zigzag_motion_scenario
+    #state = 
+    #random.seed(randseed)
+        # [ReplayController0(), ReplayController1()] GamepadController()])#, NeoController()])#, TestController()])GamepadController NeoController Neo
+    random.seed(randseed)
+    from neo_controller import NeoController
+    controllers_used = [NeoController(), NeoController()]
+    #random.setstate(state)
+    #print(f"RNG State: {random.getstate()}")
+    #score, perf_data = game.run(scenario=ex_adv_four_corners_pt1, controllers=controllers_used)
+    #score, perf_data = game.run(scenario=ex_adv_four_corners_pt2, controllers=controllers_used)
+    if scenario is None:
+        scenario_to_run = rand_scenario
+    else:
+        scenario_to_run = scenario
+    if args.scenario:
+        eval(f"game.run(scenario={args.scenario}, controllers=controllers_used)")
+    else:
+        if profile:
+            cProfile.run(f'game.run(scenario=scenario_to_run, controllers=controllers_used)')
         else:
-            print("Evaluating random scenario")
-        profile = args.profile
-        # my_test_scenario
-        # ex_adv_four_corners_pt1 ex_adv_asteroids_down_up_pt1 ex_adv_asteroids_down_up_pt2 adv_multi_wall_bottom_hard_1 
-        # closing_ring_scenario more_intense_closing_ring_scenario rotating_square_scenario falling_leaves_scenario shearing_pattern_scenario zigzag_motion_scenario
-        #state = 
-        #random.seed(randseed)
-         # [ReplayController0(), ReplayController1()] GamepadController()])#, NeoController()])#, TestController()])GamepadController NeoController Neo
-        controllers_used = [NeoController(), NeoController()]
-        #random.setstate(state)
-        #print(f"RNG State: {random.getstate()}")
-        #score, perf_data = game.run(scenario=ex_adv_four_corners_pt1, controllers=controllers_used)
-        #score, perf_data = game.run(scenario=ex_adv_four_corners_pt2, controllers=controllers_used)
-        if scenario is None:
-            scenario_to_run = rand_scenario
-        else:
-            scenario_to_run = scenario
-        if args.scenario:
-            eval(f"game.run(scenario={args.scenario}, controllers=controllers_used)")
-        else:
-            if profile:
-                cProfile.run(f'game.run(scenario=scenario_to_run, controllers=controllers_used)')
-            else:
-                random.seed(randseed)
-                score, perf_data = game.run(scenario=scenario_to_run, controllers=controllers_used)
+            random.seed(randseed)
+            score, perf_data = game.run(scenario=scenario_to_run, controllers=controllers_used)
 
-        # Print out some general info about the result
-        num_teams = len(score.teams)
-        if score:
-            team1 = score.teams[0]
-            if num_teams > 1:
-                team2 = score.teams[1]
-            asts_hit = [team.asteroids_hit for team in score.teams]
-            color_print('Scenario eval time: '+str(time.perf_counter()-pre), 'green')
-            color_print(score.stop_reason, 'green')
-            color_print(f"Scenario in-game time: {score.sim_time:.02f} s", 'green')
-            color_print('Asteroids hit: ' + str(asts_hit), 'green')
-            team_1_hits += asts_hit[0]
-            if num_teams > 1:
-                team_2_hits += asts_hit[1]
-                if asts_hit[0] > asts_hit[1]:
-                    team_1_wins += 1
-                elif asts_hit[0] < asts_hit[1]:
-                    team_2_wins += 1
-            else:
+    # Print out some general info about the result
+    num_teams = len(score.teams)
+    if score:
+        team1 = score.teams[0]
+        if num_teams > 1:
+            team2 = score.teams[1]
+        asts_hit = [team.asteroids_hit for team in score.teams]
+        color_print('Scenario eval time: '+str(time.perf_counter()-pre), 'green')
+        color_print(score.stop_reason, 'green')
+        color_print(f"Scenario in-game time: {score.sim_time:.02f} s", 'green')
+        color_print('Asteroids hit: ' + str(asts_hit), 'green')
+        team_1_hits += asts_hit[0]
+        if num_teams > 1:
+            team_2_hits += asts_hit[1]
+            if asts_hit[0] > asts_hit[1]:
                 team_1_wins += 1
-            team_deaths = [team.deaths for team in score.teams]
-            team_1_deaths += team_deaths[0]
-            if num_teams > 1:
-                team_2_deaths += team_deaths[1]
-            color_print('Deaths: ' + str(team_deaths), 'green')
-            if team_deaths[0] >= 1:
-                died = True
-            else:
-                died = False
-            color_print('Accuracy: ' + str([team.accuracy for team in score.teams]), 'green')
-            color_print('Mean eval time: ' + str([team.mean_eval_time for team in score.teams]), 'green')
-            if score.teams[0].accuracy < 1:
-                color_print('NEO MISSED SDIOFJSDI(FJSDIOJFIOSDJFIODSJFIOJSDIOFJSDIOFJOSDIJFISJFOSDJFOJSDIOFJOSDIJFDSJFI)SDFJHSUJFIOSJFIOSJIOFJSDIOFJIOSDFOSDF\n\n', 'red')
-                missed = True
-            else:
-                missed = False
-            team_1_shot_efficiency = (team1.bullets_hit/score.sim_time)/(1/(1/10))
-            team_1_shot_efficiency_including_mines = (team1.asteroids_hit/score.sim_time)/(1/(1/10))
-            if num_teams > 1:
-                team_2_shot_efficiency = (team2.bullets_hit/score.sim_time)/(1/(1/10))
-                team_2_shot_efficiency_including_mines = (team2.asteroids_hit/score.sim_time)/(1/(1/10))
-                team_1_bullets_hit += team1.bullets_hit
-                team_2_bullets_hit += team2.bullets_hit
-                team_1_shots_fired += team1.shots_fired
-                team_2_shots_fired += team2.shots_fired
-        print(f"Team 1, 2 hits: ({team_1_hits}, {team_2_hits})")
-        print(f"Team 1, 2 wins: ({team_1_wins}, {team_2_wins})")
-        print(f"Team 1, 2 deaths: ({team_1_deaths}, {team_2_deaths})")
-        print(f"Team 1, 2 accuracies: ({team_1_bullets_hit/(team_1_shots_fired + 0.000000000000001)}, {team_2_bullets_hit/(team_2_shots_fired + 0.000000000000001)})")
-        print(f"Team 1, 2 shot efficiencies: ({team_1_shot_efficiency:.02%}, {team_2_shot_efficiency:.02%})")
-        print(f"Team 1, 2 shot efficiencies inc. mines/ship hits: ({team_1_shot_efficiency_including_mines:.02%}, {team_2_shot_efficiency_including_mines:.02%})")
-        #if args.once:
-        #    break
+            elif asts_hit[0] < asts_hit[1]:
+                team_2_wins += 1
+        else:
+            team_1_wins += 1
+        team_deaths = [team.deaths for team in score.teams]
+        team_1_deaths += team_deaths[0]
+        if num_teams > 1:
+            team_2_deaths += team_deaths[1]
+        color_print('Deaths: ' + str(team_deaths), 'green')
+        if team_deaths[0] >= 1:
+            died = True
+        else:
+            died = False
+        color_print('Accuracy: ' + str([team.accuracy for team in score.teams]), 'green')
+        color_print('Mean eval time: ' + str([team.mean_eval_time for team in score.teams]), 'green')
+        if score.teams[0].accuracy < 1:
+            color_print('NEO MISSED SDIOFJSDI(FJSDIOJFIOSDJFIODSJFIOJSDIOFJSDIOFJOSDIJFISJFOSDJFOJSDIOFJOSDIJFDSJFI)SDFJHSUJFIOSJFIOSJIOFJSDIOFJIOSDFOSDF\n\n', 'red')
+            missed = True
+        else:
+            missed = False
+        team_1_shot_efficiency = (team1.bullets_hit/score.sim_time)/(1/(1/10))
+        team_1_shot_efficiency_including_mines = (team1.asteroids_hit/score.sim_time)/(1/(1/10))
+        if num_teams > 1:
+            team_2_shot_efficiency = (team2.bullets_hit/score.sim_time)/(1/(1/10))
+            team_2_shot_efficiency_including_mines = (team2.asteroids_hit/score.sim_time)/(1/(1/10))
+            team_1_bullets_hit += team1.bullets_hit
+            team_2_bullets_hit += team2.bullets_hit
+            team_1_shots_fired += team1.shots_fired
+            team_2_shots_fired += team2.shots_fired
+    print(f"Team 1, 2 hits: ({team_1_hits}, {team_2_hits})")
+    print(f"Team 1, 2 wins: ({team_1_wins}, {team_2_wins})")
+    print(f"Team 1, 2 deaths: ({team_1_deaths}, {team_2_deaths})")
+    print(f"Team 1, 2 accuracies: ({team_1_bullets_hit/(team_1_shots_fired + 0.000000000000001)}, {team_2_bullets_hit/(team_2_shots_fired + 0.000000000000001)})")
+    print(f"Team 1, 2 shot efficiencies: ({team_1_shot_efficiency:.02%}, {team_2_shot_efficiency:.02%})")
+    print(f"Team 1, 2 shot efficiencies inc. mines/ship hits: ({team_1_shot_efficiency_including_mines:.02%}, {team_2_shot_efficiency_including_mines:.02%})")
+    #if args.once:
+    #    break
+
+
+
+
+
     if missed and len(team_deaths) == 1:
         color_print(f"Ran {iterations} simulations to get one where Neo missed!", 'green')
         break
@@ -481,3 +512,4 @@ while True:
     if iterations == 0:
         print("No scenario to run!")
         break
+print(f"Debseed is {debseed}")
