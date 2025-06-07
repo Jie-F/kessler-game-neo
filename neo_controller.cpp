@@ -109,19 +109,20 @@ constexpr double inf = std::numeric_limits<double>::infinity();
 constexpr const char* BUILD_NUMBER = "2025-06-05 Neo";
 
 // Output Config
-constexpr bool DEBUG_MODE = false;
-constexpr bool PRINT_EXPLANATIONS = false;
+constexpr bool DEBUG_MODE = true;
+constexpr bool PRINT_EXPLANATIONS = true;
 constexpr double EXPLANATION_MESSAGE_SILENCE_INTERVAL_S = 2.0;
 
 // Safety&Performance Flags
 constexpr bool STATE_CONSISTENCY_CHECK_AND_RECOVERY = true;
 constexpr bool CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS = true;
-constexpr bool ENABLE_SANITY_CHECKS = false;
+constexpr bool ENABLE_SANITY_CHECKS = true;
 constexpr bool PRUNE_SIM_STATE_SEQUENCE = true;
 constexpr bool VALIDATE_SIMULATED_KEY_STATES = false;
 constexpr bool VALIDATE_ALL_SIMULATED_STATES = false;
-constexpr bool VERIFY_AST_TRACKING = false;
+constexpr bool VERIFY_AST_TRACKING = true;
 constexpr bool RESEED_RNG = false;
+constexpr bool ENABLE_UNWRAP_CACHE = false;
 
 // Strategic/algorithm switches
 constexpr bool CONTINUOUS_LOOKAHEAD_PLANNING = true;
@@ -150,6 +151,7 @@ constexpr std::array<double, 9> DEFAULT_FITNESS_WEIGHTS = {0.0, 0.13359801675028
 
 // Angle cone/culling parameters
 constexpr double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF = 45.0;
+// TODO: Make this constexpr by making a constexpr cos/sin function
 const double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF_COSINE = std::cos(MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF * pi / 180.0);
 
 constexpr double MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF = 60.0;
@@ -172,10 +174,10 @@ constexpr double PERFORMANCE_CONTROLLER_PUSHING_THE_ENVELOPE_FUDGE_MULTIPLIER = 
 constexpr double MINIMUM_DELTA_TIME_FRACTION_BUDGET = 0.55;
 constexpr bool ENABLE_PERFORMANCE_CONTROLLER = false;
 
-constexpr int64_t MAX_RESPAWN_PER_TIMESTEP_SEARCH_ITERATIONS = 100;
-constexpr int64_t MAX_MANEUVER_PER_TIMESTEP_SEARCH_ITERATIONS = 100;
+constexpr int64_t MAX_RESPAWN_PER_TIMESTEP_SEARCH_ITERATIONS = 20;
+constexpr int64_t MAX_MANEUVER_PER_TIMESTEP_SEARCH_ITERATIONS = 20;
 
-// Per-lives/per-fitness LUTs (represent as vector of vectors)
+// Per-lives/per-fitness LUTs
 constexpr std::array<std::array<int64_t, 3>, 10> MIN_RESPAWN_PER_TIMESTEP_SEARCH_ITERATIONS_LUT = {{
     {{80, 55, 14}},
     {{70, 40, 13}},
@@ -190,16 +192,16 @@ constexpr std::array<std::array<int64_t, 3>, 10> MIN_RESPAWN_PER_TIMESTEP_SEARCH
 }};
 
 constexpr std::array<std::array<int64_t, 3>, 10> MIN_RESPAWN_PER_PERIOD_SEARCH_ITERATIONS_LUT = {{
-    {{1000, 900, 440}},
-    {{950, 810, 430}},
-    {{925, 780, 420}},
-    {{900, 730, 410}},
-    {{850, 715, 400}},
-    {{815, 680, 390}},
-    {{790, 660, 380}},
-    {{760, 640, 370}},
-    {{730, 620, 360}},
-    {{700, 600, 350}}
+    {{100, 90, 44}},
+    {{95, 81, 43}},
+    {{92, 78, 42}},
+    {{90, 73, 41}},
+    {{85, 71, 40}},
+    {{81, 68, 39}},
+    {{79, 66, 38}},
+    {{76, 64, 37}},
+    {{73, 62, 36}},
+    {{70, 60, 35}}
 }};
 
 constexpr std::array<std::array<int64_t, 3>, 10> MIN_MANEUVER_PER_TIMESTEP_SEARCH_ITERATIONS_LUT = {{
@@ -214,29 +216,31 @@ constexpr std::array<std::array<int64_t, 3>, 10> MIN_MANEUVER_PER_TIMESTEP_SEARC
     {{7, 4, 3}},
     {{6, 3, 2}}
 }};
+
 constexpr std::array<std::array<int64_t, 3>, 10> MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_LUT = {{
-    {{300, 230, 105}},
-    {{230, 185, 88}},
-    {{193, 140, 70}},
-    {{160, 88, 55}},
-    {{88, 42, 32}},
-    {{56, 28, 21}},
-    {{35, 25, 18}},
-    {{25, 18, 14}},
-    {{14, 11, 10}},
-    {{11, 11, 7}}
+    {{100, 77, 35}},
+    {{77, 62, 29}},
+    {{64, 47, 23}},
+    {{53, 29, 18}},
+    {{29, 14, 11}},
+    {{19, 9, 7}},
+    {{12, 8, 6}},
+    {{8, 6, 5}},
+    {{5, 4, 3}},
+    {{4, 4, 2}}
 }};
+
 constexpr std::array<std::array<int64_t, 3>, 10> MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_IF_WILL_DIE_LUT = {{
-    {{860, 680, 340}},
-    {{830, 660, 330}},
-    {{800, 640, 320}},
-    {{770, 620, 310}},
-    {{740, 600, 300}},
-    {{710, 580, 290}},
-    {{690, 560, 280}},
-    {{660, 540, 270}},
-    {{630, 520, 260}},
-    {{600, 500, 250}}
+    {{172, 136, 68}},
+    {{166, 132, 66}},
+    {{160, 128, 64}},
+    {{154, 124, 62}},
+    {{148, 120, 60}},
+    {{142, 116, 58}},
+    {{138, 112, 56}},
+    {{132, 108, 54}},
+    {{126, 104, 52}},
+    {{120, 100, 50}}
 }};
 
 
@@ -1499,7 +1503,7 @@ inline std::vector<std::pair<int64_t,int64_t>> calculate_border_crossings(
     return universes;
 }
 
-// ============= 3. unwrap_asteroid =====================
+// ============= unwrap_asteroid =====================
 // Use copy constructor and int_hash (see Asteroid definition).
 inline std::vector<Asteroid> unwrap_asteroid(
     const Asteroid& asteroid, double max_x, double max_y,
@@ -1507,7 +1511,7 @@ inline std::vector<Asteroid> unwrap_asteroid(
 {
     // Compute hash
     int64_t ast_hash = asteroid.int_hash();
-    if (use_cache) {
+    if (use_cache && ENABLE_UNWRAP_CACHE) {
         auto it = unwrap_cache.find(ast_hash);
         if (it != unwrap_cache.end())
             // CACHE HIT!
@@ -1519,7 +1523,7 @@ inline std::vector<Asteroid> unwrap_asteroid(
     unwrapped_asteroids.push_back(asteroid);
     if (std::abs(asteroid.vx) < EPS && std::abs(asteroid.vy) < EPS) {
         // An asteroid that is stationary will never move across borders and wrap
-        if (use_cache) unwrap_cache[ast_hash] = unwrapped_asteroids; // Cache this
+        if (use_cache && ENABLE_UNWRAP_CACHE) unwrap_cache[ast_hash] = unwrapped_asteroids; // Cache this
         return unwrapped_asteroids;
     }
     for (const auto& universe : calculate_border_crossings(asteroid.x, asteroid.y, asteroid.vx, asteroid.vy, max_x, max_y, time_horizon_s)) {
@@ -1536,7 +1540,7 @@ inline std::vector<Asteroid> unwrap_asteroid(
             asteroid.timesteps_until_appearance
         );
     }
-    if (use_cache) {
+    if (use_cache && ENABLE_UNWRAP_CACHE) {
         unwrap_cache[ast_hash] = unwrapped_asteroids;
     }
     return unwrapped_asteroids;
@@ -2456,7 +2460,7 @@ bool check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_sho
     const GameState& game_state,
     const Asteroid& asteroid
 ) {
-    // Helper lambda for the REMOVED_FOR_COMPETITION checks:
+    // Helper lambda for checks:
     auto verify_asteroid_does_not_appear_in_wrong_timestep = [&](const Asteroid& a) -> bool {
         for (const auto& kv : asteroids_pending_death) {
             int64_t timestep = kv.first;
@@ -2497,16 +2501,16 @@ bool check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_sho
     // See if asteroid for this timestep is tracked
     auto it = asteroids_pending_death.find(current_timestep);
     if (it != asteroids_pending_death.end()) {
-        if (VERIFY_AST_TRACKING) { // REMOVE_FOR_COMPETITION
-            if (!is_asteroid_in_list(it->second, asteroid, game_state)) { // REMOVE_FOR_COMPETITION
-                return verify_asteroid_does_not_appear_in_wrong_timestep(asteroid); // REMOVE_FOR_COMPETITION
+        if (VERIFY_AST_TRACKING) {
+            if (!is_asteroid_in_list(it->second, asteroid, game_state)) {
+                return verify_asteroid_does_not_appear_in_wrong_timestep(asteroid);
             }
         }
         // If we found a list for this ts, return whether asteroid is not present
         return !is_asteroid_in_list(it->second, asteroid, game_state);
     } else {
-        if (VERIFY_AST_TRACKING) { // REMOVE_FOR_COMPETITION
-            return verify_asteroid_does_not_appear_in_wrong_timestep(asteroid); // REMOVE_FOR_COMPETITION
+        if (VERIFY_AST_TRACKING) {
+            return verify_asteroid_does_not_appear_in_wrong_timestep(asteroid);
         }
         return true;
     }
@@ -2542,47 +2546,37 @@ void track_asteroid_we_shot_at(
     for (int64_t future_timesteps = 0; future_timesteps <= bullet_travel_timesteps; ++future_timesteps) {
         int64_t timestep = current_timestep + future_timesteps;
         auto& list_for_timestep = asteroids_pending_death[timestep];
-        if (list_for_timestep.empty()) {
-            // New timestep entry
-            list_for_timestep.push_back(asteroid);
-        } else {
-            if (ENABLE_SANITY_CHECKS) { // REMOVE_FOR_COMPETITION
-                if (is_asteroid_in_list(list_for_timestep, asteroid, game_state)) { // REMOVE_FOR_COMPETITION
-                    std::cout << "ABOUT TO FAIL ASSERTION, we are in the future by " << future_timesteps
-                        << " timesteps from the current ts " << current_timestep << ", this asteroid is "
-                        << asteroid.str() << " and LIST FOR THIS TS IS:\n";
-                    for (const auto& a : list_for_timestep)
-                        std::cout << "  " << a.str() << "\n";
-                    for (const auto& pair : asteroids_pending_death) {
-                        std::cout << "ts: " << pair.first << "\n";
-                        for (const auto& a : pair.second) std::cout << "  " << a.str() << "\n";
-                    }
+        if (ENABLE_SANITY_CHECKS) {
+            if (is_asteroid_in_list(list_for_timestep, asteroid, game_state)) {
+                std::cout << "ABOUT TO FAIL ASSERTION, we are in the future by " << future_timesteps
+                    << " timesteps from the current ts " << current_timestep << ", this asteroid is "
+                    << asteroid.str() << " and LIST FOR THIS TS IS:\n";
+                for (const auto& a : list_for_timestep)
+                    std::cout << "  " << a.str() << "\n";
+                for (const auto& pair : asteroids_pending_death) {
+                    std::cout << "ts: " << pair.first << "\n";
+                    for (const auto& a : pair.second) std::cout << "  " << a.str() << "\n";
                 }
-                assert(!is_asteroid_in_list(list_for_timestep, asteroid, game_state) &&
-                       ("The asteroid " + asteroid.str() +
-                        " appeared in the list of pending death when it wasn't supposed to! I'm on future ts " +
-                        std::to_string(future_timesteps) + " when tracking. This probably means we're reshooting at the same asteroid we already shot at!").c_str());
             }
-            list_for_timestep.push_back(asteroid);
+            assert(!is_asteroid_in_list(list_for_timestep, asteroid, game_state) &&
+                    ("The asteroid " + asteroid.str() +
+                    " appeared in the list of pending death when it wasn't supposed to! I'm on future ts " +
+                    std::to_string(future_timesteps) + " when tracking. This probably means we're reshooting at the same asteroid we already shot at!").c_str());
         }
-
+        list_for_timestep.push_back(asteroid);
         // Advance the asteroid to the next position, unless last iteration
         if (future_timesteps != bullet_travel_timesteps) {
-            asteroid.x = fmod(fmod(asteroid.x + asteroid.vx * DELTA_TIME, game_state.map_size_x) + game_state.map_size_x, game_state.map_size_x);
-            asteroid.y = fmod(fmod(asteroid.y + asteroid.vy * DELTA_TIME, game_state.map_size_y) + game_state.map_size_y, game_state.map_size_y);
+            asteroid.x = pymod(asteroid.x + asteroid.vx * DELTA_TIME, game_state.map_size_x);
+            asteroid.y = pymod(asteroid.y + asteroid.vy * DELTA_TIME, game_state.map_size_y);
         }
     }
 }
 
 Asteroid time_travel_asteroid(const Asteroid& asteroid, int64_t timesteps, const GameState& game_state) {
     // Project an asteroid forward or backward in time, with automatic position wrapping
-    // Note: C++'s fmod can yield negative; ensure wrap is always positive like Python's % for floats.
-    auto wrap = [](double value, double modulus) -> double {
-        return fmod(fmod(value, modulus) + modulus, modulus);
-    };
 
-    double new_x = wrap(asteroid.x + static_cast<double>(timesteps) * asteroid.vx * DELTA_TIME, game_state.map_size_x);
-    double new_y = wrap(asteroid.y + static_cast<double>(timesteps) * asteroid.vy * DELTA_TIME, game_state.map_size_y);
+    double new_x = pymod(asteroid.x + static_cast<double>(timesteps) * asteroid.vx * DELTA_TIME, game_state.map_size_x);
+    double new_y = pymod(asteroid.y + static_cast<double>(timesteps) * asteroid.vy * DELTA_TIME, game_state.map_size_y);
 
     return Asteroid(
         new_x,
@@ -2597,13 +2591,8 @@ Asteroid time_travel_asteroid(const Asteroid& asteroid, int64_t timesteps, const
 }
 
 Asteroid time_travel_asteroid_s(const Asteroid& asteroid, double time, const GameState& game_state) {
-    // Helper for modulus wrapping on floating point, always positive
-    auto wrap = [](double value, double modulus) -> double {
-        return fmod(fmod(value, modulus) + modulus, modulus);
-    };
-
-    double new_x = wrap(asteroid.x + time * asteroid.vx, game_state.map_size_x);
-    double new_y = wrap(asteroid.y + time * asteroid.vy, game_state.map_size_y);
+    double new_x = pymod(asteroid.x + time * asteroid.vx, game_state.map_size_x);
+    double new_y = pymod(asteroid.y + time * asteroid.vy, game_state.map_size_y);
 
     return Asteroid(
         new_x,
@@ -2616,15 +2605,6 @@ Asteroid time_travel_asteroid_s(const Asteroid& asteroid, double time, const Gam
         asteroid.timesteps_until_appearance
     );
 }
-
-
-
-
-
-
-
-
-// Matrix.h -- or in your neo_controller.cpp, assuming everything is defined globally
 
 class Matrix {
 public:
@@ -2727,6 +2707,7 @@ public:
         ship_state = ship_state_;
 
         // Deep copy game state asteroids/bullets/mines/ships
+        // TODO: This is probably unnecessary! This seems super slow.
         game_state.asteroids.clear();
         for (const auto& a : game_state_.asteroids) {
             game_state.asteroids.push_back(a);
@@ -2796,7 +2777,7 @@ public:
             mine_positions_placed = std::set<std::pair<double, double>>();
         }
 
-        // 0 - Not a respawn maneuver, 1 - First pass, 2 - Second pass
+        // 0 - Not a respawn maneuver, 1 - First pass respawn, 2 - Second pass respawn
         if (!halt_shooting && last_timestep_colliding_ == -1) {
             respawn_maneuver_pass_number = 0;
         } else if (last_timestep_colliding_ == -1) {
@@ -2822,7 +2803,7 @@ public:
             random_walk_schedule.push_back(random_double() < bias);
         }
 
-        if (sim_id == 24111) {
+        if (sim_id == 1234567) {
             std::cout << "Starting sim " << sim_id << " with ship state " << ship_state_.str()
                 << ", fire_next_timestep_flag=" << fire_next_timestep_flag
                 << ", fire_first_timestep=" << fire_first_timestep
@@ -2892,17 +2873,24 @@ public:
     }
 
     std::unordered_map<int64_t, std::unordered_map<int64_t, std::vector<Asteroid>>> get_asteroids_pending_death_history() const {
+        // This is a doozy. First of all, if we never shot any asteroids during this sim, then this history dict will be empty!
+        // But each time we shoot an asteroid, we add to this dict the timestep the thing was updated, but we plop down the PREVIOUS version!
+        // For example we have versions A and B. 0:A, 1:A, 2:A, 3:B, 4:B is how the thing changes. So the dict would say: {3: A}. And then B is held in the variable.
         std::unordered_map<int64_t, std::unordered_map<int64_t, std::vector<Asteroid>>> asteroids_pending_death_history_dict;
-        std::unordered_map<int64_t, std::vector<Asteroid>> latest_version = asteroids_pending_death;
+        // Use a pointer to avoid copying large map repeatedly
+        const std::unordered_map<int64_t, std::vector<Asteroid>>* latest_version = &asteroids_pending_death;
+        // TODO: Make sure there's no off-by-one error in these bounds and indices!
         for (int64_t t = initial_timestep + future_timesteps; t > initial_timestep; --t) {
-            asteroids_pending_death_history_dict[t + 1] = latest_version;
+            // We add one because it's the frame after this one that we're updating the state to be, and that we read this variable from
+            asteroids_pending_death_history_dict[t + 1] = *latest_version;  // Dereference to copy into result
             auto it = asteroids_pending_death_history.find(t);
             if (it != asteroids_pending_death_history.end()) {
-                latest_version = it->second;
+                latest_version = &it->second;
             }
         }
         return asteroids_pending_death_history_dict;
     }
+
 
     std::vector<Asteroid> get_forecasted_asteroid_splits() const {
         return forecasted_asteroid_splits;
@@ -2919,22 +2907,26 @@ public:
     }
 
     std::unordered_map<int64_t, std::set<std::pair<double, double>>> get_mine_positions_placed_history() const {
+        // This is a doozy. First of all, if we never shot any asteroids during this sim, then this history dict will be empty!
+        // But each time we shoot an asteroid, we add to this dict the timestep the thing was updated, but we plop down the PREVIOUS version!
+        // For example we have versions A and B. 0:A, 1:A, 2:A, 3:B, 4:B is how the thing changes. So the dict would say: {3: A}. And then B is held in the variable.
         std::unordered_map<int64_t, std::set<std::pair<double, double>>> mine_positions_placed_history_dict;
-        std::set<std::pair<double, double>> latest_version = mine_positions_placed;
+        // Use pointer to avoid unnecessary copying of the set
+        const std::set<std::pair<double, double>>* latest_version = &mine_positions_placed;
+        // TODO: Make sure there's no off-by-one error in these bounds and indices!
         for (int64_t t = initial_timestep + future_timesteps; t > initial_timestep; --t) {
-            mine_positions_placed_history_dict[t + 1] = latest_version;
+            // We add one because it's the frame after this one that we're updating the state to be, and that we read this variable from
+            mine_positions_placed_history_dict[t + 1] = *latest_version;  // Copy the current version into the result
             auto it = mine_positions_placed_history.find(t);
             if (it != mine_positions_placed_history.end()) {
-                latest_version = it->second;
+                latest_version = &it->second;
             }
         }
         return mine_positions_placed_history_dict;
     }
 
-
-    // ---- collision queries ----
-
     bool get_instantaneous_asteroid_collision(const std::vector<Asteroid>* asteroids = nullptr, const std::pair<double, double>* ship_position = nullptr) const {
+        // UNUSED
         double position_x, position_y;
         if (ship_position != nullptr) {
             position_x = ship_position->first;
@@ -2952,17 +2944,21 @@ public:
         return false;
     }
 
+    /*
     bool get_instantaneous_ship_collision() const {
+        // UNUSED. This is too inaccurate, and there's better ways to handle avoiding the other ship rather than being overconfident in giving a binary yes you will collide/no you will not collide
         for (const auto& ship : other_ships) {
             double padding = SHIP_AVOIDANCE_PADDING + std::sqrt(ship.vx*ship.vx + ship.vy*ship.vy)*SHIP_AVOIDANCE_SPEED_PADDING_RATIO;
-            if (check_collision(ship_state.x, ship_state.y, SHIP_RADIUS, ship.x, ship.y, ship.radius + padding)) {
+            // The faster the other ship is going, the bigger of a bubble around it I'm going to draw, since they can deviate from their path very quickly and run into me even though I thought I was in the clear
+            if (check_collision(ship_state.x, ship_state.y, SHIP_RADIUS, ship.x, ship.y, ship.radius + SHIP_AVOIDANCE_PADDING + sqrt(ship.vx**2 + ship.vy**2)*SHIP_AVOIDANCE_SPEED_PADDING_RATIO)) {
                 return true;
             }
         }
         return false;
-    }
+    }*/
 
     bool get_instantaneous_mine_collision() {
+        // UNUSED
         bool mine_collision = false;
         std::vector<size_t> mine_remove_idxs;
         for (size_t i = 0; i < game_state.mines.size(); ++i) {
@@ -2988,23 +2984,10 @@ public:
 
     double get_next_extrapolated_asteroid_collision_time(int64_t additional_timesteps_to_blow_up_mines = 0) const {
         double next_imminent_asteroid_collision_time = std::numeric_limits<double>::infinity();
-
-        // We need to iterate over game_state.asteroids and then forecasted_asteroid_splits,
-        // treating their indices as in Python's `enumerate(chain(...))`.
-        // First, build a single std::vector<const Asteroid*> as our chain.
-        std::vector<const Asteroid*> chain_asteroids;
-        for (const auto& a : game_state.asteroids) {
-            chain_asteroids.push_back(&a);
-        }
-        for (const auto& a : forecasted_asteroid_splits) {
-            chain_asteroids.push_back(&a);
-        }
-
-        for (size_t ast_idx = 0; ast_idx < chain_asteroids.size(); ++ast_idx) {
-            const Asteroid& asteroid = *(chain_asteroids[ast_idx]);
+        // The asteroids from the game state could have been from the future since we waited out the mines, but the forecasted splits are from present time, so we need to treat them differently and only back-extrapolate the existing asteroids and not the forecasted ones
+        
+        auto process_asteroid = [&](const Asteroid& asteroid, bool asteroid_is_born) {
             if (asteroid.alive) {
-                bool asteroid_is_born = (ast_idx < game_state.asteroids.size());
-
                 // For each unwrapped image
                 std::vector<Asteroid> unwrapped_asteroids = unwrap_asteroid(
                     asteroid, game_state.map_size_x, game_state.map_size_y,
@@ -3019,12 +3002,14 @@ public:
                             ship_state.x, ship_state.y, ship_state.vx, ship_state.vy, SHIP_RADIUS,
                             a.x, a.y, a.vx, a.vy, a.radius, game_state
                         );
-                    double predicted_collision_time;
+                    //double predicted_collision_time;
+                    /*
                     if (asteroid_is_born) {
                         predicted_collision_time = predicted_collision_time_from_future + DELTA_TIME * static_cast<double>(additional_timesteps_to_blow_up_mines);
                     } else {
                         predicted_collision_time = predicted_collision_time_from_future;
-                    }
+                    }*/
+                    double predicted_collision_time = predicted_collision_time_from_future + asteroid_is_born * (DELTA_TIME * static_cast<double>(additional_timesteps_to_blow_up_mines));
 
                     if (std::isinf(predicted_collision_time)) {
                         continue;
@@ -3032,11 +3017,13 @@ public:
                     if (ENABLE_SANITY_CHECKS) {
                         assert(predicted_collision_time >= 0.0);
                     }
-
+                    // The predicted collision time is finite and after the end of the sim
+                    // TODO: Verify there isn't an off by one error
                     // Only consider asteroids that exist, or will exist before possible collision time
                     if (!(asteroid.timesteps_until_appearance > 0 &&
                         static_cast<double>(asteroid.timesteps_until_appearance) * DELTA_TIME > predicted_collision_time + EPS)) {
-
+                        // The asteroid either exists, or will come into existence before our collision time
+                        // Check the canonical asteroid, and not the unwrapped one!
                         Asteroid ast_to_check;
                         if (asteroid_is_born && additional_timesteps_to_blow_up_mines != 0) {
                             ast_to_check = time_travel_asteroid(asteroid, -additional_timesteps_to_blow_up_mines, game_state);
@@ -3049,6 +3036,7 @@ public:
                                 initial_timestep + future_timesteps,
                                 game_state, ast_to_check)) {
 
+                            // We're already shooting the asteroid. Check whether the imminent collision time is before or after the asteroid is eliminated
                             int64_t predicted_collision_ts = static_cast<int64_t>(std::floor(predicted_collision_time * FPS));
                             Asteroid future_asteroid_during_imminent_collision_time;
                             if (asteroid_is_born) {
@@ -3062,13 +3050,16 @@ public:
                                     initial_timestep + future_timesteps + predicted_collision_ts,
                                     game_state, future_asteroid_during_imminent_collision_time)) {
                                 // Already eliminated by future time; skip
-                                continue;
+                                // In the future time the asteroid has already been eliminated, so there won't actually be a collision
+                                // debug_print("In the future time the asteroid has already been eliminated, so there won't actually be a collision")
+                                return; // continue to next asteroid
                             } else {
                                 next_imminent_asteroid_collision_time = std::min(
                                     next_imminent_asteroid_collision_time, predicted_collision_time
                                 );
                             }
                         } else {
+                            // We're not eliminating this asteroid, and if it was forecasted, it comes into existence before our collision time. Therefore our collision is real and should be considered.
                             // We're not eliminating it, or it's forecasted, so collision is real
                             next_imminent_asteroid_collision_time = std::min(
                                 next_imminent_asteroid_collision_time, predicted_collision_time
@@ -3076,8 +3067,23 @@ public:
                         }
                     }
                     // else: asteroid is born after the predicted collision time
+                    // There is no collision since the asteroid is born after our predicted collision time, and an unborn asteroid can't collide with anything
                 }
             }
+        };
+
+        // We need to iterate over game_state.asteroids and then forecasted_asteroid_splits,
+        // treating their indices as in Python's `enumerate(chain(...))`.
+        size_t ast_idx = 0;
+        // Iterate over game_state.asteroids
+        for (const Asteroid& a : game_state.asteroids) {
+            process_asteroid(a, true);
+            ++ast_idx;
+        }
+        // ...then over forecasted_asteroid_splits
+        for (const Asteroid& a : forecasted_asteroid_splits) {
+            process_asteroid(a, false);
+            ++ast_idx;
         }
         return next_imminent_asteroid_collision_time;
     }
@@ -3102,9 +3108,11 @@ public:
 
     bool coordinates_in_same_wrap(const std::pair<double, double>& pos1, const std::pair<double, double>& pos2) const {
         // UNUSED
+        // Checks whether the coordinates are in the same universe
         double max_width = game_state.map_size_x;
         double max_height = game_state.map_size_y;
         // Cast to int to mimic Python's floor division, since double//double in Python is floor division
+        // TODO: Honestly this is kinda sketch and using modulo is probably more accurate.
         int32_t x_wrap1 = static_cast<int32_t>(std::floor(pos1.first / max_width));
         int32_t x_wrap2 = static_cast<int32_t>(std::floor(pos2.first / max_width));
         int32_t y_wrap1 = static_cast<int32_t>(std::floor(pos1.second / max_height));
