@@ -92,6 +92,7 @@
 #include <tuple>
 #include <utility>
 #include <vector>
+#include <iomanip>
 
 // Third-party Library: pybind11
 #include <pybind11/complex.h>
@@ -890,8 +891,16 @@ inline bool is_close(double x, double y) {
     return std::abs(x - y) <= EPS;
 }
 
+inline bool is_kinda_close(double x, double y) {
+    return std::abs(x - y) <= GRAIN;
+}
+
 inline bool is_close_to_zero(double x) {
     return std::abs(x) <= EPS;
+}
+
+inline bool is_kinda_close_to_zero(double x) {
+    return std::abs(x) <= GRAIN;
 }
 
 // ------ Fast and SuperFast Trig Functions ------
@@ -1682,7 +1691,7 @@ inline std::pair<double, double> collision_prediction(
         }
     }
 
-    if (dot >= 0.0) {
+    if (dot >= 0.0 && dist_sq > sep_sq) {
         return std::make_pair(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()); // Moving apart or tangent
     }
 
@@ -1761,6 +1770,33 @@ inline double predict_next_imminent_collision_time_with_asteroid(
         ship_pos_x, ship_pos_y, ship_vel_x, ship_vel_y, ship_r,
         ast_pos_x, ast_pos_y, ast_vel_x, ast_vel_y, ast_radius
     );
+
+    // Optional sanity check
+    if constexpr (ENABLE_SANITY_CHECKS) {
+        auto [start_old, end_old] = collision_prediction_slow(
+            ship_pos_x, ship_pos_y, ship_vel_x, ship_vel_y, ship_r,
+            ast_pos_x, ast_pos_y, ast_vel_x, ast_vel_y, ast_radius
+        );
+
+        auto check_equal = [](double a, double b) -> bool {
+            if (std::isnan(a) && std::isnan(b)) return true;
+            if (std::isinf(a) && std::isinf(b)) return (std::signbit(a) == std::signbit(b));
+            return is_kinda_close(a, b);
+        };
+        
+        if (end_old < 0.0) {
+            start_old = std::numeric_limits<double>::quiet_NaN();
+            end_old = std::numeric_limits<double>::quiet_NaN();
+        }
+
+        if (!check_equal(start_collision_time, start_old) || !check_equal(end_collision_time, end_old)) {
+            std::cerr << "Sanity check failed!\n";
+            std::cerr << std::setprecision(15) << "New: [" << start_collision_time << ", " << end_collision_time << "]\n";
+            std::cerr << std::setprecision(15) << "Old: [" << start_old << ", " << end_old << "]\n";
+            assert(false && "collision_prediction mismatch");
+        }
+    }
+
     if (std::isnan(start_collision_time) || std::isnan(end_collision_time)) {
         return inf;
     } else {
