@@ -22,7 +22,7 @@ from neo_controller import NeoController
 #from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
 from benchmark_controller import BenchmarkController
 
-BENCHMARK_TIME_LIMIT = 120.0
+BENCHMARK_TIME_LIMIT = 500.0
 #BENCHMARK_TIME_LIMIT = 3.0
 
 global color_text
@@ -69,7 +69,7 @@ def color_print(text='', color='white', style='normal', same=False, previous=Fal
 
 width, height = (1000, 800)
 
-GRAPHICS = True
+GRAPHICS = False
 
 #controllers_used = [NeoController(), NeoControllerWCCI()]
 controllers_used = [NeoController()]

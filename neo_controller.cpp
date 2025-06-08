@@ -131,7 +131,7 @@ constexpr bool CONTINUOUS_LOOKAHEAD_PLANNING = true;
 constexpr bool USE_HEURISTIC_MANEUVER = false;
 constexpr int64_t END_OF_SCENARIO_DONT_CARE_TIMESTEPS = 8;
 constexpr int64_t ADVERSARY_ROTATION_TIMESTEP_FUDGE = 20;
-constexpr double UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON = 8.0;
+constexpr double UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON = 6.0;
 constexpr double UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON = 2.3;
 
 // Asteroid priorities
@@ -336,6 +336,13 @@ std::vector<double> abs_cruise_speeds = {SHIP_MAX_SPEED/2.0};
 std::vector<int64_t> cruise_timesteps = {static_cast<int64_t>(std::round(MAX_CRUISE_TIMESTEPS/2))};
 std::vector<double> overall_fitness_record;
 int64_t total_sim_timesteps = 0;
+
+template <typename T>
+void print_vector(const std::vector<T>& vec) {
+    for (size_t i = 0; i < vec.size(); ++i) {
+        std::cout << "Index " << i << ": " << vec[i] << "\n";
+    }
+}
 
 void print_sorted_dict(const std::unordered_map<int64_t, int64_t>& umap) {
     // Use std::map to automatically sort keys
@@ -1106,7 +1113,8 @@ inline int64_t count_asteroids_in_mine_blast_radius(const GameState& game_state,
 }
 
 inline bool mine_fis(int64_t mines_remaining, int64_t lives_remaining, int64_t mine_ast_count) {
-    return false;
+    int64_t blah = mines_remaining + lives_remaining + mine_ast_count;
+    return true;
 }
 
 inline bool check_mine_opportunity(const Ship& ship_state, const GameState& game_state, const std::vector<Ship>& other_ships) {
@@ -4183,8 +4191,8 @@ public:
             if (whole_move_sequence.has_value()) {
                 assert(current_move_index.has_value());
                 assert(bullet_sim_ship_state.has_value());
-                int idx = current_move_index.value() + timesteps_until_bullet_hit_asteroid + (skip_half_of_first_cycle ? 0 : -1);
-                if (idx < static_cast<int>(whole_move_sequence->size())) {
+                int64_t idx = current_move_index.value() + timesteps_until_bullet_hit_asteroid + (skip_half_of_first_cycle ? 0 : -1);
+                if (idx < static_cast<int64_t>(whole_move_sequence->size())) {
                     // Simulate ship dynamics, if we have the full future list of moves to go off of
                     thrust = (*whole_move_sequence)[idx].thrust;
                     turn_rate = (*whole_move_sequence)[idx].turn_rate;
@@ -4471,7 +4479,7 @@ public:
             std::cout << this->game_state << std::endl;
         }
 
-        if (ENABLE_BAD_LUCK_EXCEPTION && random_double() < BAD_LUCK_EXCEPTION_PROBABILITY) {
+        if constexpr (ENABLE_BAD_LUCK_EXCEPTION && random_double() < BAD_LUCK_EXCEPTION_PROBABILITY) {
             throw std::runtime_error("Bad luck exception!");
         }
         // This should exactly match what kessler_game.py does.
@@ -5725,7 +5733,7 @@ public:
         debug_print("Best sim ID: " + std::to_string(best_action_sim.get_sim_id()) + ", with index "
             + std::to_string(best_fitness_this_planning_period_index) + " and fitness " + std::to_string(best_action_fitness));
         std::vector<SimState> best_action_sim_state_sequence = best_action_sim.get_state_sequence();
-        if (VALIDATE_ALL_SIMULATED_STATES && !PRUNE_SIM_STATE_SEQUENCE) { // REMOVE_FOR_COMPETITION
+        if constexpr (VALIDATE_ALL_SIMULATED_STATES && !PRUNE_SIM_STATE_SEQUENCE) {
             for (const SimState& state : best_action_sim_state_sequence) {
                 simulated_gamestate_history[state.timestep] = state;
             }
@@ -5909,7 +5917,7 @@ public:
                 double ship_accel_turn_rate = 0.0;
                 double ship_cruise_speed = 0.0;
                 double ship_cruise_turn_rate = 0.0;
-                int ship_cruise_timesteps = 0;
+                int64_t ship_cruise_timesteps = 0;
 
                 if (num_sims_this_planning_period == 0) {
                     // On the first iteration, try the null action. For ring scenarios, it may be best to stay at the center of the ring.
@@ -5941,7 +5949,7 @@ public:
                     else
                         ship_cruise_speed = -SHIP_MAX_SPEED;
                     ship_cruise_turn_rate = 0.0;
-                    ship_cruise_timesteps = randint(0, int(round(MAX_CRUISE_SECONDS * FPS)));
+                    ship_cruise_timesteps = randint(0, int64_t(round(MAX_CRUISE_SECONDS * FPS)));
                 }
 
                 if (ENABLE_SANITY_CHECKS &&
@@ -5976,33 +5984,87 @@ public:
                     //this->game_state_plotter
                 );
 
-                auto move_seq_preview = get_ship_maneuver_move_sequence(
-                    random_ship_heading_angle, ship_cruise_speed, ship_accel_turn_rate,
-                    ship_cruise_timesteps, ship_cruise_turn_rate, planning_state.ship_state.speed);
-
-                while (move_seq_preview.size() >= planning_state.ship_respawn_timer * FPS) {
-                    random_ship_heading_angle = rand_uniform(-20.0, 20.0);
+                double current_ship_speed = planning_state.ship_state.speed;
+                double timesteps_it_takes_to_stop_from_current_speed = std::ceil(current_ship_speed / (SHIP_DRAG + SHIP_MAX_THRUST) * FPS);
+                double timesteps_we_have_for_respawn_maneuver = std::round(planning_state.ship_respawn_timer * FPS);
+                double timesteps_we_have_for_middle_of_maneuver = std::round(timesteps_we_have_for_respawn_maneuver - timesteps_it_takes_to_stop_from_current_speed);
+                assert(timesteps_we_have_for_middle_of_maneuver > 0.0 && "We don't have a positive number of timesteps for a maneuver!");
+                bool start_of_respawn_maneuver = planning_state.ship_respawn_timer == 3.0;
+                // If this is true, then that means the turning and acceleration phase of the existing respawn maneuver is done
+                bool respawn_maneuver_at_max_speed = is_close(std::abs(current_ship_speed), SHIP_MAX_SPEED);
+                assert(!(start_of_respawn_maneuver && respawn_maneuver_at_max_speed)); // We can't be at the start of a maneuver, and still already be at max speed! Respawn maneuvers start from 0 speed!
+                // We have to make sure the respawn maneuver finishes before the ship's respawn invincibility is up.
+                // Because this is continuously planned, at any point during the maneuver sequence, it will try to start a new sequence.
+                // So we have to use this preview move sequence to get an idea of the length of the maneuver.
+                // It's possible to calculate this mathematically, but this might be more accurate.
+                bool respawn_maneuver_without_crash;
+                if (timesteps_we_have_for_middle_of_maneuver <= FPS * 2.0) { // Honestly it's kinda sketch cutting off the respawn maneuver after 3-2=1 seconds have passed, but we can come up with a better way to do it later shall I wish to
+                    // We don't really have time, so just come to a stop and call the respawn maneuver right there
+                    respawn_maneuver_without_crash = maneuver_sim.accelerate(0.0, rand_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE));
+                } else {
+                    // We have sufficient time left.
+                    // Do a respawn maneuver, but keep to the constraint that the time it takes has to be at most the invincibility period we have left, so as to finish the maneuver while invincible
                     ship_accel_turn_rate = rand_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE);
-                    if (random_double() < 0.5)
-                        ship_cruise_speed = SHIP_MAX_SPEED;
-                    else
-                        ship_cruise_speed = -SHIP_MAX_SPEED;
-                    ship_cruise_turn_rate = 0.0;
-                    ship_cruise_timesteps = randint(0, int(round(MAX_CRUISE_SECONDS * FPS)));
-                    move_seq_preview = get_ship_maneuver_move_sequence(
-                        random_ship_heading_angle, ship_cruise_speed, ship_accel_turn_rate,
-                        ship_cruise_timesteps, ship_cruise_turn_rate, planning_state.ship_state.speed
-                    );
+                    if (start_of_respawn_maneuver) {
+                        // Decide the direction to go since we're at the start of a respawn maneuver
+                        if (random_double() < 0.5)
+                            ship_cruise_speed = SHIP_MAX_SPEED;
+                        else
+                            ship_cruise_speed = -SHIP_MAX_SPEED;
+                    } else {
+                        // We're in the middle of a respawn maneuver, so just keep the same direction and don't try to go the other way!
+                        ship_cruise_speed = SHIP_MAX_SPEED * sign(current_ship_speed);
+                    }
+                    //ship_cruise_turn_rate = 0.0;
+                    random_ship_heading_angle = (respawn_maneuver_at_max_speed) ? 0.0 : rand_uniform(-20.0, 20.0);
+                    double turning_time = (respawn_maneuver_at_max_speed) ? 0.0 : std::ceil(std::abs(random_ship_heading_angle) / (SHIP_MAX_TURN_RATE * DELTA_TIME));
+                    assert(sign(ship_cruise_speed) == sign(current_ship_speed) || is_close_to_zero(current_ship_speed));
+                    assert(std::abs(ship_cruise_speed) >= std::abs(current_ship_speed));
+                    double acceleration_time = (respawn_maneuver_at_max_speed) ? 0.0 : std::ceil(std::abs(ship_cruise_speed - current_ship_speed) / (SHIP_MAX_THRUST - SHIP_DRAG) * FPS);
+                    ship_cruise_timesteps = randint(0, int64_t(round(MAX_CRUISE_SECONDS * FPS)));
+                    double deceleration_time = std::ceil(std::abs(ship_cruise_speed) / (SHIP_DRAG + SHIP_MAX_THRUST) * FPS);
+                    double timesteps_this_respawn_maneuver_would_take = turning_time + acceleration_time + static_cast<double>(ship_cruise_timesteps) + deceleration_time;
+                    int64_t rejection_sample_count = 0;
+                    while (timesteps_this_respawn_maneuver_would_take >= timesteps_we_have_for_respawn_maneuver) {
+                        ++rejection_sample_count;
+                        random_ship_heading_angle = (respawn_maneuver_at_max_speed) ? 0.0 : rand_uniform(-20.0, 20.0);
+                        turning_time = (respawn_maneuver_at_max_speed) ? 0.0 : std::ceil(std::abs(random_ship_heading_angle) / (SHIP_MAX_TURN_RATE * DELTA_TIME));
+                        if (start_of_respawn_maneuver) {
+                            // Decide the direction to go since we're at the start of a respawn maneuver
+                            if (random_double() < 0.5)
+                                ship_cruise_speed = SHIP_MAX_SPEED;
+                            else
+                                ship_cruise_speed = -SHIP_MAX_SPEED;
+                        } // Else we already have this set correctly
+                        acceleration_time = (respawn_maneuver_at_max_speed) ? 0.0 : std::ceil(std::abs(ship_cruise_speed - current_ship_speed) / (SHIP_MAX_THRUST - SHIP_DRAG) * FPS);
+                        ship_cruise_timesteps = randint(0, int64_t(round(MAX_CRUISE_SECONDS * FPS)));
+                        deceleration_time = std::ceil(std::abs(ship_cruise_speed) / (SHIP_DRAG + SHIP_MAX_THRUST) * FPS);
+                        timesteps_this_respawn_maneuver_would_take = turning_time + acceleration_time + static_cast<double>(ship_cruise_timesteps) + deceleration_time;
+                        assert(sign(ship_cruise_speed) == sign(current_ship_speed) || is_close_to_zero(current_ship_speed));
+                        assert(std::abs(ship_cruise_speed) >= std::abs(current_ship_speed));
+                        std::cout << "Rejections: " << rejection_sample_count << ", Time we have: " << timesteps_we_have_for_respawn_maneuver << std::endl;
+                        std::cout << "Expected total time: " << timesteps_this_respawn_maneuver_would_take << ", Turning time: " << turning_time << ", Accel time: " << acceleration_time << ", Cruise time: " << ship_cruise_timesteps << ", Decel time: " << deceleration_time << std::endl;
+                    }
+                    if (rejection_sample_count > 10) {
+                        std::cout << "Rejection sample count: " << std::to_string(rejection_sample_count) << std::endl;
+                    }
+                    if constexpr (ENABLE_SANITY_CHECKS) {
+                        auto move_seq_preview = get_ship_maneuver_move_sequence(
+                            random_ship_heading_angle, ship_cruise_speed, ship_accel_turn_rate,
+                            ship_cruise_timesteps, ship_cruise_turn_rate, planning_state.ship_state.speed);
+                        if (!(move_seq_preview.size() <= timesteps_we_have_for_respawn_maneuver)) {
+                            std::cout << "Move seq length is " << move_seq_preview.size() << " and the ts we have for respawn is " << timesteps_we_have_for_respawn_maneuver << std::endl;
+                            print_vector(move_seq_preview);
+                            std::cout << "Expected total time: " << timesteps_this_respawn_maneuver_would_take << ", Turning time: " << turning_time << ", Accel time: " << acceleration_time << ", Cruise time: " << ship_cruise_timesteps << ", Decel time: " << deceleration_time << std::endl;
+                            std::cout << "Current ship speed: " << current_ship_speed << ", Ship cruise speed: " << ship_cruise_speed << std::endl;
+                        }
+                        assert(move_seq_preview.size() <= timesteps_we_have_for_respawn_maneuver);
+                    }
+
+                    respawn_maneuver_without_crash = (respawn_maneuver_at_max_speed || ((maneuver_sim.rotate_heading(random_ship_heading_angle)) && (maneuver_sim.accelerate(ship_cruise_speed, ship_accel_turn_rate)))) && maneuver_sim.cruise(ship_cruise_timesteps, ship_cruise_turn_rate) && maneuver_sim.accelerate(0.0, 0.0);
                 }
 
-                bool respawn_maneuver_without_crash =
-                    maneuver_sim.rotate_heading(random_ship_heading_angle) &&
-                    maneuver_sim.accelerate(ship_cruise_speed, ship_accel_turn_rate) &&
-                    maneuver_sim.cruise(ship_cruise_timesteps, ship_cruise_turn_rate) &&
-                    maneuver_sim.accelerate(0.0, 0.0);
-
-                assert(respawn_maneuver_without_crash &&
-                    "The respawn maneuver somehow crashed. Maybe it's too long! The respawn timer was game_state_to_base_planning->ship_respawn_timer and the maneuver length was maneuver_sim.get_sequence_length()");
+                assert(respawn_maneuver_without_crash && "The respawn maneuver somehow crashed. Maybe it's too long! The respawn timer was game_state_to_base_planning->ship_respawn_timer and the maneuver length was maneuver_sim.get_sequence_length()");
 
                 double maneuver_fitness = maneuver_sim.get_fitness();
 
@@ -6159,9 +6221,9 @@ public:
                 search_iterations_count++;
 
                 double random_ship_heading_angle, ship_accel_turn_rate, ship_cruise_speed, ship_cruise_turn_rate;
-                int ship_cruise_timesteps;
-                double thrust_direction = 0.0;
+                int64_t ship_cruise_timesteps;
                 /*
+                double thrust_direction = 0.0;
                 if (USE_HEURISTIC_MANEUVER && heuristic_maneuver) {
                     random_ship_heading_angle = 0.0;
                     double ship_cruise_timesteps_float;
@@ -6188,9 +6250,9 @@ public:
                     ship_cruise_turn_rate = rand_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
                                             * (2.0*double(rand()%2)-1.0);
                     if (std::isnan(ship_cruise_timesteps_mode))
-                        ship_cruise_timesteps = randint(0, int(round(MAX_CRUISE_TIMESTEPS)));
+                        ship_cruise_timesteps = randint(0, int64_t(round(MAX_CRUISE_TIMESTEPS)));
                     else
-                        ship_cruise_timesteps = int(floor(rand_triangular(0.0, MAX_CRUISE_TIMESTEPS, ship_cruise_timesteps_mode)));
+                        ship_cruise_timesteps = int64_t(floor(rand_triangular(0.0, MAX_CRUISE_TIMESTEPS, ship_cruise_timesteps_mode)));
                 }
 
                 auto preview_move_sequence = get_ship_maneuver_move_sequence(
@@ -6210,7 +6272,7 @@ public:
                     &planning_state.mine_positions_placed,
                     /* halt_shooting */ false,
                     /* fire_first_timestep */ planning_state.fire_next_timestep_flag,
-                    /* verify_first_shot */ ((int)this->sims_this_planning_period.size() == 0 && other_ships_exist),
+                    /* verify_first_shot */ (this->sims_this_planning_period.size() == 0 && other_ships_exist),
                     /* verify_maneuver_shots */ false
                     //this->game_state_plotter
                 );
@@ -6274,7 +6336,7 @@ public:
         GameState game_state = create_game_state_from_dict(game_state_dict);
 
         // Check for simulator/controller desync and perform state recovery/reset as in Python
-        if (CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS || STATE_CONSISTENCY_CHECK_AND_RECOVERY) {
+        if constexpr (CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS || STATE_CONSISTENCY_CHECK_AND_RECOVERY) {
             bool timestep_mismatch = !(game_state.sim_frame == this->current_timestep);
             bool action_queue_desync = !action_queue.empty() && std::get<0>(action_queue.front()) != this->current_timestep;
             bool planning_base_state_outdated = (game_state_to_base_planning.has_value() && game_state_to_base_planning->timestep < this->current_timestep);
