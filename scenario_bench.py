@@ -19,16 +19,16 @@ from src.kesslergame.controller_gamepad import GamepadController
 #from src.neo_controller import NeoController
 from neo_controller import NeoController
 #from src.neo_controller_cont_working import NeoController 
-from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
+#from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
 from benchmark_controller import BenchmarkController
 
-BENCHMARK_TIME_LIMIT = 300.0
+BENCHMARK_TIME_LIMIT = 120.0
 #BENCHMARK_TIME_LIMIT = 3.0
 
 global color_text
 color_text = True
 
-TRIALS = 100
+TRIALS = 1
 
 def color_print(text='', color='white', style='normal', same=False, previous=False) -> None:
     global color_text
@@ -72,7 +72,7 @@ width, height = (1000, 800)
 GRAPHICS = False
 
 #controllers_used = [NeoController(), NeoControllerWCCI()]
-controllers_used = [BenchmarkController()]
+controllers_used = [NeoController()]
 
 # Define Game Settings
 game_settings = {'perf_tracker': True,
