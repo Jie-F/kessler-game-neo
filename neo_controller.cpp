@@ -118,13 +118,13 @@ constexpr double EXPLANATION_MESSAGE_SILENCE_INTERVAL_S = 2.0;
 // Safety&Performance Flags
 constexpr bool STATE_CONSISTENCY_CHECK_AND_RECOVERY = true;
 constexpr bool CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS = true;
-constexpr bool ENABLE_SANITY_CHECKS = true;
+constexpr bool ENABLE_SANITY_CHECKS = false;
 constexpr bool PRUNE_SIM_STATE_SEQUENCE = true;
 constexpr bool VALIDATE_SIMULATED_KEY_STATES = false;
 constexpr bool VALIDATE_ALL_SIMULATED_STATES = false;
 constexpr bool VERIFY_AST_TRACKING = false;
 constexpr bool RESEED_RNG = false;
-constexpr bool ENABLE_UNWRAP_CACHE = false;
+constexpr bool ENABLE_UNWRAP_CACHE = false; // This is slightly slower than not using the cache lmao
 
 // Strategic/algorithm switches
 constexpr bool CONTINUOUS_LOOKAHEAD_PLANNING = true;
@@ -335,7 +335,7 @@ constexpr int64_t ASTEROIDS_HIT_OKAY_CENTER = 23;
 // Dirty globals - reset these if sim re-initialized
 std::unordered_map<std::string, int64_t> explanation_messages_with_timestamps;
 std::vector<double> abs_cruise_speeds = {SHIP_MAX_SPEED/2.0};
-std::vector<int64_t> cruise_timesteps = {static_cast<int64_t>(std::round(MAX_CRUISE_TIMESTEPS/2))};
+std::vector<int64_t> cruise_timesteps_global_history = {static_cast<int64_t>(std::round(MAX_CRUISE_TIMESTEPS/2))};
 std::vector<double> overall_fitness_record;
 int64_t total_sim_timesteps = 0;
 
@@ -1448,7 +1448,7 @@ get_ship_maneuver_move_sequence(double ship_heading_angle, double ship_cruise_sp
 
     // --- cruise helper ---
     auto cruise = [&](int64_t cruise_timesteps, double cruise_turn_rate) {
-        for (int64_t i=0; i < cruise_timesteps; ++i) {
+        for (int64_t i = 0; i < cruise_timesteps; ++i) {
             update(sign(ship_speed) * SHIP_DRAG, cruise_turn_rate);
         }
     };
@@ -1585,7 +1585,7 @@ inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double ma
     }();
     unwrapped_asteroids.clear();*/
     std::vector<Asteroid> unwrapped_asteroids;
-    unwrapped_asteroids.reserve(3);
+    //unwrapped_asteroids.reserve(3);
     unwrapped_asteroids.push_back(asteroid);
     if (is_close_to_zero(asteroid.vx) && is_close_to_zero(asteroid.vy)) {
         // An asteroid that is stationary will never move across borders and wrap
@@ -1596,6 +1596,7 @@ inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double ma
         }
         return unwrapped_asteroids;
     }
+    /*
     if (coordinates_in_same_wrap(asteroid.x, asteroid.y, asteroid.x + asteroid.vx * time_horizon_s, asteroid.y + asteroid.vy * time_horizon_s, max_x, max_y)) {
         // After the asteroid travels the time horizon, it's still in the same wrap! So we can just return the one asteroid lol
         if constexpr (ENABLE_UNWRAP_CACHE) {
@@ -1604,8 +1605,80 @@ inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double ma
             }
         }
         return unwrapped_asteroids;
+    }*/
+    // Find where the asteroid ends up, universe-wise after the time horizon is up, and use this to short-circuit some computation without having to do the full mathy stuff
+    if constexpr (ENABLE_SANITY_CHECKS) {
+        double x_wrap1 = std::floor(asteroid.x / max_x);
+        double y_wrap1 = std::floor(asteroid.y / max_y);
+        assert(x_wrap1 == 0.0);
+        assert(y_wrap1 == 0.0);
     }
+    double x_wrap2 = std::floor((asteroid.x + asteroid.vx * time_horizon_s) / max_x);
+    double y_wrap2 = std::floor((asteroid.y + asteroid.vy * time_horizon_s) / max_y);
+
+    //std::cout << x_wrap1 << y_wrap1 << x_wrap2 << y_wrap2 << std::endl;
+    if (x_wrap2 == 0.0) {
+        // Asteroid does not wrap horizontally
+        if (y_wrap2 == 0.0) {
+            // Does not wrap vertically either
+            // After the time horizon passes, the asteroid is still in the same wrap! So no unwrapped asteroids appear
+            return unwrapped_asteroids;
+        } else {
+            // The asteroid wraps around vertically but not horizontally
+            if (y_wrap2 == -1.0) {
+                unwrapped_asteroids.emplace_back(
+                    asteroid.x,
+                    asteroid.y + max_y,
+                    asteroid.vx,
+                    asteroid.vy,
+                    asteroid.size,
+                    asteroid.mass,
+                    asteroid.radius,
+                    asteroid.timesteps_until_appearance
+                );
+            } else if (y_wrap2 == 1.0) {
+                unwrapped_asteroids.emplace_back(
+                    asteroid.x,
+                    asteroid.y - max_y,
+                    asteroid.vx,
+                    asteroid.vy,
+                    asteroid.size,
+                    asteroid.mass,
+                    asteroid.radius,
+                    asteroid.timesteps_until_appearance
+                );
+            }
+        }
+    } else if (y_wrap2 == 0.0) {
+        // The asteroid only wraps around horizontally
+        if (x_wrap2 == -1.0) {
+            unwrapped_asteroids.emplace_back(
+                asteroid.x + max_x,
+                asteroid.y,
+                asteroid.vx,
+                asteroid.vy,
+                asteroid.size,
+                asteroid.mass,
+                asteroid.radius,
+                asteroid.timesteps_until_appearance
+            );
+        } else if (x_wrap2 == 1.0) {
+            unwrapped_asteroids.emplace_back(
+                asteroid.x - max_x,
+                asteroid.y,
+                asteroid.vx,
+                asteroid.vy,
+                asteroid.size,
+                asteroid.mass,
+                asteroid.radius,
+                asteroid.timesteps_until_appearance
+            );
+        }
+    }
+    // The asteroid wraps both horizontally AND vertically, so we do some complicated math to figure out exactly in what sequence it does the wraps
+
     for (const auto& universe : calculate_border_crossings(asteroid.x, asteroid.y, asteroid.vx, asteroid.vy, max_x, max_y, time_horizon_s)) {
+        // We move the asteroid the opposite direction virtually, from the direction it actually went! Hence the negative signs.
         double dx = -static_cast<double>(universe.first) * max_x;
         double dy = -static_cast<double>(universe.second) * max_y;
         unwrapped_asteroids.emplace_back(
@@ -2545,12 +2618,12 @@ inline std::tuple<
             return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), -1, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
         }
         double absolute_theta_solution = delta_theta_solution + theta_0;
-        assert(-pi <= delta_theta_solution && delta_theta_solution <= pi); // REMOVE_FOR_COMPETITION
+        assert(-pi <= delta_theta_solution && delta_theta_solution <= pi);
 
         double delta_theta_solution_deg = delta_theta_solution * RAD_TO_DEG;
         double t_rot = rotation_time(delta_theta_solution);
 
-        assert(is_close(t_rot, std::abs(delta_theta_solution_deg) / SHIP_MAX_TURN_RATE)); // REMOVE_FOR_COMPETITION
+        assert(is_close(t_rot, std::abs(delta_theta_solution_deg) / SHIP_MAX_TURN_RATE));
 
         double t_bullet = bullet_travel_time(delta_theta_solution, t_rot);
         if (t_bullet < 0)
@@ -2569,7 +2642,7 @@ inline std::tuple<
             if (!std::isnan(std::get<0>(discrete_solution))) {
                 if (!(std::abs(std::get<1>(discrete_solution) * RAD_TO_DEG) - EPS <= double(t_rot_ts) * SHIP_MAX_TURN_RATE_DEG_TS))
                     return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), -1, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
-                assert(t_rot_ts == std::get<2>(discrete_solution)); // REMOVE_FOR_COMPETITION
+                assert(t_rot_ts == std::get<2>(discrete_solution));
                 if (check_coordinate_bounds(game_state, std::get<3>(discrete_solution), std::get<4>(discrete_solution))) {
                     return std::make_tuple(
                         true,
@@ -2676,7 +2749,7 @@ bool check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_sho
     };
 
     // Sanity check
-    if (ENABLE_SANITY_CHECKS) {
+    if constexpr (ENABLE_SANITY_CHECKS) {
         assert(check_coordinate_bounds(game_state, asteroid.x, asteroid.y) || current_timestep == 0 && "Asteroid out of bounds!");
         if (!check_coordinate_bounds(game_state, asteroid.x, asteroid.y)) {
             std::cout << "WARNING, the scenario started with the asteroids out of bounds!" << std::endl;
@@ -2716,7 +2789,7 @@ void track_asteroid_we_shot_at(
     */
     //debug_print("Tracking asteroid we shot at. Asts pending death: ", ", current_timestep=", current_timestep, ", bullet_travel_timesteps=", bullet_travel_timesteps, ", original_asteroid=", original_asteroid.str());
 
-    if (ENABLE_SANITY_CHECKS) {
+    if constexpr (ENABLE_SANITY_CHECKS) {
         assert(check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
             asteroids_pending_death, current_timestep, game_state, original_asteroid
         ));
@@ -2733,7 +2806,7 @@ void track_asteroid_we_shot_at(
     for (int64_t future_timesteps = 0; future_timesteps <= bullet_travel_timesteps; ++future_timesteps) {
         int64_t timestep = current_timestep + future_timesteps;
         auto& list_for_timestep = asteroids_pending_death[timestep];
-        if (ENABLE_SANITY_CHECKS) {
+        if constexpr (ENABLE_SANITY_CHECKS) {
             if (is_asteroid_in_list(list_for_timestep, asteroid, game_state)) {
                 std::cout << "ABOUT TO FAIL ASSERTION, we are in the future by " << future_timesteps
                     << " timesteps from the current ts " << current_timestep << ", this asteroid is "
@@ -2883,7 +2956,7 @@ public:
             local_forecasted_asteroid_splits = *forecasted_asteroid_splits_;
         }
 
-        if (ENABLE_SANITY_CHECKS) {
+        if constexpr (ENABLE_SANITY_CHECKS) {
             assert(static_cast<bool>(ship_state_.is_respawning) == (respawn_timer_ != 0.0));
         }
 
@@ -2918,7 +2991,7 @@ public:
             assert(m.alive);
         }
         other_ships = get_other_ships(game_state, ship_state.id);
-        if (ENABLE_SANITY_CHECKS) {
+        if constexpr (ENABLE_SANITY_CHECKS) {
             assert(0 <= static_cast<int>(other_ships.size()) && static_cast<int>(other_ships.size()) <= 1);
         }
 
@@ -3182,7 +3255,7 @@ public:
                     UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON, false
                 );
                 for (const Asteroid& a : unwrapped_asteroids) {
-                    // Sanity check: ship should not be moving (REMOVE_FOR_COMPETITION)
+                    // Sanity check: ship should not be moving
                     assert(is_close_to_zero(ship_state.vx) && is_close_to_zero(ship_state.vy));
 
                     double predicted_collision_time_from_future =
@@ -3202,7 +3275,7 @@ public:
                     if (std::isinf(predicted_collision_time)) {
                         continue;
                     }
-                    if (ENABLE_SANITY_CHECKS) {
+                    if constexpr (ENABLE_SANITY_CHECKS) {
                         assert(predicted_collision_time >= 0.0);
                     }
                     // The predicted collision time is finite and after the end of the sim
@@ -3363,7 +3436,7 @@ public:
                 double mine_collision_time = mc_pair.first;
                 const std::pair<double, double>& mine_pos = mc_pair.second;
                 next_extrapolated_mine_collision_time = std::min(next_extrapolated_mine_collision_time, mine_collision_time);
-                if (ENABLE_SANITY_CHECKS) {
+                if constexpr (ENABLE_SANITY_CHECKS) {
                     assert(-EPS <= mine_collision_time && mine_collision_time <= MINE_FUSE_TIME + EPS);
                 }
                 double dist_to_ground_zero = dist(ship_state.x, ship_state.y, mine_pos.first, mine_pos.second);
@@ -3529,7 +3602,7 @@ public:
 
         double safe_time_after_maneuver_s;
         if (additional_timesteps_to_blow_up_mines == 0) {
-            assert(std::isinf(next_extrapolated_mine_collision_time)); // REMOVE_FOR_COMPETITION
+            assert(std::isinf(next_extrapolated_mine_collision_time));
             safe_time_after_maneuver_s = std::min(next_extrapolated_asteroid_collision_time, next_extrapolated_mine_collision_time);
         } else {
             double next_extrapolated_asteroid_collision_time_after_mines = this->get_next_extrapolated_asteroid_collision_time(additional_timesteps_to_blow_up_mines);
@@ -3610,7 +3683,7 @@ public:
         // ================================
 
         // Final assertion checks
-        if (ENABLE_SANITY_CHECKS) {
+        if constexpr (ENABLE_SANITY_CHECKS) {
             assert(asteroid_safe_time_fitness >= 0.0 && asteroid_safe_time_fitness <= 1.0);
             assert(mine_safe_time_fitness >= 0.0 && mine_safe_time_fitness <= 1.0);
             assert(asteroids_fitness >= -1.0 && asteroids_fitness <= 1.0);
@@ -3712,7 +3785,7 @@ public:
                 aiming_move_sequence.push_back(Action{0.0, 0.0, false, false, 0});
 
             int64_t asteroid_advance_timesteps = int64_t(aiming_move_sequence.size());
-            if (ENABLE_SANITY_CHECKS) {
+            if constexpr (ENABLE_SANITY_CHECKS) {
                 assert(asteroid_advance_timesteps <= target_asteroid_turning_timesteps || target_asteroid_turning_timesteps == 0);
             }
             if (asteroid_advance_timesteps < target_asteroid_turning_timesteps) {
@@ -3889,7 +3962,7 @@ public:
                 double most_imminent_asteroid_interception_time_s = candidate_target.interception_time_s;
 
                 if (most_imminent_asteroid_aiming_timesteps <= timesteps_until_can_fire) {
-                    if (ENABLE_SANITY_CHECKS) {
+                    if constexpr (ENABLE_SANITY_CHECKS) {
                         assert(most_imminent_asteroid_aiming_timesteps == timesteps_until_can_fire);
                     }
                     std::tie(actual_asteroid_hit, aiming_move_sequence, target_asteroid,
@@ -4044,7 +4117,7 @@ public:
             return sim_complete_without_crash;
         } else {
             assert(timesteps_until_bullet_hit_asteroid.has_value());
-            if (ENABLE_SANITY_CHECKS) {
+            if constexpr (ENABLE_SANITY_CHECKS) {
                 assert(check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
                     asteroids_pending_death, initial_timestep + future_timesteps + timesteps_until_bullet_hit_asteroid.value(), game_state, actual_asteroid_hit.value()));
                 assert(check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
@@ -4113,8 +4186,10 @@ public:
             if (b.alive) bullets.push_back(b);
 
         Ship initial_ship_state = get_ship_state();
-        if (ship_state.has_value() && ENABLE_SANITY_CHECKS) {
-            assert(check_coordinate_bounds(game_state, ship_state.value().x, ship_state.value().y));
+        if constexpr (ENABLE_SANITY_CHECKS) {
+            if (ship_state.has_value()) {
+                assert(check_coordinate_bounds(game_state, ship_state.value().x, ship_state.value().y));
+            }
         }
 
         std::optional<Ship> bullet_sim_ship_state = std::nullopt;
@@ -4236,14 +4311,14 @@ public:
                     } else {
                         bullet_sim_ship_state->speed -= drag_amount * sign(bullet_sim_ship_state->speed);
                     }
-                    if (ENABLE_SANITY_CHECKS) {
+                    if constexpr (ENABLE_SANITY_CHECKS) {
                         assert(-SHIP_MAX_THRUST <= thrust && thrust <= SHIP_MAX_THRUST);
                     }
                     // Apply thrust
                     bullet_sim_ship_state->speed += thrust*DELTA_TIME;
                     // Clamping omitted, could add if desired
                     // bullet_sim_ship_state.speed = min(max(-SHIP_MAX_SPEED, bullet_sim_ship_state.speed), SHIP_MAX_SPEED)
-                    if (ENABLE_SANITY_CHECKS) {
+                    if constexpr (ENABLE_SANITY_CHECKS) {
                         assert(-SHIP_MAX_TURN_RATE <= turn_rate && turn_rate <= SHIP_MAX_TURN_RATE);
                     }
                     // Update the angle based on turning rate
@@ -4432,7 +4507,7 @@ public:
             }
             // print after-thrust speed if desired (debug)
         }
-        if (ENABLE_SANITY_CHECKS) {
+        if constexpr (ENABLE_SANITY_CHECKS) {
             assert(is_close_to_zero(ship_state.speed)
                 /* If you want a string message, you can add: */
                 && "When returning in apply move sequence, the ship speed is not zero!"
@@ -4493,7 +4568,7 @@ public:
             //    std::cout << "In sim " << sim_id << " After thrusting by " << thrust << " the true simmed ship speed is " << ship_state.speed << std::endl;
             //}
         }
-        if (ENABLE_SANITY_CHECKS) {
+        if constexpr (ENABLE_SANITY_CHECKS) {
             assert(is_close_to_zero(ship_state.speed) &&
                 "When returning in simulate maneuver where the sim was safe, the ship speed is not zero!");
         }
@@ -4525,7 +4600,7 @@ public:
             std::vector<Asteroid> forecasted_splits_copy;
             for (const auto& a : forecasted_asteroid_splits) forecasted_splits_copy.push_back(a);
             forecasted_asteroid_splits_history.push_back(forecasted_splits_copy);
-            if (ENABLE_SANITY_CHECKS) {
+            if constexpr (ENABLE_SANITY_CHECKS) {
                 for (const auto& a : forecasted_asteroid_splits_history.back()) { assert(a.alive); }
             }
             if (PRUNE_SIM_STATE_SEQUENCE && future_timesteps != 0) {
@@ -4550,12 +4625,13 @@ public:
         // The simulation starts by evaluating actions and dynamics of the current present timestep, and then steps into the future
         // The game state we're given is actually what we had at the end of the previous timestep
         // The game will take the previous state, and apply current actions and then update to get the result of this timestep
-
-        if (whole_move_sequence && ENABLE_SANITY_CHECKS) {
-            const Action& action = (*whole_move_sequence)[future_timesteps];
-            assert(action.thrust == thrust);
-            assert(action.turn_rate == turn_rate);
-            // Could also assert fire/drop_mine if you wish.
+        if constexpr (ENABLE_SANITY_CHECKS) {
+            if (whole_move_sequence) {
+                const Action& action = (*whole_move_sequence)[future_timesteps];
+                assert(action.thrust == thrust);
+                assert(action.turn_rate == turn_rate);
+                // Could also assert fire/drop_mine if you wish.
+            }
         }
 
         // Simulation order:
@@ -4604,7 +4680,9 @@ public:
         // Mines step
         for (auto& m : game_state.mines) {
             if (m.alive) { // Might not be faster to do this, since it's not much computation I'm skipping
-                if (ENABLE_SANITY_CHECKS) { assert(m.remaining_time > EPS - DELTA_TIME); }
+                if constexpr (ENABLE_SANITY_CHECKS) {
+                    assert(m.remaining_time > EPS - DELTA_TIME);
+                }
                 m.remaining_time -= DELTA_TIME;
             }
             // If the timer is below eps, it'll detonate this timestep
@@ -5054,7 +5132,7 @@ public:
                     mine_positions_placed.insert(std::make_pair(ship_state.x, ship_state.y));
                     game_state.mines.push_back(new_mine);
                     --ship_state.mines_remaining;
-                    if (ENABLE_SANITY_CHECKS) assert(ship_state.mines_remaining >= 0);
+                    if constexpr (ENABLE_SANITY_CHECKS) assert(ship_state.mines_remaining >= 0);
                 }
             }
             else {
@@ -5074,9 +5152,9 @@ public:
             if (std::abs(ship_state.speed) < drag_amount) ship_state.speed = 0.0;
             else ship_state.speed -= drag_amount * sign(ship_state.speed);
 
-            if (ENABLE_SANITY_CHECKS) { assert(-SHIP_MAX_THRUST <= thrust && thrust <= SHIP_MAX_THRUST); }
+            if constexpr (ENABLE_SANITY_CHECKS) { assert(-SHIP_MAX_THRUST <= thrust && thrust <= SHIP_MAX_THRUST); }
             ship_state.speed += thrust * DELTA_TIME;
-            if (ENABLE_SANITY_CHECKS) {
+            if constexpr (ENABLE_SANITY_CHECKS) {
                 assert(-SHIP_MAX_SPEED-EPS <= ship_state.speed && ship_state.speed <= SHIP_MAX_SPEED+EPS);
                 if (ship_state.speed > SHIP_MAX_SPEED) ship_state.speed = SHIP_MAX_SPEED;
                 else if (ship_state.speed < -SHIP_MAX_SPEED) ship_state.speed = -SHIP_MAX_SPEED;
@@ -5192,8 +5270,11 @@ public:
         if (!wait_out_mines) {
             // --- Ship/Asteroid collisions ---
             if (!ship_state.is_respawning) {
-                if (ENABLE_SANITY_CHECKS && respawn_maneuver_pass_number == 0)
-                    assert(!return_value.has_value());
+                if constexpr (ENABLE_SANITY_CHECKS) {
+                    if (respawn_maneuver_pass_number == 0) {
+                        assert(!return_value.has_value());
+                    }
+                }
                 new_asteroids.clear();
                 for (Asteroid& asteroid : game_state.asteroids) {
                     if (asteroid.alive) {
@@ -5282,7 +5363,7 @@ public:
             return false;
         }
 
-        if (ENABLE_SANITY_CHECKS) {
+        if constexpr (ENABLE_SANITY_CHECKS) {
             assert(std::abs(angle_difference_deg(target_heading, ship_state.heading)) <= GRAIN);
         }
         return true;
@@ -5365,7 +5446,7 @@ public:
     }
 
     std::vector<Action> get_move_sequence() const {
-        if (ENABLE_SANITY_CHECKS) {
+        if constexpr (ENABLE_SANITY_CHECKS) {
             int64_t last_ts_shot = -10;
             for (const Action& move : ship_move_sequence) {
                 if (move.fire) {
@@ -5422,7 +5503,7 @@ public:
 
     int64_t get_sequence_length() const {
         // debug_print
-        if (ENABLE_SANITY_CHECKS) { // REMOVE_FOR_COMPETITION
+        if constexpr (ENABLE_SANITY_CHECKS) {
             size_t ship_moves = ship_move_sequence.size();
             size_t states = state_sequence.size();
             if (!(ship_moves + 1 == states || ship_moves == states)) {
@@ -5594,10 +5675,10 @@ public:
         // Clear "global" variables
         explanation_messages_with_timestamps.clear();
         abs_cruise_speeds = {SHIP_MAX_SPEED/2};
-        cruise_timesteps = {static_cast<int64_t>(std::round(MAX_CRUISE_TIMESTEPS/2))};
+        cruise_timesteps_global_history = {static_cast<int64_t>(std::round(MAX_CRUISE_TIMESTEPS/2))};
         overall_fitness_record.clear();
         unwrap_cache.clear();
-        total_sim_timesteps = 0; // REMOVE_FOR_COMPETITION
+        total_sim_timesteps = 0;
     }
 
     // --- Init helper ---
@@ -5630,7 +5711,7 @@ public:
 
         debug_print("Calling decide next action continuous on timestep " + std::to_string(game_state.sim_frame) + ", and force_decision=" + std::string(force_decision ? "true" : "false"));
         assert(game_state_to_base_planning.has_value());
-        assert(best_fitness_this_planning_period_index != INT_NEG_INF); // REMOVE_FOR_COMPETITION
+        assert(best_fitness_this_planning_period_index != INT_NEG_INF);
 
         debug_print("\nDeciding next action! We're picking out of " + std::to_string(sims_this_planning_period.size()) + " total sims");
         //std::cout << "Deciding next action! We're picking out of " << std::to_string(sims_this_planning_period.size()) << " total sims on ts" << std::to_string(this->current_timestep) << std::endl;
@@ -5638,7 +5719,6 @@ public:
 
         // (Optional plotting omitted, see Python for matplotlib calls.)
 
-        // REMOVE_FOR_COMPETITION: this assertion says that the "best" sim is always 'exact'
         assert(sims_this_planning_period.at(best_fitness_this_planning_period_index).state_type == "exact");
 
         // Setup placeholders for the variables we pick out below.
@@ -5708,7 +5788,7 @@ public:
                 debug_print("Wipe the current move sequence and switch to the new better sequence! Current action seq fitness is " +
                             std::to_string(current_sequence_fitness) + " but we can do " + std::to_string(best_action_fitness));
                 action_queue.clear();
-                actioned_timesteps.clear(); // REMOVE_FOR_COMPETITION
+                actioned_timesteps.clear();
                 fire_next_timestep_schedule.clear();
             } else {
                 this->sims_this_planning_period.clear();
@@ -5722,17 +5802,17 @@ public:
                 return false;
             }
         } else {
-            assert(action_queue.empty()); // REMOVE_FOR_COMPETITION
+            assert(action_queue.empty());
         }
 
         // LEARNING statistics (rolling averages for maneuver learning)
         if (best_action_maneuver_tuple.has_value() && !game_state_to_base_planning->respawning && best_action_fitness_breakdown.at(5) != 0.0) {
             abs_cruise_speeds.push_back(std::abs(std::get<1>(best_action_maneuver_tuple.value())));
-            cruise_timesteps.push_back(std::get<3>(best_action_maneuver_tuple.value()));
+            cruise_timesteps_global_history.push_back(std::get<3>(best_action_maneuver_tuple.value()));
             if (abs_cruise_speeds.size() > MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD)
                 abs_cruise_speeds.erase(abs_cruise_speeds.begin(), abs_cruise_speeds.end() - MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD);
-            if (cruise_timesteps.size() > MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD)
-                cruise_timesteps.erase(cruise_timesteps.begin(), cruise_timesteps.end() - MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD);
+            if (cruise_timesteps_global_history.size() > MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD)
+                cruise_timesteps_global_history.erase(cruise_timesteps_global_history.begin(), cruise_timesteps_global_history.end() - MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD);
         }
         overall_fitness_record.push_back(best_action_fitness);
         if (overall_fitness_record.size() > OVERALL_FITNESS_ROLLING_AVERAGE_PERIOD)
@@ -5858,7 +5938,7 @@ public:
             debug_print("Just added " + std::to_string(best_move_sequence.back().timestep + 1) + " to fire_next_timestep_schedule.");
         }
 
-        if (ENABLE_SANITY_CHECKS) {
+        if constexpr (ENABLE_SANITY_CHECKS) {
             assert((bool)game_state_to_base_planning->ship_respawn_timer == game_state_to_base_planning->ship_state.is_respawning);
         }
         if (game_state_to_base_planning->respawning) {
@@ -5868,7 +5948,7 @@ public:
 
         base_gamestates[best_action_sim_last_state.timestep] = game_state_to_base_planning.value(); // Save state for validation/debug
 
-        // Optionally dump state to file (REMOVE_FOR_COMPETITION)
+        // Optionally dump state to file
         // if (KEY_STATE_DUMP)
         // if (SIMULATION_STATE_DUMP)
         // if (game_state_plotter.has_value() && ...)
@@ -5886,7 +5966,7 @@ public:
             }
         }
         for (const Action& move : best_move_sequence) {
-            if (ENABLE_SANITY_CHECKS) {
+            if constexpr (ENABLE_SANITY_CHECKS) {
                 assert(actioned_timesteps.count(move.timestep) == 0 && "DUPLICATE TIMESTEPS IN ENQUEUED MOVES");
                 actioned_timesteps.insert(move.timestep);
                 assert(move.timestep >= game_state.sim_frame);
@@ -6006,16 +6086,14 @@ public:
                     ship_cruise_turn_rate = 0.0;
                     ship_cruise_timesteps = randint(0, int64_t(round(MAX_CRUISE_SECONDS * FPS)));
                 }
-
-                if (ENABLE_SANITY_CHECKS &&
-                    !(bool(planning_state.ship_respawn_timer)
-                    == planning_state.ship_state.is_respawning)
-                ) { // REMOVE_FOR_COMPETITION
-                    std::cout << "BAD, game_state_to_base_planning->ship_respawn_timer: "
-                            << planning_state.ship_respawn_timer
-                            << ", game_state_to_base_planning->ship_state.is_respawning: "
-                            << planning_state.ship_state.is_respawning
-                            << std::endl;
+                if constexpr (ENABLE_SANITY_CHECKS) {
+                    if (!(bool(planning_state.ship_respawn_timer) == planning_state.ship_state.is_respawning)) {
+                        std::cout << "BAD, game_state_to_base_planning->ship_respawn_timer: "
+                                << planning_state.ship_respawn_timer
+                                << ", game_state_to_base_planning->ship_state.is_respawning: "
+                                << planning_state.ship_state.is_respawning
+                                << std::endl;
+                    }
                 }
 
                 // TODO: There's a hardcoded false in the arguments to the following sim. Investigate!!!
@@ -6274,7 +6352,7 @@ public:
             } else {
                 max_pre_maneuver_turn_timesteps = 15.0;
                 ship_cruise_speed_mode = weighted_average(abs_cruise_speeds);
-                ship_cruise_timesteps_mode = weighted_average(cruise_timesteps);
+                ship_cruise_timesteps_mode = weighted_average(cruise_timesteps_global_history);
             }
 
             int search_iterations_count = 0;
@@ -6967,7 +7045,6 @@ public:
             thrust = 0.0; turn_rate = 0.0; fire = false; drop_mine = false;
         }
 
-        // == SANITY CHECKS! (REMOVE_FOR_COMPETITION) ==
         if constexpr (ENABLE_SANITY_CHECKS) {
             if (thrust < -SHIP_MAX_THRUST || thrust > SHIP_MAX_THRUST) {
                 thrust = std::clamp(thrust, -SHIP_MAX_THRUST, SHIP_MAX_THRUST);
@@ -6982,7 +7059,7 @@ public:
             }
         }
 
-        // Optional sleep for visualization (REMOVE_FOR_COMPETITION)
+        // Optional sleep for visualization
         if (double(this->current_timestep) > SLOW_DOWN_GAME_AFTER_SECOND*FPS) {
             std::this_thread::sleep_for(std::chrono::duration<double>(SLOW_DOWN_GAME_PAUSE_TIME));
         }
