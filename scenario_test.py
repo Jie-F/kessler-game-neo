@@ -19,6 +19,7 @@ from src.kesslergame.controller_gamepad import GamepadController
 from examples.test_controller import TestController
 from neo_controller import NeoController
 #from test_controller import TestController as CPPController
+from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
 
 parser = argparse.ArgumentParser(description='Run Kessler Game with optional CLI flags.')
 parser.add_argument('-invisible', action='store_true', help='Use NoGraphics for the game visualization.')
@@ -104,24 +105,23 @@ missed = False
 iterations = 0
 
 
-'''
-threat_test_1,
-threat_test_2,
-threat_test_3,
-threat_test_4,
-accuracy_test_1,
-accuracy_test_2,
-accuracy_test_3,
-accuracy_test_4,
-accuracy_test_5,
-accuracy_test_6,
-accuracy_test_7,
-accuracy_test_8,
-accuracy_test_9,
-accuracy_test_10,
-wall_left_easy,
-'''
 xfc_2021_portfolio = [
+    threat_test_1,
+    threat_test_2,
+    threat_test_3,
+    threat_test_4,
+    accuracy_test_1,
+    accuracy_test_2,
+    accuracy_test_3,
+    accuracy_test_4,
+    accuracy_test_5,
+    accuracy_test_6,
+    accuracy_test_7,
+    accuracy_test_8,
+    accuracy_test_9,
+    accuracy_test_10,
+    wall_left_easy,
+
     wall_right_easy,
     wall_top_easy,
     wall_bottom_easy,
@@ -429,7 +429,7 @@ while True:
             # [ReplayController0(), ReplayController1()] GamepadController()])#, NeoController()])#, TestController()])GamepadController NeoController Neo
         random.seed(randseed)
         from neo_controller import NeoController
-        controllers_used = [NeoController(), NeoController()]
+        controllers_used = [NeoController(), NeoControllerWCCI()]
         #random.setstate(state)
         #print(f"RNG State: {random.getstate()}")
         #score, perf_data = game.run(scenario=ex_adv_four_corners_pt1, controllers=controllers_used)

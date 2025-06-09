@@ -118,7 +118,7 @@ constexpr double EXPLANATION_MESSAGE_SILENCE_INTERVAL_S = 2.0;
 // Safety&Performance Flags
 constexpr bool STATE_CONSISTENCY_CHECK_AND_RECOVERY = true;
 constexpr bool CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS = true;
-constexpr bool ENABLE_SANITY_CHECKS = false;
+constexpr bool ENABLE_SANITY_CHECKS = true;
 constexpr bool PRUNE_SIM_STATE_SEQUENCE = true;
 constexpr bool VALIDATE_SIMULATED_KEY_STATES = false;
 constexpr bool VALIDATE_ALL_SIMULATED_STATES = false;
@@ -6383,22 +6383,24 @@ public:
                         heuristic_maneuver = false;
                 }*/
                 if (!heuristic_maneuver || !USE_HEURISTIC_MANEUVER) {
-                    random_ship_heading_angle = rand_triangular(-DEGREES_TURNED_PER_TIMESTEP * max_pre_maneuver_turn_timesteps,
-                                                            DEGREES_TURNED_PER_TIMESTEP * max_pre_maneuver_turn_timesteps, 0);
-                    ship_accel_turn_rate = rand_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
-                                        * (2.0 * double(rand() %2) - 1.0);
+                    if (ship_is_stationary) {
+                        random_ship_heading_angle = rand_triangular(-DEGREES_TURNED_PER_TIMESTEP * max_pre_maneuver_turn_timesteps, DEGREES_TURNED_PER_TIMESTEP * max_pre_maneuver_turn_timesteps, 0);
+                    } else {
+                        random_ship_heading_angle = 0.0;
+                    }
+                    ship_accel_turn_rate = rand_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE) * (2.0 * double(rand() % 2) - 1.0);
 
-                    if (std::isnan(ship_cruise_speed_mode))
+                    if (std::isnan(ship_cruise_speed_mode)) {
                         ship_cruise_speed = rand_uniform(-SHIP_MAX_SPEED, SHIP_MAX_SPEED);
-                    else
-                        ship_cruise_speed = rand_triangular(0, SHIP_MAX_SPEED, ship_cruise_speed_mode)
-                                            * (2.0 * double(rand()%2) - 1.0);
-                    ship_cruise_turn_rate = rand_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE)
-                                            * (2.0*double(rand()%2)-1.0);
-                    if (std::isnan(ship_cruise_timesteps_mode))
+                    } else {
+                        ship_cruise_speed = rand_triangular(0, SHIP_MAX_SPEED, ship_cruise_speed_mode) * (2.0 * double(rand() % 2) - 1.0);
+                    }
+                    ship_cruise_turn_rate = rand_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE) * (2.0 * double(rand() % 2) - 1.0);
+                    if (std::isnan(ship_cruise_timesteps_mode)) {
                         ship_cruise_timesteps = randint(0, int64_t(round(MAX_CRUISE_TIMESTEPS)));
-                    else
+                    } else {
                         ship_cruise_timesteps = int64_t(floor(rand_triangular(0.0, MAX_CRUISE_TIMESTEPS, ship_cruise_timesteps_mode)));
+                    }
                 }
 
                 auto preview_move_sequence = get_ship_maneuver_move_sequence(
