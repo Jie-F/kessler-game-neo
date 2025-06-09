@@ -6,7 +6,7 @@
       "type": "cppvsdbg",
       "request": "launch",
       "program": "C:\\Program Files\\Python312\\python.exe",
-      "args": ["${workspaceFolder}/scenario_test.py"],
+      "args": ["${workspaceFolder}/scenario_bench.py"],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
       "environment": [],

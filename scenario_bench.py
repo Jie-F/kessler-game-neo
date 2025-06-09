@@ -22,7 +22,7 @@ from neo_controller import NeoController
 #from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
 from benchmark_controller import BenchmarkController
 
-BENCHMARK_TIME_LIMIT = 500.0
+BENCHMARK_TIME_LIMIT = 120.0
 #BENCHMARK_TIME_LIMIT = 3.0
 
 global color_text
