@@ -233,13 +233,14 @@ constexpr double EXPLANATION_MESSAGE_SILENCE_INTERVAL_S = 2.0;
 // Safety&Performance Flags
 constexpr bool STATE_CONSISTENCY_CHECK_AND_RECOVERY = true;
 constexpr bool CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS = true;
-constexpr bool ENABLE_SANITY_CHECKS = true;
+constexpr bool ENABLE_SANITY_CHECKS = false;
 constexpr bool PRUNE_SIM_STATE_SEQUENCE = true;
 constexpr bool VALIDATE_SIMULATED_KEY_STATES = false;
 constexpr bool VALIDATE_ALL_SIMULATED_STATES = false;
 constexpr bool VERIFY_AST_TRACKING = false;
 constexpr bool RESEED_RNG = false;
 constexpr bool ENABLE_UNWRAP_CACHE = false; // This is slightly slower than not using the cache lmao
+constexpr bool UNWRAP_CROSS_PRODUCT_CHECK = true;
 
 // Strategic/algorithm switches
 constexpr bool CONTINUOUS_LOOKAHEAD_PLANNING = true;
@@ -474,6 +475,8 @@ std::vector<double> abs_cruise_speeds = {SHIP_MAX_SPEED/2.0};
 std::vector<int64_t> cruise_timesteps_global_history = {static_cast<int64_t>(std::round(MAX_CRUISE_TIMESTEPS/2))};
 std::vector<double> overall_fitness_record;
 int64_t total_sim_timesteps = 0;
+int64_t unwrap_asteroid_call_count = 0;
+int64_t unwrap_asteroid_expensive_call_count = 0;
 
 template <typename T>
 void print_vector(const std::vector<T>& vec) {
@@ -1765,6 +1768,7 @@ inline bool coordinates_in_same_wrap(const double &pos1x, const double &pos1y, c
 // ============= unwrap_asteroid =====================
 // Use copy constructor and int_hash (see Asteroid definition).
 inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double max_x, double max_y, double time_horizon_s = 10.0, bool use_cache = true) {
+    //unwrap_asteroid_call_count++;
     // Compute hash
     int64_t ast_hash;
     if constexpr (ENABLE_UNWRAP_CACHE) {
@@ -1787,6 +1791,7 @@ inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double ma
     std::vector<Asteroid> unwrapped_asteroids;
     //unwrapped_asteroids.reserve(3);
     unwrapped_asteroids.push_back(asteroid);
+    /* This check isn't very beneficial, because we VERY RARELY have a scenario with stationary asteroids. And even if we do, after shooting them, they'll become mobile again! So this will basically NEVER happen.
     if (is_close_to_zero(asteroid.vx) && is_close_to_zero(asteroid.vy)) {
         // An asteroid that is stationary will never move across borders and wrap
         if constexpr (ENABLE_UNWRAP_CACHE) {
@@ -1795,7 +1800,7 @@ inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double ma
             }
         }
         return unwrapped_asteroids;
-    }
+    }*/
     /*
     if (coordinates_in_same_wrap(asteroid.x, asteroid.y, asteroid.x + asteroid.vx * time_horizon_s, asteroid.y + asteroid.vy * time_horizon_s, max_x, max_y)) {
         // After the asteroid travels the time horizon, it's still in the same wrap! So we can just return the one asteroid lol
@@ -1836,6 +1841,7 @@ inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double ma
                     asteroid.radius,
                     asteroid.timesteps_until_appearance
                 );
+                return unwrapped_asteroids;
             } else if (y_wrap2 == 1.0) {
                 unwrapped_asteroids.emplace_back(
                     asteroid.x,
@@ -1847,6 +1853,7 @@ inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double ma
                     asteroid.radius,
                     asteroid.timesteps_until_appearance
                 );
+                return unwrapped_asteroids;
             }
         }
     } else if (y_wrap2 == 0.0) {
@@ -1862,6 +1869,7 @@ inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double ma
                 asteroid.radius,
                 asteroid.timesteps_until_appearance
             );
+            return unwrapped_asteroids;
         } else if (x_wrap2 == 1.0) {
             unwrapped_asteroids.emplace_back(
                 asteroid.x - max_x,
@@ -1873,10 +1881,159 @@ inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double ma
                 asteroid.radius,
                 asteroid.timesteps_until_appearance
             );
+            return unwrapped_asteroids;
         }
     }
     // The asteroid wraps both horizontally AND vertically, so we do some complicated math to figure out exactly in what sequence it does the wraps
+    // If the asteroid wraps once in the x and once in the y, we can use a cross product to figure out which side of the corner it went on, and also avoid having to calculate border crossings with the general method!
+    // The idea is that if it wrapped horizontally and vertically, it ends up past one of the four corners. But we want to figure out which adjacent universe it visited before going there.
+    // If we calculate the cross product between the velocity vector of the asteroid, and the direction vector from the asteroid to the corner it went past, and check the sign of it, it'll tell you which adjacent universe it went to first!
+    if constexpr (UNWRAP_CROSS_PRODUCT_CHECK) {
+        if (std::abs(x_wrap2) == 1.0 && std::abs(y_wrap2) == 1.0) {
+            unwrapped_asteroids.emplace_back(
+                asteroid.x - x_wrap2 * max_x,
+                asteroid.y - y_wrap2 * max_y,
+                asteroid.vx,
+                asteroid.vy,
+                asteroid.size,
+                asteroid.mass,
+                asteroid.radius,
+                asteroid.timesteps_until_appearance
+            );
 
+            // a is the vector from the asteroid to the corner it went into
+            // b is the vector of the asteroid direction
+            double ax = (0.5 * x_wrap2 + 0.5) * max_x - asteroid.x;
+            double ay = (0.5 * y_wrap2 + 0.5) * max_y - asteroid.y;
+            //constexpr double az = 0.0;
+            double bx = asteroid.vx;
+            double by = asteroid.vy;
+            //constexpr double bz = 0.0;
+            //double cx = ay * bz - az * by;
+            //double cy = az * bx - ax * bz;
+            double cz = ax * by - ay * bx; // Either positive or negative. If it's 0, then the asteroid went perfectly through a corner, and I'd be pretty impressed.
+            
+            if (cz > 0.0) {
+                if (x_wrap2 == 1.0) {
+                    if (y_wrap2 == 1.0) {
+                        // (1, 1) -> (1, 0)
+                        unwrapped_asteroids.emplace_back(
+                            asteroid.x - max_x,
+                            asteroid.y,
+                            asteroid.vx,
+                            asteroid.vy,
+                            asteroid.size,
+                            asteroid.mass,
+                            asteroid.radius,
+                            asteroid.timesteps_until_appearance
+                        );
+                        return unwrapped_asteroids;
+                    } else {
+                        // (1, -1) -> (0, -1)
+                        unwrapped_asteroids.emplace_back(
+                            asteroid.x,
+                            asteroid.y + max_y,
+                            asteroid.vx,
+                            asteroid.vy,
+                            asteroid.size,
+                            asteroid.mass,
+                            asteroid.radius,
+                            asteroid.timesteps_until_appearance
+                        );
+                        return unwrapped_asteroids;
+                    }
+                } else {
+                    if (y_wrap2 == 1.0) {
+                        // (-1, 1) -> (0, 1)
+                        unwrapped_asteroids.emplace_back(
+                            asteroid.x,
+                            asteroid.y - max_y,
+                            asteroid.vx,
+                            asteroid.vy,
+                            asteroid.size,
+                            asteroid.mass,
+                            asteroid.radius,
+                            asteroid.timesteps_until_appearance
+                        );
+                        return unwrapped_asteroids;
+                    } else {
+                        // (-1, -1) -> (-1, 0)
+                        unwrapped_asteroids.emplace_back(
+                            asteroid.x + max_x,
+                            asteroid.y,
+                            asteroid.vx,
+                            asteroid.vy,
+                            asteroid.size,
+                            asteroid.mass,
+                            asteroid.radius,
+                            asteroid.timesteps_until_appearance
+                        );
+                        return unwrapped_asteroids;
+                    }
+                }
+            } else {
+                if (x_wrap2 == 1.0) {
+                    if (y_wrap2 == 1.0) {
+                        // (1, 1) -> (0, 1)
+                        unwrapped_asteroids.emplace_back(
+                            asteroid.x,
+                            asteroid.y - max_y,
+                            asteroid.vx,
+                            asteroid.vy,
+                            asteroid.size,
+                            asteroid.mass,
+                            asteroid.radius,
+                            asteroid.timesteps_until_appearance
+                        );
+                        return unwrapped_asteroids;
+                    } else {
+                        // (1, -1) -> (1, 0)
+                        unwrapped_asteroids.emplace_back(
+                            asteroid.x - max_x,
+                            asteroid.y,
+                            asteroid.vx,
+                            asteroid.vy,
+                            asteroid.size,
+                            asteroid.mass,
+                            asteroid.radius,
+                            asteroid.timesteps_until_appearance
+                        );
+                        return unwrapped_asteroids;
+                    }
+                } else {
+                    if (y_wrap2 == 1.0) {
+                        // (-1, 1) -> (-1, 0)
+                        unwrapped_asteroids.emplace_back(
+                            asteroid.x + max_x,
+                            asteroid.y,
+                            asteroid.vx,
+                            asteroid.vy,
+                            asteroid.size,
+                            asteroid.mass,
+                            asteroid.radius,
+                            asteroid.timesteps_until_appearance
+                        );
+                        return unwrapped_asteroids;
+                    } else {
+                        // (-1, -1) -> (0, -1)
+                        unwrapped_asteroids.emplace_back(
+                            asteroid.x,
+                            asteroid.y + max_y,
+                            asteroid.vx,
+                            asteroid.vy,
+                            asteroid.size,
+                            asteroid.mass,
+                            asteroid.radius,
+                            asteroid.timesteps_until_appearance
+                        );
+                        return unwrapped_asteroids;
+                    }
+                }
+            }
+        }
+    }
+
+    //unwrap_asteroid_expensive_call_count++;
     for (const auto& universe : calculate_border_crossings(asteroid.x, asteroid.y, asteroid.vx, asteroid.vy, max_x, max_y, time_horizon_s)) {
         // We move the asteroid the opposite direction virtually, from the direction it actually went! Hence the negative signs.
         double dx = -static_cast<double>(universe.first) * max_x;
@@ -6696,7 +6853,9 @@ public:
         if (current_timestep == -1) {
             reseed_rng(0);
         }
-
+        //if (unwrap_asteroid_call_count % 10000 == 0) {
+        //std::cout << "Unwrap asteroid called " << unwrap_asteroid_call_count << " times, and " << unwrap_asteroid_expensive_call_count << " calls did the full expensive thing!" << std::endl;
+        //}
         ++this->current_timestep;
         bool recovering_from_crash = false;
         //std::cout << "Calling actions on timestep " << this->current_timestep << std::endl;
