@@ -94,14 +94,44 @@
 #include <vector>
 #include <iomanip>
 #include <array>
+#include <unordered_map>
+#include <set>
+#include <unordered_set>
+#include <thread>
+
 
 // Third-party Library: pybind11
-#include <pybind11/complex.h>
-#include <pybind11/functional.h>
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
+//#include <pybind11/complex.h>
+//#include <pybind11/functional.h>
+//#include <pybind11/pybind11.h>
+//#include <pybind11/stl.h>
 
-namespace py = pybind11;
+#include <nanobind/nanobind.h>
+#include <nanobind/stl/array.h>
+#include <nanobind/stl/bind_map.h>
+#include <nanobind/stl/bind_vector.h>
+#include <nanobind/stl/chrono.h>
+#include <nanobind/stl/complex.h>
+#include <nanobind/stl/filesystem.h>
+#include <nanobind/stl/function.h>
+#include <nanobind/stl/list.h>
+#include <nanobind/stl/map.h>
+#include <nanobind/stl/optional.h>
+#include <nanobind/stl/pair.h>
+#include <nanobind/stl/set.h>
+#include <nanobind/stl/shared_ptr.h>
+#include <nanobind/stl/string.h>
+#include <nanobind/stl/string_view.h>
+#include <nanobind/stl/tuple.h>
+#include <nanobind/stl/unique_ptr.h>
+#include <nanobind/stl/unordered_map.h>
+#include <nanobind/stl/unordered_set.h>
+#include <nanobind/stl/variant.h>
+#include <nanobind/stl/vector.h>
+#include <nanobind/stl/wstring.h>
+
+//namespace py = pybind11;
+namespace nb = nanobind;
 
 constexpr double pi = std::numbers::pi;
 
@@ -838,96 +868,116 @@ inline std::ostream& operator<<(std::ostream& os, const Target& t) { return os <
 
 // ------------------------------- TYPEDDICT EQUIVALENTS -------------------------------
 
-Asteroid create_asteroid_from_dict(py::dict d) {
-    auto pos = d["position"].cast<std::pair<double, double>>();
-    auto vel = d["velocity"].cast<std::pair<double, double>>();
+Asteroid create_asteroid_from_dict(nb::dict d) {
+    auto pos = nb::cast<std::pair<double, double>>(d["position"]);
+    auto vel = nb::cast<std::pair<double, double>>(d["velocity"]);
     return Asteroid(
         pos.first, pos.second,
         vel.first, vel.second,
-        d["size"].cast<int64_t>(),
-        d["mass"].cast<double>(),
-        d["radius"].cast<double>());
-}
-
-Ship create_ship_from_dict(py::dict d) {
-    auto pos = d.contains("position") ? d["position"].cast<std::pair<double, double>>() : std::make_pair(0.0, 0.0);
-    auto vel = d.contains("velocity") ? d["velocity"].cast<std::pair<double, double>>() : std::make_pair(0.0, 0.0);
-    auto thrust_range = d.contains("thrust_range") ? d["thrust_range"].cast<std::pair<double, double>>() : std::make_pair(-SHIP_MAX_THRUST, SHIP_MAX_THRUST);
-    auto turn_range = d.contains("turn_rate_range") ? d["turn_rate_range"].cast<std::pair<double, double>>() : std::make_pair(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE);
-    return Ship(
-        d.contains("is_respawning") ? d["is_respawning"].cast<bool>() : false,
-        pos.first, pos.second, vel.first, vel.second,
-        d.contains("speed") ? d["speed"].cast<double>() : 0.0,
-        d.contains("heading") ? d["heading"].cast<double>() : 0.0,
-        d.contains("mass") ? d["mass"].cast<double>() : 0.0,
-        d.contains("radius") ? d["radius"].cast<double>() : 0.0,
-        d.contains("id") ? d["id"].cast<int64_t>() : 0,
-        d.contains("team") ? d["team"].cast<std::string>() : "",
-        d.contains("lives_remaining") ? d["lives_remaining"].cast<int64_t>() : 0,
-        d.contains("bullets_remaining") ? d["bullets_remaining"].cast<int64_t>() : 0,
-        d.contains("mines_remaining") ? d["mines_remaining"].cast<int64_t>() : 0,
-        d.contains("can_fire") ? d["can_fire"].cast<bool>() : true,
-        d.contains("fire_rate") ? d["fire_rate"].cast<double>() : 10.0,
-        d.contains("can_deploy_mine") ? d["can_deploy_mine"].cast<bool>() : true,
-        d.contains("mine_deploy_rate") ? d["mine_deploy_rate"].cast<double>() : 1.0,
-        thrust_range, turn_range,
-        d.contains("max_speed") ? d["max_speed"].cast<double>() : SHIP_MAX_SPEED,
-        d.contains("drag") ? d["drag"].cast<double>() : SHIP_DRAG
+        nb::cast<int64_t>(d["size"]),
+        nb::cast<double>(d["mass"]),
+        nb::cast<double>(d["radius"])
     );
 }
 
-Mine create_mine_from_dict(py::dict d) {
-    auto pos = d["position"].cast<std::pair<double, double>>();
-    return Mine(pos.first, pos.second, d["mass"].cast<double>(), d["fuse_time"].cast<double>(), d["remaining_time"].cast<double>());
+Ship create_ship_from_dict(nb::dict d) {
+    auto pos = d.contains("position") ? nb::cast<std::pair<double, double>>(d["position"]) : std::make_pair(0.0, 0.0);
+    auto vel = d.contains("velocity") ? nb::cast<std::pair<double, double>>(d["velocity"]) : std::make_pair(0.0, 0.0);
+    auto thrust_range = d.contains("thrust_range") ? nb::cast<std::pair<double, double>>(d["thrust_range"]) : std::make_pair(-SHIP_MAX_THRUST, SHIP_MAX_THRUST);
+    auto turn_range = d.contains("turn_rate_range") ? nb::cast<std::pair<double, double>>(d["turn_rate_range"]) : std::make_pair(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE);
+
+    return Ship(
+        d.contains("is_respawning") ? nb::cast<bool>(d["is_respawning"]) : false,
+        pos.first, pos.second,
+        vel.first, vel.second,
+        d.contains("speed") ? nb::cast<double>(d["speed"]) : 0.0,
+        d.contains("heading") ? nb::cast<double>(d["heading"]) : 0.0,
+        d.contains("mass") ? nb::cast<double>(d["mass"]) : 0.0,
+        d.contains("radius") ? nb::cast<double>(d["radius"]) : 0.0,
+        d.contains("id") ? nb::cast<int64_t>(d["id"]) : 0,
+        d.contains("team") ? nb::cast<std::string>(d["team"]) : "",
+        d.contains("lives_remaining") ? nb::cast<int64_t>(d["lives_remaining"]) : 0,
+        d.contains("bullets_remaining") ? nb::cast<int64_t>(d["bullets_remaining"]) : 0,
+        d.contains("mines_remaining") ? nb::cast<int64_t>(d["mines_remaining"]) : 0,
+        d.contains("can_fire") ? nb::cast<bool>(d["can_fire"]) : true,
+        d.contains("fire_rate") ? nb::cast<double>(d["fire_rate"]) : 10.0,
+        d.contains("can_deploy_mine") ? nb::cast<bool>(d["can_deploy_mine"]) : true,
+        d.contains("mine_deploy_rate") ? nb::cast<double>(d["mine_deploy_rate"]) : 1.0,
+        thrust_range,
+        turn_range,
+        d.contains("max_speed") ? nb::cast<double>(d["max_speed"]) : SHIP_MAX_SPEED,
+        d.contains("drag") ? nb::cast<double>(d["drag"]) : SHIP_DRAG
+    );
 }
 
-Bullet create_bullet_from_dict(py::dict d) {
-    auto pos = d["position"].cast<std::pair<double, double>>();
-    auto vel = d["velocity"].cast<std::pair<double, double>>();
-    double heading = d["heading"].cast<double>();
-    double heading_rad = heading*DEG_TO_RAD;
-    return Bullet(pos.first, pos.second, vel.first, vel.second, heading, d["mass"].cast<double>(), -BULLET_LENGTH*cos(heading_rad), -BULLET_LENGTH*sin(heading_rad));
+
+Mine create_mine_from_dict(nb::dict d) {
+    auto pos = nb::cast<std::pair<double, double>>(d["position"]);
+    return Mine(
+        pos.first, pos.second,
+        nb::cast<double>(d["mass"]),
+        nb::cast<double>(d["fuse_time"]),
+        nb::cast<double>(d["remaining_time"])
+    );
 }
 
-GameState create_game_state_from_dict(py::dict game_state_dict) {
+Bullet create_bullet_from_dict(nb::dict d) {
+    auto pos = nb::cast<std::pair<double, double>>(d["position"]);
+    auto vel = nb::cast<std::pair<double, double>>(d["velocity"]);
+    double heading = nb::cast<double>(d["heading"]);
+    double heading_rad = heading * DEG_TO_RAD;
+    return Bullet(
+        pos.first, pos.second,
+        vel.first, vel.second,
+        heading,
+        nb::cast<double>(d["mass"]),
+        -BULLET_LENGTH * cos(heading_rad),
+        -BULLET_LENGTH * sin(heading_rad)
+    );
+}
+
+
+GameState create_game_state_from_dict(nb::dict game_state_dict) {
     // Asteroids
-    py::list asteroid_list = game_state_dict["asteroids"].cast<py::list>();
+    nb::list asteroid_list = nb::cast<nb::list>(game_state_dict["asteroids"]);
     std::vector<Asteroid> asteroids;
     asteroids.reserve(asteroid_list.size());
     for (auto a : asteroid_list)
-        asteroids.push_back(create_asteroid_from_dict(a.cast<py::dict>()));
+        asteroids.push_back(create_asteroid_from_dict(nb::cast<nb::dict>(a)));
 
     // Ships
-    py::list ship_list = game_state_dict["ships"].cast<py::list>();
+    nb::list ship_list = nb::cast<nb::list>(game_state_dict["ships"]);
     std::vector<Ship> ships;
     ships.reserve(ship_list.size());
     for (auto s : ship_list)
-        ships.push_back(create_ship_from_dict(s.cast<py::dict>()));
+        ships.push_back(create_ship_from_dict(nb::cast<nb::dict>(s)));
 
     // Bullets
-    py::list bullet_list = game_state_dict["bullets"].cast<py::list>();
+    nb::list bullet_list = nb::cast<nb::list>(game_state_dict["bullets"]);
     std::vector<Bullet> bullets;
     bullets.reserve(bullet_list.size());
     for (auto b : bullet_list)
-        bullets.push_back(create_bullet_from_dict(b.cast<py::dict>()));
+        bullets.push_back(create_bullet_from_dict(nb::cast<nb::dict>(b)));
 
     // Mines
-    py::list mine_list = game_state_dict["mines"].cast<py::list>();
+    nb::list mine_list = nb::cast<nb::list>(game_state_dict["mines"]);
     std::vector<Mine> mines;
     mines.reserve(mine_list.size());
     for (auto m : mine_list)
-        mines.push_back(create_mine_from_dict(m.cast<py::dict>()));
+        mines.push_back(create_mine_from_dict(nb::cast<nb::dict>(m)));
 
     // Construct GameState
-    auto map_size = game_state_dict["map_size"].cast<std::pair<double, double>>();
+    auto map_size = nb::cast<std::pair<double, double>>(game_state_dict["map_size"]);
     return GameState(
         asteroids, ships, bullets, mines,
         map_size.first, map_size.second,
-        game_state_dict["time"].cast<double>(),
-        game_state_dict["delta_time"].cast<double>(),
-        game_state_dict["sim_frame"].cast<int64_t>(),
-        game_state_dict["time_limit"].cast<double>());
+        nb::cast<double>(game_state_dict["time"]),
+        nb::cast<double>(game_state_dict["delta_time"]),
+        nb::cast<int64_t>(game_state_dict["sim_frame"]),
+        nb::cast<double>(game_state_dict["time_limit"])
+    );
 }
+
 
 
 struct BasePlanningGameState {
@@ -1277,7 +1327,7 @@ inline double fast_sigmoid(double x, double k=1.0, double x0=0.0) {
     // Compared to the logistic sigmoid, this has a slightly higher slope at x=0, and the -inf to inf behavior is that it asymptotes-out more gradually. Which might be good.
     // Handle infinities explicitly
     if (std::isinf(x)) {
-        return (x > 0) ? 1.0 : 0.0;
+        return (x * sign(k) > 0) ? 1.0 : 0.0;
     }
     double t = k * (x - x0);
     return 0.5 * (1.0 + t / (1.0 + std::abs(t)));
@@ -6642,7 +6692,7 @@ public:
     }
 
     std::tuple<double, double, bool, bool>
-    actions(const py::dict& ship_state_dict, const py::dict& game_state_dict)
+    actions(const nb::dict& ship_state_dict, const nb::dict& game_state_dict)
     {
         //std::cout << AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE << std::endl;
         //while (true) {}
@@ -7250,11 +7300,11 @@ public:
     }
 };
 
-PYBIND11_MODULE(neo_controller, m) {
-    py::class_<NeoController>(m, "NeoController")
-        .def(py::init<>())
+NB_MODULE(neo_controller, m) {
+    nb::class_<NeoController>(m, "NeoController")
+        .def(nb::init<>())
         .def("actions", &NeoController::actions)
-        .def_property_readonly("name", &NeoController::name)
-        .def_property("ship_id", &NeoController::ship_id, &NeoController::set_ship_id)
-        .def_property_readonly("custom_sprite_path", &NeoController::custom_sprite_path);
+        .def_prop_ro("name", &NeoController::name)
+        .def_prop_rw("ship_id", &NeoController::ship_id, &NeoController::set_ship_id)
+        .def_prop_ro("custom_sprite_path", &NeoController::custom_sprite_path);
 }
