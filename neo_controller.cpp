@@ -104,11 +104,102 @@ namespace py = pybind11;
 
 constexpr double pi = std::numbers::pi;
 
+constexpr double constexpr_floor(double x) {
+    long long i = static_cast<long long>(x);
+    return (x < 0 && x != static_cast<double>(i)) ? static_cast<double>(i - 1) : static_cast<double>(i);
+}
+
+constexpr inline double constexpr_cos(double x) {
+    // Divide input by 2π
+    x /= 2.0 * pi;;
+    // Range reduction: reduce x mod 1 (cos is 1-periodic when input is in cycles)
+    x = x - constexpr_floor(x); // equivalent to fmod(x, 1.0) for positive x
+    if (x < 0.0) {
+        x += 1.0;
+    }
+
+    // Cosine is symmetric: cos(2πx) = cos(2π(1 - x))
+    if (x > 0.5) {
+        x = 1.0 - x;
+    }
+
+    // Now in [0, 0.5]; reflect into [0, 0.25] if needed
+    bool negate = false;
+    if (x > 0.25) {
+        x = 0.5 - x;
+        negate = true;
+    }
+
+    // Now x is in [0, 0.25], safe for polynomial approximation of cos(2πx)
+
+    // Coefficients for cos(2πx) ≈ k0 + k2*x^2 + k4*x^4 + ...
+    constexpr double k0 = 0.99999999999999998243004448007448662;
+    constexpr double k2 = -19.7392088021786819392764818587750612;
+    constexpr double k4 = 64.9393940226562091437977220895416253;
+    constexpr double k6 = -85.4568172050586217836507287747925837;
+    constexpr double k8 = 60.244641258656183397655589644431288;
+    constexpr double k10 = -26.4262523020868557642174344599837745;
+    constexpr double k12 = 7.90343062815075398391919868116738223;
+    constexpr double k14 = -1.71291715210778999635263534680016425;
+    constexpr double k16 = 0.270783473417456507078234525883083018;
+    //constexpr double k6 = -1.0 / 720.0;
+    double x2 = x * x;
+    // Evaluate polynomial approximation
+    double y = k0 + x2 * (k2 + x2 * (k4 + x2 * (k6 + x2 * (k8 + x2 * (k10 + x2 * (k12 + x2 * (k14 + x2 * k16)))))));
+
+    // Apply sign flip if needed due to cosine symmetry
+    return negate ? -y : y;
+}
+
+constexpr inline double constexpr_sin(double x) {
+    // Divide input by 2π
+    x /= 2.0 * pi;
+    // Range reduction: reduce x mod 1 (sin is 1-periodic when input is in cycles)
+    x = x - constexpr_floor(x); // equivalent to fmod(x, 1.0) for positive x
+    if (x < 0.0) {
+        x += 1.0;
+    }
+
+    // Sine is symmetric: sin(2πx) = -sin(2π(1 - x))
+    bool negate = false;
+    if (x > 0.5) {
+        x = 1.0 - x;
+        negate = true;
+    }
+
+    // Reflect into [0, 0.25] for polynomial approximation
+    if (x > 0.25) {
+        x = 0.5 - x;
+    }
+
+    // Now x in [0, 0.25], safe for polynomial approximation of sin(2πx)
+
+    // Coefficients for sin(2πx) ≈ x1*(k1 + x2*(k3 + x2*(k5 + ...)))
+    constexpr double k1 = 6.28318530717958647530909380262423401;
+    constexpr double k3 = -41.3417022403997562294707421881240514;
+    constexpr double k5 = 81.6052492760734060849437848650802241;
+    constexpr double k7 = -76.7058597527984963853697294195905433;
+    constexpr double k9 = 42.0586939237851656212519358180646156;
+    constexpr double k11 = -15.0946416205074669984487521304903029;
+    constexpr double k13 = 3.81992705042997091822066334242715305;
+    constexpr double k15 = -0.717723579656548249620955921341133889;
+    constexpr double k17 = 0.1008563287153009308925771120293513;
+
+    double x2 = x * x;
+    // Evaluate polynomial
+    double y = x * (k1 + x2 * (k3 + x2 * (k5 + x2 * (k7 + x2 * (k9 + x2 * (k11 + x2 * (k13 + x2 * (k15 + x2 * k17))))))));
+
+    // Apply sign flip if needed due to sine symmetry
+    return negate ? -y : y;
+}
+
 constexpr double inf = std::numeric_limits<double>::infinity();
 //constexpr double nan = std::numeric_limits<double>::quiet_NaN();
 
+//constexpr inline double super_fast_cos(double x);
+
 // Build Info
-constexpr const char* BUILD_NUMBER = "2025-06-05 Neo";
+constexpr const char* BUILD_NUMBER = "2025-06-09 Neo";
 
 // Output Config
 constexpr bool DEBUG_MODE = false;
@@ -153,17 +244,16 @@ constexpr std::array<double, 9> DEFAULT_FITNESS_WEIGHTS = {0.0, 0.13359801675028
 
 // Angle cone/culling parameters
 constexpr double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF = 45.0;
-// TODO: Make this constexpr by making a constexpr cos/sin function
-const double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF_COSINE = std::cos(MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF * pi / 180.0);
+constexpr double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF_COSINE = constexpr_cos(MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF * pi / 180.0);
 
 constexpr double MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF = 60.0;
-const double MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF_COSINE = std::cos(MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF * pi / 180.0);
+constexpr double MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF_COSINE = constexpr_cos(MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF * pi / 180.0);
 
 constexpr double MAX_CRUISE_TIMESTEPS = 30.0;
 constexpr int64_t MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD = 10;
 constexpr int64_t OVERALL_FITNESS_ROLLING_AVERAGE_PERIOD = 5;
 constexpr double AIMING_CONE_FITNESS_CONE_WIDTH_HALF = 18.0;
-const double AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE = std::cos(AIMING_CONE_FITNESS_CONE_WIDTH_HALF * pi / 180.0);
+constexpr double AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE = constexpr_cos(AIMING_CONE_FITNESS_CONE_WIDTH_HALF * pi / 180.0);
 
 constexpr int64_t MANEUVER_SIM_DISALLOW_TARGETING_FOR_START_TIMESTEPS_AMOUNT = 10;
 constexpr double ASTEROID_AIM_BUFFER_PIXELS = 1.0;
@@ -1353,6 +1443,40 @@ void inspect_scenario(const GameState& game_state, const Ship& ship_state) {
     // std::cout << "Average asteroid density: " << average_density
     //           << ", average vel: (" << avg_vel.first << ", " << avg_vel.second
     //           << "), average speed: " << avg_speed << std::endl;
+}
+
+inline double super_fast_cos(double x) {
+    // Range reduction: reduce x mod 1 (cos is 1-periodic when input is in cycles)
+    x = x - std::floor(x); // equivalent to fmod(x, 1.0) for positive x
+    if (x < 0.0) {
+        x += 1.0;
+    }
+
+    // Cosine is symmetric: cos(2πx) = cos(2π(1 - x))
+    if (x > 0.5) {
+        x = 1.0 - x;
+    }
+
+    // Now in [0, 0.5]; reflect into [0, 0.25] if needed
+    bool negate = false;
+    if (x > 0.25) {
+        x = 0.5 - x;
+        negate = true;
+    }
+
+    // Now x is in [0, 0.25], safe for polynomial approximation of cos(2πx)
+
+    // Coefficients for cos(2πx) ≈ k0 + k2*x^2 + k4*x^4 + ...
+    constexpr double k0 = 0.99737264504047799069902765869834718;
+    constexpr double k2 = -19.382570345302876702491766424192573;
+    constexpr double k4 = 54.793728394483661687985964526525408;
+    //constexpr double k6 = -1.0 / 720.0;
+    double x2 = x * x;
+    // Evaluate polynomial approximation
+    double y = k0 + x2 * (k2 + x2 * k4);
+
+    // Apply sign flip if needed due to cosine symmetry
+    return negate ? -y : y;
 }
 
 // Get all ships except self
@@ -5774,7 +5898,8 @@ public:
                 best_action_maneuver_tuple = sims_this_planning_period.at(best_fitness_this_planning_period_index).maneuver_tuple;
             }
         } else {
-            // Exact one-pass
+            // Exact one-pass regular maneuver
+            // Keep in mind we might still have respawn invincibility, but in this move we're going to remove it! Or it's just on the tail end about to run out.
             assert(sim.sim.get_respawn_maneuver_pass_number() == 0);
             best_action_sim = sim.sim;
             best_action_fitness = sim.fitness;
@@ -5782,15 +5907,17 @@ public:
             best_action_maneuver_tuple = sim.maneuver_tuple;
         }
 
-        // Only switch to this sequence if its fitness is better.
+        
         if (!force_decision) {
+            // Only switch to this sequence if its fitness is better.
             if (best_action_fitness > current_sequence_fitness) {
-                debug_print("Wipe the current move sequence and switch to the new better sequence! Current action seq fitness is " +
-                            std::to_string(current_sequence_fitness) + " but we can do " + std::to_string(best_action_fitness));
+                // JUMP SHIP!!!!!!!!!
+                debug_print("Wipe the current move sequence and switch to the new better sequence! Current action seq fitness is " + std::to_string(current_sequence_fitness) + " but we can do " + std::to_string(best_action_fitness));
                 action_queue.clear();
                 actioned_timesteps.clear();
                 fire_next_timestep_schedule.clear();
             } else {
+                // Continue doing the maneuver we're already doing, because we didn't find a better one to jump ship to
                 this->sims_this_planning_period.clear();
                 this->best_fitness_this_planning_period = -inf;
                 this->best_fitness_this_planning_period_index = INT_NEG_INF;
@@ -5802,6 +5929,7 @@ public:
                 return false;
             }
         } else {
+            // We're out of actions, so we HAVE to decide on a next action out of our current options!
             assert(action_queue.empty());
         }
 
@@ -5970,6 +6098,11 @@ public:
                 assert(actioned_timesteps.count(move.timestep) == 0 && "DUPLICATE TIMESTEPS IN ENQUEUED MOVES");
                 actioned_timesteps.insert(move.timestep);
                 assert(move.timestep >= game_state.sim_frame);
+            }
+            // In case we jump ship in the middle of a maneuver, and we want to fire the next frame, we still want to do that! We do that through tracking the frames we fire, in the fire next timestep.
+            // Because the bullet is created before the ship updates, it doesn't matter how the ship moves. If we wanted to shoot before, then it means we're guaranteed to hit something, no matter what else the ship does!
+            if (move.fire) {
+                fire_next_timestep_schedule.insert(move.timestep);
             }
             enqueue_action(move.timestep, move.thrust, move.turn_rate, move.fire, move.drop_mine);
 
@@ -6471,6 +6604,8 @@ public:
     std::tuple<double, double, bool, bool>
     actions(const py::dict& ship_state_dict, const py::dict& game_state_dict)
     {
+        //std::cout << AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE << std::endl;
+        //while (true) {}
         // Optionally reseed RNG if flag enabled
         if (RESEED_RNG) {
             std::srand(static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count()));
@@ -6644,21 +6779,21 @@ public:
                         // asteroids_pending_death: empty if not found, else value for this timestep
                         asteroids_pending_death_schedule.count(current_timestep) ? asteroids_pending_death_schedule[current_timestep] : std::unordered_map<int64_t, std::vector<Asteroid>>{},
                         // forecasted_asteroid_splits: empty if not found, else value for this timestep
-                        forecasted_asteroid_splits_schedule.count(current_timestep) ? forecasted_asteroid_splits_schedule[current_timestep] : std::vector<Asteroid>{},
+                        forecasted_asteroid_splits_schedule.count(this->current_timestep) ? forecasted_asteroid_splits_schedule[this->current_timestep] : std::vector<Asteroid>{},
                         // last_timestep_fired: as per Python logic
-                        recovering_from_crash ? (current_timestep-1) :
+                        recovering_from_crash ? (this->current_timestep - 1) :
                             (current_timestep==0 ?
                                 INT_NEG_INF :
-                                (last_timestep_fired_schedule.count(current_timestep) ? last_timestep_fired_schedule[current_timestep] : INT_NEG_INF)
+                                (last_timestep_fired_schedule.count(this->current_timestep) ? last_timestep_fired_schedule[this->current_timestep] : INT_NEG_INF)
                             ),
                         // last_timestep_mined: as per Python logic
-                        recovering_from_crash ? (current_timestep-1) :
-                            (current_timestep==0 ?
+                        recovering_from_crash ? (this->current_timestep - 1) :
+                            (this->current_timestep == 0 ?
                                 INT_NEG_INF :
-                                (last_timestep_mined_schedule.count(current_timestep) ? last_timestep_mined_schedule[current_timestep] : INT_NEG_INF)
+                                (last_timestep_mined_schedule.count(this->current_timestep) ? last_timestep_mined_schedule[this->current_timestep] : INT_NEG_INF)
                             ),
-                        mine_positions_placed_schedule.count(current_timestep) ? mine_positions_placed_schedule[current_timestep] : std::set<std::pair<double, double>>{},
-                        fire_next_timestep_schedule.count(current_timestep) > 0
+                        mine_positions_placed_schedule.count(this->current_timestep) ? mine_positions_placed_schedule[this->current_timestep] : std::set<std::pair<double, double>>{},
+                        fire_next_timestep_schedule.count(this->current_timestep) > 0
                     };
                 } else if (!game_state_to_base_planning.has_value()) {
                     this->game_state_to_base_planning = {

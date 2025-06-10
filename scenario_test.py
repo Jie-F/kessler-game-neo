@@ -92,7 +92,7 @@ width, height = (1000, 800)
 # Define Game Settings
 game_settings = {'perf_tracker': True,
                  'graphics_type': GraphicsType.NoGraphics if args.invisible else (GraphicsType.UnrealEngine if args.unreal else GraphicsType.Tkinter),#UnrealEngine,Tkinter,NoGraphics
-                 'realtime_multiplier': 1,
+                 'realtime_multiplier': 0,
                  'graphics_obj': None,
                  'frequency': 30.0,
                  'UI_settings': 'all'}
