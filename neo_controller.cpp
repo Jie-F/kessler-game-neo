@@ -93,6 +93,7 @@
 #include <utility>
 #include <vector>
 #include <iomanip>
+#include <array>
 
 // Third-party Library: pybind11
 #include <pybind11/complex.h>
@@ -240,7 +241,29 @@ constexpr int64_t MINE_OTHER_SHIP_ASTEROID_COUNT_EQUIVALENT = 10;
 constexpr double TARGETING_AIMING_UNDERTURN_ALLOWANCE_DEG = 6.0;
 
 // Fitness Weights (default)
-constexpr std::array<double, 9> DEFAULT_FITNESS_WEIGHTS = {0.0, 0.13359801675028146, 0.1488417344765523, 0.0, 0.06974293843076491, 0.20559835937182916, 0.12775194210275548, 0.14357775694291458, 0.17088925192490204};
+
+constexpr std::array<double, 9> UNNORMALIZED_WEIGHTS = {0.0, 0.13359801675028146, 0.1488417344765523, 0.0, 0.06974293843076491, 0.20559835937182916, 0.12775194210275548, 0.14357775694291458, 0.17088925192490204};
+
+constexpr double sum(const std::array<double, 9>& arr) {
+    double total = 0.0;
+    for (double val : arr) {
+        total += val;
+    }
+    return total;
+}
+
+constexpr std::array<double, 9> normalize(const std::array<double, 9>& arr) {
+    std::array<double, 9> result = {};
+    double total = sum(arr);
+    for (size_t i = 0; i < arr.size(); ++i) {
+        result[i] = total != 0.0 ? arr[i] / total : 0.0;
+    }
+    return result;
+}
+
+constexpr std::array<double, 9> DEFAULT_FITNESS_WEIGHTS = normalize(UNNORMALIZED_WEIGHTS);
+
+//constexpr std::array<double, 9> DEFAULT_FITNESS_WEIGHTS = {0.0, 0.13359801675028146, 0.1488417344765523, 0.0, 0.06974293843076491, 0.20559835937182916, 0.12775194210275548, 0.14357775694291458, 0.17088925192490204};
 
 // Angle cone/culling parameters
 constexpr double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF = 45.0;
@@ -1205,7 +1228,7 @@ inline int64_t count_asteroids_in_mine_blast_radius(const GameState& game_state,
 }
 
 inline bool mine_fis(int64_t mines_remaining, int64_t lives_remaining, int64_t mine_ast_count) {
-    int64_t blah = mines_remaining + lives_remaining + mine_ast_count;
+    int64_t implement_mine_fis_pls = mines_remaining + lives_remaining + mine_ast_count;
     return true;
 }
 
@@ -1247,7 +1270,17 @@ inline bool check_mine_opportunity(const Ship& ship_state, const GameState& game
 // Sigmoid
 inline double sigmoid(double x, double k=1.0, double x0=0.0) {
     // Logistic sigmoid with scaling and shift
-    return 1.0/(1.0 + std::exp(-k*(x - x0)));
+    return 1.0/(1.0 + std::exp(-k * (x - x0)));
+}
+
+inline double fast_sigmoid(double x, double k=1.0, double x0=0.0) {
+    // Compared to the logistic sigmoid, this has a slightly higher slope at x=0, and the -inf to inf behavior is that it asymptotes-out more gradually. Which might be good.
+    // Handle infinities explicitly
+    if (std::isinf(x)) {
+        return (x > 0) ? 1.0 : 0.0;
+    }
+    double t = k * (x - x0);
+    return 0.5 * (1.0 + t / (1.0 + std::abs(t)));
 }
 
 // Linear interpolation (with clamping)
@@ -3525,9 +3558,9 @@ public:
                 return 1.0;
             } else {
                 if (displacement < EPS) {
-                    return sigmoid(next_extrapolated_asteroid_collision_time + move_sequence_length_s * 0.25, 1.4, 3.0);
+                    return fast_sigmoid(next_extrapolated_asteroid_collision_time + move_sequence_length_s * 0.25, 1.4, 3.0);
                 } else {
-                    return sigmoid(next_extrapolated_asteroid_collision_time + move_sequence_length_s * 0.25, 1.4, 3.0);
+                    return fast_sigmoid(next_extrapolated_asteroid_collision_time + move_sequence_length_s * 0.25, 1.4, 3.0);
                 }
             }
         };
@@ -3539,7 +3572,7 @@ public:
             } else {
                 double fudged_asteroids_shot = (asteroids_shot == 0) ? 0.1 : static_cast<double>(asteroids_shot);
                 double time_per_asteroids_shot = move_sequence_length_s / fudged_asteroids_shot;
-                double asteroids_fitness = sigmoid(time_per_asteroids_shot, -0.5 * FPS, 10.8*DELTA_TIME);
+                double asteroids_fitness = fast_sigmoid(time_per_asteroids_shot, -0.5 * FPS, 10.8*DELTA_TIME);
                 return asteroids_fitness;
             }
         };
@@ -3567,7 +3600,7 @@ public:
                 double mine_ground_zero_fudge = linear(dist_to_ground_zero, 0.0, 1.0, MINE_BLAST_RADIUS + SHIP_RADIUS, 0.6);
                 mines_threat_level += std::pow(MINE_FUSE_TIME - next_extrapolated_mine_collision_time, 2.0) / 9.0 * mine_ground_zero_fudge;
             }
-            double mine_safe_time_fitness = sigmoid(mines_threat_level, -6.8, 0.232);
+            double mine_safe_time_fitness = fast_sigmoid(mines_threat_level, -6.8, 0.232);
             return std::make_pair(mine_safe_time_fitness, next_extrapolated_mine_collision_time);
         };
 
@@ -3600,7 +3633,7 @@ public:
                     }
                 }
             }
-            return sigmoid(asts_within_cone, 1.0, 2.4);
+            return fast_sigmoid(asts_within_cone, 1.0, 2.4);
         };
 
         // Crash fitness
@@ -3636,12 +3669,12 @@ public:
         // Sequence length fitness
         auto get_sequence_length_fitness = [&](double move_sequence_length_s, double displacement) -> double {
             if (respawn_maneuver_pass_number > 0) {
-                return sigmoid(move_sequence_length_s, -2.8, 1.7);
+                return fast_sigmoid(move_sequence_length_s, -2.8, 1.7);
             } else {
                 if (displacement < EPS) {
-                    return sigmoid(move_sequence_length_s, -2.8, 1.7);
+                    return fast_sigmoid(move_sequence_length_s, -2.8, 1.7);
                 } else {
-                    return sigmoid(move_sequence_length_s, -5.7, 0.8);
+                    return fast_sigmoid(move_sequence_length_s, -5.7, 0.8);
                 }
             }
         };
@@ -3675,8 +3708,8 @@ public:
                 }
                 double mean_separation_dist = weighted_harmonic_mean(separation_dists);
                 double fit_val = invert_ship_affinity ?
-                    1.0 - sigmoid(mean_separation_dist * other_ship_speed_dist_mul, 0.032, 120.0)
-                    :      sigmoid(mean_separation_dist * other_ship_speed_dist_mul, 0.032, 120.0);
+                    1.0 - fast_sigmoid(mean_separation_dist * other_ship_speed_dist_mul, 0.032, 120.0)
+                    :      fast_sigmoid(mean_separation_dist * other_ship_speed_dist_mul, 0.032, 120.0);
                 return fit_val;
             }
             return 1.0;
@@ -3744,7 +3777,7 @@ public:
                 );
             }
         }
-        double overall_safe_time_fitness = sigmoid(safe_time_after_maneuver_s, 2.9, 1.4);
+        double overall_safe_time_fitness = fast_sigmoid(safe_time_after_maneuver_s, 2.9, 1.4);
 
         // Ship path geometry
         double ship_start_position_x = states.front().ship_state.x;
@@ -3760,7 +3793,7 @@ public:
         }
 
         double asteroid_safe_time_fitness = get_asteroid_safe_time_fitness(next_extrapolated_asteroid_collision_time, displacement, move_sequence_length_s);
-
+        //std::cout << asteroid_safe_time_fitness << std::endl;
         // Determine "ship positions" for other ship proximity check
         std::vector<std::pair<double, double>> self_ship_positions;
         if (displacement < EPS || respawn_maneuver_pass_number > 0) {
@@ -3840,9 +3873,10 @@ public:
             ? std::vector<double>(fitness_function_weights->begin(), fitness_function_weights->end())
             : std::vector<double>(DEFAULT_FITNESS_WEIGHTS.begin(), DEFAULT_FITNESS_WEIGHTS.end());
 
+
         double overall_fitness = weighted_harmonic_mean(fitness_breakdown_vector, &fitness_weights, 1.0);
         assert((overall_fitness >= 0.0 && overall_fitness <= 1.0) || asteroids_fitness < 0.0);
-
+        //print_vector(fitness_breakdown_vector);
         if (overall_fitness > 0.9) {
             safety_messages.push_back("I'm safe and chilling");
         }
@@ -3924,8 +3958,7 @@ public:
             //std::optional<Asteroid> actual_asteroid_hit;
             //std::optional<int64_t> timesteps_until_bullet_hit_asteroid;
             //bool ignored_bool;
-            auto [actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, ignored_bool] =
-                bullet_sim(ship_state_after_aiming, fire_first_timestep, aiming_move_sequence.size());
+            auto [actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, ignored_bool] = bullet_sim(ship_state_after_aiming, fire_first_timestep, aiming_move_sequence.size());
             return std::make_tuple(
                 actual_asteroid_hit,
                 aiming_move_sequence,
@@ -4280,8 +4313,8 @@ public:
 
     std::tuple<std::optional<Asteroid>, int64_t, bool>
     bullet_sim(
-        const std::optional<Ship>& ship_state = std::nullopt,
-        bool fire_first_timestep = false,
+        const std::optional<Ship>& initial_ship_state_for_bullet_sim = std::nullopt,
+        bool fire_first_timestep_of_bullet_sim = false,
         int64_t fire_after_timesteps = 0,
         bool skip_half_of_first_cycle = false,
         const std::optional<int64_t>& current_move_index = std::nullopt,
@@ -4311,8 +4344,8 @@ public:
 
         Ship initial_ship_state = get_ship_state();
         if constexpr (ENABLE_SANITY_CHECKS) {
-            if (ship_state.has_value()) {
-                assert(check_coordinate_bounds(game_state, ship_state.value().x, ship_state.value().y));
+            if (initial_ship_state_for_bullet_sim.has_value()) {
+                assert(check_coordinate_bounds(game_state, initial_ship_state_for_bullet_sim.value().x, initial_ship_state_for_bullet_sim.value().y));
             }
         }
 
@@ -4382,12 +4415,13 @@ public:
             }
 
             // Create the initial bullet we fire, if we're locked in
-            if (fire_first_timestep && timesteps_until_bullet_hit_asteroid + (skip_half_of_first_cycle ? 0 : -1) == 0) {
+            if (fire_first_timestep_of_bullet_sim && timesteps_until_bullet_hit_asteroid + (skip_half_of_first_cycle ? 0 : -1) == 0) {
                 rad_heading = initial_ship_state.heading * DEG_TO_RAD;
                 cos_heading = std::cos(rad_heading);
                 sin_heading = std::sin(rad_heading);
                 new_bullet_x = initial_ship_state.x + SHIP_RADIUS * cos_heading;
                 new_bullet_y = initial_ship_state.y + SHIP_RADIUS * sin_heading;
+                // Make sure the bullet isn't being fired out into the void
                 if (0.0 <= new_bullet_x && new_bullet_x <= game_state.map_size_x && 0.0 <= new_bullet_y && new_bullet_y <= game_state.map_size_y) {
                     Bullet initial_timestep_fire_bullet(
                         new_bullet_x, new_bullet_y, BULLET_SPEED*cos_heading, BULLET_SPEED*sin_heading,
@@ -4396,12 +4430,12 @@ public:
                     bullets.push_back(initial_timestep_fire_bullet);
                 }
             }
-
+            // The new bullet we create will end up at the end of the list of bullets
             if (!my_bullet.has_value() && timesteps_until_bullet_hit_asteroid + (skip_half_of_first_cycle ? 0 : -1) == fire_after_timesteps) {
-                if (ship_state.has_value()) {
-                    bullet_fired_from_ship_heading = ship_state->heading;
-                    bullet_fired_from_ship_position_x = ship_state->x;
-                    bullet_fired_from_ship_position_y = ship_state->y;
+                if (initial_ship_state_for_bullet_sim.has_value()) {
+                    bullet_fired_from_ship_heading = initial_ship_state_for_bullet_sim->heading;
+                    bullet_fired_from_ship_position_x = initial_ship_state_for_bullet_sim->x;
+                    bullet_fired_from_ship_position_y = initial_ship_state_for_bullet_sim->y;
                 } else {
                     bullet_fired_from_ship_heading = this->ship_state.heading;
                     bullet_fired_from_ship_position_x = this->ship_state.x;
@@ -4417,8 +4451,14 @@ public:
                     // My bullet got shot into the void without hitting anything :(
                     return std::make_tuple(std::nullopt, int64_t(-1), ship_not_collided_with_asteroid);
                 }
-                my_bullet = Bullet(new_bullet_x, new_bullet_y, BULLET_SPEED * cos_heading, BULLET_SPEED * sin_heading,
-                                bullet_fired_from_ship_heading, BULLET_MASS, -BULLET_LENGTH * cos_heading, -BULLET_LENGTH * sin_heading);
+                my_bullet = Bullet(new_bullet_x,
+                    new_bullet_y,
+                    BULLET_SPEED * cos_heading,
+                    BULLET_SPEED * sin_heading,
+                    bullet_fired_from_ship_heading,
+                    BULLET_MASS,
+                    -BULLET_LENGTH * cos_heading,
+                    -BULLET_LENGTH * sin_heading);
             }
 
             if (whole_move_sequence.has_value()) {
@@ -4548,9 +4588,9 @@ public:
                 if (whole_move_sequence.has_value() && bullet_sim_ship_state.has_value()) {
                     ship_position_x = bullet_sim_ship_state->x;
                     ship_position_y = bullet_sim_ship_state->y;
-                } else if (ship_state.has_value()) {
-                    ship_position_x = ship_state->x;
-                    ship_position_y = ship_state->y;
+                } else if (initial_ship_state_for_bullet_sim.has_value()) {
+                    ship_position_x = initial_ship_state_for_bullet_sim->x;
+                    ship_position_y = initial_ship_state_for_bullet_sim->y;
                 } else {
                     ship_position_x = this->ship_state.x;
                     ship_position_y = this->ship_state.y;
@@ -6139,8 +6179,8 @@ public:
         return true;
     }
 
-    void plan_action_continuous(bool other_ships_exist, bool base_state_is_exact, bool iterations_boost = false, bool plan_stationary = false) {
-        // other_ships_exist: True means it's multiagent, False means single agent
+    void plan_action_continuous(bool base_state_is_exact, bool iterations_boost = false, bool plan_stationary = false) {
+        // other_ships_exist: True means it's multiagent, False means single agent (REMOVED PARAMETER SINCE IT'S REDUNDANT AND THE CLASS HAS IT!)
         // base_state_is_exact: Whether the base state is the current exact state or a future deterministic state, or a future predicted state which could be invalid due to the other ship
 
         // Simulate and look for a good move
@@ -6175,7 +6215,7 @@ public:
                     planning_state.ship_state.lives_remaining,
                     weighted_average(overall_fitness_record)
                 ) || true) &&
-                search_iterations_count < MAX_RESPAWN_PER_TIMESTEP_SEARCH_ITERATIONS)
+                search_iterations_count < MAX_RESPAWN_PER_TIMESTEP_SEARCH_ITERATIONS + static_cast<int64_t>(iterations_boost) * MAX_RESPAWN_PER_TIMESTEP_SEARCH_ITERATIONS)
             {
                 //this->performance_controller_start_iteration();
                 search_iterations_count++;
@@ -6386,7 +6426,7 @@ public:
                     &planning_state.mine_positions_placed,
                     /* halt_shooting */ false,
                     /* fire_first_timestep */ planning_state.fire_next_timestep_flag,
-                    /* verify_first_shot */ (this->sims_this_planning_period.size() == 0 && other_ships_exist),
+                    /* verify_first_shot */ (this->sims_this_planning_period.size() == 0 && this->other_ships_exist),
                     /* verify_maneuver_shots */ false,
                     -1, // Last timestep colliding, dunno
                     0 // Respawn maneuver pass
@@ -6494,7 +6534,7 @@ public:
                     planning_state.ship_state.lives_remaining, weighted_average(overall_fitness_record))
                 || true)
                 //this->performance_controller_check_whether_i_can_do_another_iteration())
-                && search_iterations_count < MAX_MANEUVER_PER_TIMESTEP_SEARCH_ITERATIONS)
+                && search_iterations_count < MAX_MANEUVER_PER_TIMESTEP_SEARCH_ITERATIONS + static_cast<int64_t>(iterations_boost) * MAX_MANEUVER_PER_TIMESTEP_SEARCH_ITERATIONS)
             {
                 //this->performance_controller_start_iteration();
                 search_iterations_count++;
@@ -6553,7 +6593,7 @@ public:
                     &planning_state.mine_positions_placed,
                     /* halt_shooting */ false,
                     /* fire_first_timestep */ planning_state.fire_next_timestep_flag,
-                    /* verify_first_shot */ (this->sims_this_planning_period.size() == 0 && other_ships_exist),
+                    /* verify_first_shot */ (this->sims_this_planning_period.size() == 0 && this->other_ships_exist),
                     /* verify_maneuver_shots */ false,
                     -1, // Last timestep colliding, dunno
                     0 // Respawn maneuver pass 0, AKA not doing a respawn maneuver!
@@ -6907,13 +6947,13 @@ public:
 
                 if (action_queue.empty()) {
                     // Only when we're at the end of our sequence, do we run the stationary targeting sim once. Basically we just keep doing stationary targeting unless we have a better maneuver found
-                    plan_action_continuous(false, true, iterations_boost, true);
-                    plan_action_continuous(false, true, iterations_boost, false);
+                    plan_action_continuous(true, iterations_boost, true);
+                    plan_action_continuous(true, iterations_boost, false);
                     bool success = decide_next_action_continuous(game_state, ship_state, true);
                     assert(success);
                 } else {
                     // We're still in the middle of a maneuver sequence. Run some planning iterations, and switch over to the new sequence if it's better than our fitness
-                    plan_action_continuous(false, true, iterations_boost, false);
+                    plan_action_continuous(true, iterations_boost, false);
                     bool success = decide_next_action_continuous(game_state, ship_state, false);
                     debug_print(success ? "Switched to a better maneuver" : "Didn't find better maneuvers");
                 }
@@ -6985,13 +7025,13 @@ public:
                 };
                 if (action_queue.empty()) {
                     // Only when we're at the end of our sequence, do we run the stationary targeting sim once. Basically we just keep doing stationary targeting unless we have a better maneuver found
-                    plan_action_continuous(false, true, iterations_boost, true);
-                    plan_action_continuous(false, true, iterations_boost, false);
+                    plan_action_continuous(true, iterations_boost, true);
+                    plan_action_continuous(true, iterations_boost, false);
                     bool success = decide_next_action_continuous(game_state, ship_state, true);
                     assert(success);
                 } else {
                     // We're still in the middle of a maneuver sequence. Run some planning iterations, and switch over to the new sequence if it's better than our fitness
-                    plan_action_continuous(false, true, iterations_boost, false);
+                    plan_action_continuous(true, iterations_boost, false);
                     bool success = decide_next_action_continuous(game_state, ship_state, false);
                     debug_print(success ? "Switched to a better maneuver" : "Didn't find better maneuvers");
                 }
