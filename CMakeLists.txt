@@ -30,6 +30,7 @@ if(MSVC)
     target_link_options(neo_controller PRIVATE /DEBUG)
     target_compile_options(neo_controller PRIVATE
         "$<$<CONFIG:Release>:/O2>"
+        "$<$<CONFIG:Debug>:/Od>"
         "$<$<CONFIG:Debug>:/Zi>"
         "$<$<CONFIG:Debug>:/RTC1>"
     )

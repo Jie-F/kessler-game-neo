@@ -30,6 +30,8 @@ color_text = True
 
 TRIALS = 1
 
+GRAPHICS = False
+
 def color_print(text='', color='white', style='normal', same=False, previous=False) -> None:
     global color_text
     global colors
@@ -69,7 +71,7 @@ def color_print(text='', color='white', style='normal', same=False, previous=Fal
 
 width, height = (1000, 800)
 
-GRAPHICS = True
+
 
 #controllers_used = [NeoController(), NeoControllerWCCI()]
 controllers_used = [NeoController()]

@@ -99,13 +99,6 @@
 #include <unordered_set>
 #include <thread>
 
-
-// Third-party Library: pybind11
-//#include <pybind11/complex.h>
-//#include <pybind11/functional.h>
-//#include <pybind11/pybind11.h>
-//#include <pybind11/stl.h>
-
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/array.h>
 #include <nanobind/stl/bind_map.h>
@@ -6250,7 +6243,7 @@ public:
         // We only plan for respawn maneuvers if we're currently in our respawn invincibility (duh), AND we aren't at the very tail end of a respawn maneuver where we just came to a complete stop, and we should be ditching our invincibility and starting the next non-respawn action!
         // Another criteria for deciding the tail end of the maneuver, is if the ship's respawn invincibility time we have left is below a threshold. Probably want to be "conservative" here and add some buffer to this threshold.
         assert((planning_state.respawning && planning_state.ship_respawn_timer != 0.0) || !planning_state.respawning);
-        if (planning_state.respawning && !(planning_state.ship_respawn_timer < 3.0 - (1.0 + TIMESTEPS_IT_TAKES_SHIP_TO_ACCELERATE_TO_FULL_SPEED_FROM_DEAD_STOP) * DELTA_TIME && is_kinda_close_to_zero(planning_state.ship_state.speed) && this->lives_remaining_that_we_did_respawn_maneuver_for.count(planning_state.ship_state.lives_remaining))) {
+        if (planning_state.respawning && !planning_state.fire_next_timestep_flag && !(planning_state.ship_respawn_timer < 3.0 - (1.0 + TIMESTEPS_IT_TAKES_SHIP_TO_ACCELERATE_TO_FULL_SPEED_FROM_DEAD_STOP) * DELTA_TIME && is_kinda_close_to_zero(planning_state.ship_state.speed) && this->lives_remaining_that_we_did_respawn_maneuver_for.count(planning_state.ship_state.lives_remaining))) {
             // --- Respawn branch ---
             // Simulate and look for a good move
             //std::cout << "Planning a respawn maneuver" << std::endl;

@@ -72,6 +72,12 @@
         "typeindex": "cpp",
         "unordered_map": "cpp",
         "unordered_set": "cpp",
-        "xhash": "cpp"
+        "xhash": "cpp",
+        "codecvt": "cpp",
+        "complex": "cpp",
+        "cstdarg": "cpp",
+        "filesystem": "cpp",
+        "set": "cpp",
+        "variant": "cpp"
     }
 }

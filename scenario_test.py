@@ -498,8 +498,8 @@ while True:
         print(f"Team 1, 2 accuracies: ({team_1_bullets_hit/(team_1_shots_fired + 0.000000000000001)}, {team_2_bullets_hit/(team_2_shots_fired + 0.000000000000001)})")
         print(f"Team 1, 2 shot efficiencies: ({team_1_shot_efficiency:.02%}, {team_2_shot_efficiency:.02%})")
         print(f"Team 1, 2 shot efficiencies inc. mines/ship hits: ({team_1_shot_efficiency_including_mines:.02%}, {team_2_shot_efficiency_including_mines:.02%})")
-        #if args.once:
-        #    break
+        if args.once:
+            break
 
 
 
