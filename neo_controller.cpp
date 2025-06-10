@@ -1916,64 +1916,6 @@ inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double ma
             if (cz > 0.0) {
                 if (x_wrap2 == 1.0) {
                     if (y_wrap2 == 1.0) {
-                        // (1, 1) -> (1, 0)
-                        unwrapped_asteroids.emplace_back(
-                            asteroid.x - max_x,
-                            asteroid.y,
-                            asteroid.vx,
-                            asteroid.vy,
-                            asteroid.size,
-                            asteroid.mass,
-                            asteroid.radius,
-                            asteroid.timesteps_until_appearance
-                        );
-                        return unwrapped_asteroids;
-                    } else {
-                        // (1, -1) -> (0, -1)
-                        unwrapped_asteroids.emplace_back(
-                            asteroid.x,
-                            asteroid.y + max_y,
-                            asteroid.vx,
-                            asteroid.vy,
-                            asteroid.size,
-                            asteroid.mass,
-                            asteroid.radius,
-                            asteroid.timesteps_until_appearance
-                        );
-                        return unwrapped_asteroids;
-                    }
-                } else {
-                    if (y_wrap2 == 1.0) {
-                        // (-1, 1) -> (0, 1)
-                        unwrapped_asteroids.emplace_back(
-                            asteroid.x,
-                            asteroid.y - max_y,
-                            asteroid.vx,
-                            asteroid.vy,
-                            asteroid.size,
-                            asteroid.mass,
-                            asteroid.radius,
-                            asteroid.timesteps_until_appearance
-                        );
-                        return unwrapped_asteroids;
-                    } else {
-                        // (-1, -1) -> (-1, 0)
-                        unwrapped_asteroids.emplace_back(
-                            asteroid.x + max_x,
-                            asteroid.y,
-                            asteroid.vx,
-                            asteroid.vy,
-                            asteroid.size,
-                            asteroid.mass,
-                            asteroid.radius,
-                            asteroid.timesteps_until_appearance
-                        );
-                        return unwrapped_asteroids;
-                    }
-                }
-            } else {
-                if (x_wrap2 == 1.0) {
-                    if (y_wrap2 == 1.0) {
                         // (1, 1) -> (0, 1)
                         unwrapped_asteroids.emplace_back(
                             asteroid.x,
@@ -2019,6 +1961,64 @@ inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double ma
                         unwrapped_asteroids.emplace_back(
                             asteroid.x,
                             asteroid.y + max_y,
+                            asteroid.vx,
+                            asteroid.vy,
+                            asteroid.size,
+                            asteroid.mass,
+                            asteroid.radius,
+                            asteroid.timesteps_until_appearance
+                        );
+                        return unwrapped_asteroids;
+                    }
+                }
+            } else {
+                if (x_wrap2 == 1.0) {
+                    if (y_wrap2 == 1.0) {
+                        // (1, 1) -> (1, 0)
+                        unwrapped_asteroids.emplace_back(
+                            asteroid.x - max_x,
+                            asteroid.y,
+                            asteroid.vx,
+                            asteroid.vy,
+                            asteroid.size,
+                            asteroid.mass,
+                            asteroid.radius,
+                            asteroid.timesteps_until_appearance
+                        );
+                        return unwrapped_asteroids;
+                    } else {
+                        // (1, -1) -> (0, -1)
+                        unwrapped_asteroids.emplace_back(
+                            asteroid.x,
+                            asteroid.y + max_y,
+                            asteroid.vx,
+                            asteroid.vy,
+                            asteroid.size,
+                            asteroid.mass,
+                            asteroid.radius,
+                            asteroid.timesteps_until_appearance
+                        );
+                        return unwrapped_asteroids;
+                    }
+                } else {
+                    if (y_wrap2 == 1.0) {
+                        // (-1, 1) -> (0, 1)
+                        unwrapped_asteroids.emplace_back(
+                            asteroid.x,
+                            asteroid.y - max_y,
+                            asteroid.vx,
+                            asteroid.vy,
+                            asteroid.size,
+                            asteroid.mass,
+                            asteroid.radius,
+                            asteroid.timesteps_until_appearance
+                        );
+                        return unwrapped_asteroids;
+                    } else {
+                        // (-1, -1) -> (-1, 0)
+                        unwrapped_asteroids.emplace_back(
+                            asteroid.x + max_x,
+                            asteroid.y,
                             asteroid.vx,
                             asteroid.vy,
                             asteroid.size,
