@@ -1689,9 +1689,9 @@ get_ship_maneuver_move_sequence(double ship_heading_angle, double ship_cruise_sp
     return move_sequence;
 }
 
-// =============== 2. calculate_border_crossings ========================
+// =============== calculate_border_crossings ========================
 // Returns a vector of (universe_x, universe_y) (int,int) pairs in order
-inline std::vector<std::pair<int64_t, int64_t>> calculate_border_crossings(
+inline std::vector<std::pair<int64_t, int64_t>> calculate_border_crossings_OLD(
     double pos_x, double pos_y, double vel_x, double vel_y,
     double width, double height, double time_horizon)
 {
@@ -1749,6 +1749,67 @@ inline std::vector<std::pair<int64_t, int64_t>> calculate_border_crossings(
         universes.emplace_back(current_universe_x, current_universe_y);
     }
     return universes;
+}
+
+inline void calculate_border_crossings(
+    double position_x, double position_y,
+    double velocity_x, double velocity_y,
+    double map_width, double map_height,
+    double time_horizon_seconds,
+    std::vector<std::pair<int64_t, int64_t>>& output_universe_offsets)
+{
+    output_universe_offsets.clear();
+
+    // Next time we cross a border (in x or y)
+    double next_x_crossing_time = std::numeric_limits<double>::infinity();
+    double next_y_crossing_time = std::numeric_limits<double>::infinity();
+
+    // Time between each border crossing (based on velocity)
+    double x_crossing_interval = std::numeric_limits<double>::infinity();
+    double y_crossing_interval = std::numeric_limits<double>::infinity();
+
+    // Current "universe" position (grid offset in wraparound space)
+    int64_t universe_offset_x = 0;
+    int64_t universe_offset_y = 0;
+
+    // Direction we move through the universe grid
+    int64_t x_step_direction = 0;
+    int64_t y_step_direction = 0;
+
+    // Setup for X crossing (if we’re moving horizontally)
+    if (std::abs(velocity_x) > EPS) {
+        x_step_direction = (velocity_x > 0.0) ? 1 : -1;
+        double distance_to_x_border = (velocity_x > 0.0)
+            ? (map_width - position_x)
+            : position_x;
+        next_x_crossing_time = distance_to_x_border / std::abs(velocity_x);
+        x_crossing_interval = map_width / std::abs(velocity_x);
+    }
+
+    // Setup for Y crossing (if we’re moving vertically)
+    if (std::abs(velocity_y) > EPS) {
+        y_step_direction = (velocity_y > 0.0) ? 1 : -1;
+        double distance_to_y_border = (velocity_y > 0.0)
+            ? (map_height - position_y)
+            : position_y;
+        next_y_crossing_time = distance_to_y_border / std::abs(velocity_y);
+        y_crossing_interval = map_height / std::abs(velocity_y);
+    }
+
+    // Step through each crossing event in order of time
+    while (true) {
+        if (next_x_crossing_time < next_y_crossing_time) {
+            if (next_x_crossing_time > time_horizon_seconds) break;
+            universe_offset_x += x_step_direction;
+            output_universe_offsets.emplace_back(universe_offset_x, universe_offset_y);
+            next_x_crossing_time += x_crossing_interval;
+        } else {
+            if (next_y_crossing_time > time_horizon_seconds) break;
+            universe_offset_y += y_step_direction;
+            output_universe_offsets.emplace_back(universe_offset_x, universe_offset_y);
+            next_y_crossing_time += y_crossing_interval;
+        }
+    }
 }
 
 inline bool coordinates_in_same_wrap(const double &pos1x, const double &pos1y, const double &pos2x, const double &pos2y, const double &map_size_x, const double &map_size_y) {
@@ -2032,12 +2093,13 @@ inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double ma
             }
         }
     }
-
+    std::vector<std::pair<int64_t, int64_t>> border_crossings;
+    calculate_border_crossings(asteroid.x, asteroid.y, asteroid.vx, asteroid.vy, max_x, max_y, time_horizon_s, border_crossings);
     //unwrap_asteroid_expensive_call_count++;
-    for (const auto& universe : calculate_border_crossings(asteroid.x, asteroid.y, asteroid.vx, asteroid.vy, max_x, max_y, time_horizon_s)) {
+    for (const auto& universe_offset : border_crossings) {
         // We move the asteroid the opposite direction virtually, from the direction it actually went! Hence the negative signs.
-        double dx = -static_cast<double>(universe.first) * max_x;
-        double dy = -static_cast<double>(universe.second) * max_y;
+        double dx = -static_cast<double>(universe_offset.first) * max_x;
+        double dy = -static_cast<double>(universe_offset.second) * max_y;
         unwrapped_asteroids.emplace_back(
             asteroid.x + dx,
             asteroid.y + dy,
@@ -5787,13 +5849,13 @@ public:
     bool cruise(int64_t cruise_time, double cruise_turn_rate = 0.0) {
         // Maintain current speed
         for (int64_t i = 0; i < cruise_time; ++i) {
-            if (sim_id == 4271) {
+            if (sim_id == 1234567) {
                 std::cout << "In respawn sim that'll crash, future_timesteps=" << future_timesteps
                         << " respawn_timer=" << respawn_timer
                         << " ship_state=" << ship_state.str() << std::endl;
             }
             if (!update(sign(ship_state.speed) * SHIP_DRAG, cruise_turn_rate)) {
-                if (sim_id == 4271) {
+                if (sim_id == 1234567) {
                     std::cout << "AHA CRUISE FAILED SOMEHOW?!!!! " << ship_state.str() << " ";
                     // Assuming respawn_timer_history is a vector<double>
                     std::cout << "[";

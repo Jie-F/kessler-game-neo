@@ -30,7 +30,7 @@ color_text = True
 
 TRIALS = 1
 
-GRAPHICS = False
+GRAPHICS = True
 
 def color_print(text='', color='white', style='normal', same=False, previous=False) -> None:
     global color_text
