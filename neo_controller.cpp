@@ -2687,6 +2687,7 @@ inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_ship_splits(
 }
 
 // Maintain split asteroids' forecast
+/*
 inline std::vector<Asteroid> maintain_forecasted_asteroids(const std::vector<Asteroid>& forecasted_asteroid_splits, const GameState& game_state) {
     std::vector<Asteroid> updated_asteroids;
     for (const Asteroid& forecasted_asteroid : forecasted_asteroid_splits) {
@@ -2704,6 +2705,25 @@ inline std::vector<Asteroid> maintain_forecasted_asteroids(const std::vector<Ast
         }
     }
     return updated_asteroids;
+}*/
+
+inline void maintain_forecasted_asteroids(std::vector<Asteroid>& asteroids, const GameState& game_state) {
+    for (size_t i = 0; i < asteroids.size(); ) {
+        Asteroid& a = asteroids[i];
+        // Decrement timesteps until appearance
+        --a.timesteps_until_appearance;
+        if (a.timesteps_until_appearance <= 0) {
+            // Remove asteroid by swapping with the last and popping
+            asteroids[i] = asteroids.back();
+            asteroids.pop_back();
+            // Do not increment i, because we now need to check the element swapped in
+        } else {
+            // Update values in place
+            a.x = pymod(a.x + a.vx * DELTA_TIME, game_state.map_size_x);
+            a.y = pymod(a.y + a.vy * DELTA_TIME, game_state.map_size_y);
+            ++i;
+        }
+    }
 }
 
 // --- Asteroid fuzzy equality in list, including wrap handling ---
@@ -5067,7 +5087,7 @@ public:
         bool fire_this_timestep = false;
         bool drop_mine_this_timestep = false;
         if (!wait_out_mines) {
-            forecasted_asteroid_splits = maintain_forecasted_asteroids(forecasted_asteroid_splits, game_state);
+            maintain_forecasted_asteroids(forecasted_asteroid_splits, game_state);
             //forecasted_asteroid_splits.clear(); // DEBUG
             // Simulate the ship!
             // Bullet firing happens before we turn the ship
@@ -5754,7 +5774,7 @@ public:
     }
 
     bool accelerate(double target_speed, double turn_rate = 0.0) {
-        if (sim_id == 4271) {
+        if (sim_id == 4271456546) {
             std::cout << "Accelerating to speed " << target_speed << " while our speed is already " << ship_state.speed << std::endl;
         }
         // Keep in mind speed can be negative
