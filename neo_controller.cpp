@@ -240,78 +240,13 @@ constexpr bool RESEED_RNG = false;
 constexpr bool ENABLE_UNWRAP_CACHE = false; // This is slightly slower than not using the cache lmao
 constexpr bool UNWRAP_CROSS_PRODUCT_CHECK = true;
 
-// Quantities
-constexpr double TAD = 0.1;
-constexpr double GRAIN = 0.001;
-constexpr double EPS = 1e-10;
-constexpr int64_t INT_NEG_INF = -1000000;
-constexpr int64_t INT_INF = 1000000;
-constexpr double RAD_TO_DEG = 180.0/pi;
-constexpr double DEG_TO_RAD = pi/180.0;
-constexpr double TAU = 2.0*pi;
-
-// Kessler game constants
-constexpr int64_t FIRE_COOLDOWN_TS = 3;
-constexpr int64_t MINE_COOLDOWN_TS = 30;
-constexpr double FPS = 30.0;
-constexpr double DELTA_TIME = 1.0/FPS;
-constexpr double SHIP_FIRE_TIME = 1.0/10.0; // seconds
-constexpr double BULLET_SPEED = 800.0;
-constexpr double BULLET_MASS = 1.0;
-constexpr double BULLET_LENGTH = 12.0;
-constexpr double BULLET_LENGTH_RECIPROCAL = 1.0/BULLET_LENGTH;
-constexpr double TWICE_BULLET_LENGTH_RECIPROCAL = 2.0/BULLET_LENGTH;
-constexpr double SHIP_MAX_TURN_RATE = 180.0;
-constexpr double SHIP_MAX_TURN_RATE_RAD = DEG_TO_RAD*SHIP_MAX_TURN_RATE;
-constexpr double SHIP_MAX_TURN_RATE_RAD_RECIPROCAL = 1.0/SHIP_MAX_TURN_RATE_RAD;
-constexpr double SHIP_MAX_TURN_RATE_DEG_TS = DELTA_TIME*SHIP_MAX_TURN_RATE;
-constexpr double SHIP_MAX_TURN_RATE_RAD_TS = DEG_TO_RAD*SHIP_MAX_TURN_RATE_DEG_TS;
-constexpr double SHIP_MAX_THRUST = 480.0;
-constexpr double SHIP_DRAG = 80.0;
-constexpr double SHIP_MAX_SPEED = 240.0;
-constexpr double SHIP_RADIUS = 20.0;
-constexpr double SHIP_MASS = 300.0;
-const int64_t TIMESTEPS_UNTIL_SHIP_ACHIEVES_MAX_SPEED = static_cast<int64_t>(std::ceil(SHIP_MAX_SPEED/(SHIP_MAX_THRUST - SHIP_DRAG)*FPS));
-constexpr double MINE_BLAST_RADIUS = 150.0;
-constexpr double MINE_RADIUS = 12.0;
-constexpr double MINE_BLAST_PRESSURE = 2000.0;
-constexpr double MINE_FUSE_TIME = 3.0;
-constexpr double MINE_MASS = 25.0;
-// Asteroid radii lookup
-constexpr std::array<double, 5> ASTEROID_RADII_LOOKUP = {0, 8, 16, 24, 32};
-// Asteroid area lookup (pi * r^2)
-constexpr std::array<double, 5> ASTEROID_AREA_LOOKUP = {
-    pi * ASTEROID_RADII_LOOKUP[0] * ASTEROID_RADII_LOOKUP[0],
-    pi * ASTEROID_RADII_LOOKUP[1] * ASTEROID_RADII_LOOKUP[1],
-    pi * ASTEROID_RADII_LOOKUP[2] * ASTEROID_RADII_LOOKUP[2],
-    pi * ASTEROID_RADII_LOOKUP[3] * ASTEROID_RADII_LOOKUP[3],
-    pi * ASTEROID_RADII_LOOKUP[4] * ASTEROID_RADII_LOOKUP[4]
-};
-// Asteroid mass lookup (0.25 * pi * (8 * i)^2), expanded without std::pow
-constexpr std::array<double, 5> ASTEROID_MASS_LOOKUP = {
-    0.25 * pi * (8 * 0) * (8 * 0),
-    0.25 * pi * (8 * 1) * (8 * 1),
-    0.25 * pi * (8 * 2) * (8 * 2),
-    0.25 * pi * (8 * 3) * (8 * 3),
-    0.25 * pi * (8 * 4) * (8 * 4)
-};
-constexpr double RESPAWN_INVINCIBILITY_TIME_S = 3.0;
-constexpr std::array<int64_t, 5> ASTEROID_COUNT_LOOKUP = {0, 1, 4, 13, 40};
-constexpr double DEGREES_BETWEEN_SHOTS = double(FIRE_COOLDOWN_TS)*SHIP_MAX_TURN_RATE*DELTA_TIME;
-constexpr double DEGREES_TURNED_PER_TIMESTEP = SHIP_MAX_TURN_RATE*DELTA_TIME;
-constexpr double SHIP_RADIUS_PLUS_SIZE_4_ASTEROID_RADIUS = SHIP_RADIUS + ASTEROID_RADII_LOOKUP[4];
-constexpr double TIMESTEPS_IT_TAKES_SHIP_TO_COME_TO_DEAD_STOP_FROM_FULL_SPEED = SHIP_MAX_SPEED / (SHIP_MAX_THRUST + SHIP_DRAG) * FPS;
-const double TIMESTEPS_IT_TAKES_SHIP_TO_ACCELERATE_TO_FULL_SPEED_FROM_DEAD_STOP = std::ceil(SHIP_MAX_SPEED / (SHIP_MAX_THRUST - SHIP_DRAG) * FPS);
-
 // Strategic/algorithm switches
 constexpr bool CONTINUOUS_LOOKAHEAD_PLANNING = true;
 constexpr bool USE_HEURISTIC_MANEUVER = false;
 constexpr int64_t END_OF_SCENARIO_DONT_CARE_TIMESTEPS = 8;
 constexpr int64_t ADVERSARY_ROTATION_TIMESTEP_FUDGE = 20;
 constexpr double UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON = 6.0;
-constexpr int64_t UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON_FRAMES = UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON * FPS;
 constexpr double UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON = 2.3;
-constexpr int64_t UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON_FRAMES = UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON * FPS;
 
 // Asteroid priorities
 constexpr std::array<double, 5> ASTEROID_SIZE_SHOT_PRIORITY = {std::numeric_limits<double>::quiet_NaN(), 1, 2, 3, 4};
@@ -465,6 +400,69 @@ constexpr double SLOW_DOWN_GAME_PAUSE_TIME = 2.0;
 constexpr bool ENABLE_BAD_LUCK_EXCEPTION = false;
 constexpr double BAD_LUCK_EXCEPTION_PROBABILITY = 0.001;
 
+// Quantities
+constexpr double TAD = 0.1;
+constexpr double GRAIN = 0.001;
+constexpr double EPS = 1e-10;
+constexpr int64_t INT_NEG_INF = -1000000;
+constexpr int64_t INT_INF = 1000000;
+constexpr double RAD_TO_DEG = 180.0/pi;
+constexpr double DEG_TO_RAD = pi/180.0;
+constexpr double TAU = 2.0*pi;
+
+// Kessler game constants
+constexpr int64_t FIRE_COOLDOWN_TS = 3;
+constexpr int64_t MINE_COOLDOWN_TS = 30;
+constexpr double FPS = 30.0;
+constexpr double DELTA_TIME = 1.0/FPS;
+constexpr double SHIP_FIRE_TIME = 1.0/10.0; // seconds
+constexpr double BULLET_SPEED = 800.0;
+constexpr double BULLET_MASS = 1.0;
+constexpr double BULLET_LENGTH = 12.0;
+constexpr double BULLET_LENGTH_RECIPROCAL = 1.0/BULLET_LENGTH;
+constexpr double TWICE_BULLET_LENGTH_RECIPROCAL = 2.0/BULLET_LENGTH;
+constexpr double SHIP_MAX_TURN_RATE = 180.0;
+constexpr double SHIP_MAX_TURN_RATE_RAD = DEG_TO_RAD*SHIP_MAX_TURN_RATE;
+constexpr double SHIP_MAX_TURN_RATE_RAD_RECIPROCAL = 1.0/SHIP_MAX_TURN_RATE_RAD;
+constexpr double SHIP_MAX_TURN_RATE_DEG_TS = DELTA_TIME*SHIP_MAX_TURN_RATE;
+constexpr double SHIP_MAX_TURN_RATE_RAD_TS = DEG_TO_RAD*SHIP_MAX_TURN_RATE_DEG_TS;
+constexpr double SHIP_MAX_THRUST = 480.0;
+constexpr double SHIP_DRAG = 80.0;
+constexpr double SHIP_MAX_SPEED = 240.0;
+constexpr double SHIP_RADIUS = 20.0;
+constexpr double SHIP_MASS = 300.0;
+const int64_t TIMESTEPS_UNTIL_SHIP_ACHIEVES_MAX_SPEED = static_cast<int64_t>(std::ceil(SHIP_MAX_SPEED/(SHIP_MAX_THRUST - SHIP_DRAG)*FPS));
+constexpr double MINE_BLAST_RADIUS = 150.0;
+constexpr double MINE_RADIUS = 12.0;
+constexpr double MINE_BLAST_PRESSURE = 2000.0;
+constexpr double MINE_FUSE_TIME = 3.0;
+constexpr double MINE_MASS = 25.0;
+// Asteroid radii lookup
+constexpr std::array<double, 5> ASTEROID_RADII_LOOKUP = {0, 8, 16, 24, 32};
+// Asteroid area lookup (pi * r^2)
+constexpr std::array<double, 5> ASTEROID_AREA_LOOKUP = {
+    pi * ASTEROID_RADII_LOOKUP[0] * ASTEROID_RADII_LOOKUP[0],
+    pi * ASTEROID_RADII_LOOKUP[1] * ASTEROID_RADII_LOOKUP[1],
+    pi * ASTEROID_RADII_LOOKUP[2] * ASTEROID_RADII_LOOKUP[2],
+    pi * ASTEROID_RADII_LOOKUP[3] * ASTEROID_RADII_LOOKUP[3],
+    pi * ASTEROID_RADII_LOOKUP[4] * ASTEROID_RADII_LOOKUP[4]
+};
+// Asteroid mass lookup (0.25 * pi * (8 * i)^2), expanded without std::pow
+constexpr std::array<double, 5> ASTEROID_MASS_LOOKUP = {
+    0.25 * pi * (8 * 0) * (8 * 0),
+    0.25 * pi * (8 * 1) * (8 * 1),
+    0.25 * pi * (8 * 2) * (8 * 2),
+    0.25 * pi * (8 * 3) * (8 * 3),
+    0.25 * pi * (8 * 4) * (8 * 4)
+};
+constexpr double RESPAWN_INVINCIBILITY_TIME_S = 3.0;
+constexpr std::array<int64_t, 5> ASTEROID_COUNT_LOOKUP = {0, 1, 4, 13, 40};
+constexpr double DEGREES_BETWEEN_SHOTS = double(FIRE_COOLDOWN_TS)*SHIP_MAX_TURN_RATE*DELTA_TIME;
+constexpr double DEGREES_TURNED_PER_TIMESTEP = SHIP_MAX_TURN_RATE*DELTA_TIME;
+constexpr double SHIP_RADIUS_PLUS_SIZE_4_ASTEROID_RADIUS = SHIP_RADIUS + ASTEROID_RADII_LOOKUP[4];
+constexpr double TIMESTEPS_IT_TAKES_SHIP_TO_COME_TO_DEAD_STOP_FROM_FULL_SPEED = SHIP_MAX_SPEED / (SHIP_MAX_THRUST + SHIP_DRAG) * FPS;
+const double TIMESTEPS_IT_TAKES_SHIP_TO_ACCELERATE_TO_FULL_SPEED_FROM_DEAD_STOP = std::ceil(SHIP_MAX_SPEED / (SHIP_MAX_THRUST - SHIP_DRAG) * FPS);
+
 // FIS Settings
 constexpr int64_t ASTEROIDS_HIT_VERY_GOOD = 65;
 constexpr int64_t ASTEROIDS_HIT_OKAY_CENTER = 23;
@@ -477,8 +475,6 @@ std::vector<double> overall_fitness_record;
 int64_t total_sim_timesteps = 0;
 int64_t unwrap_asteroid_call_count = 0;
 int64_t unwrap_asteroid_expensive_call_count = 0;
-int64_t times_initializing_wrap_cache = 0;
-int64_t times_skipping_reinitialization_of_wrap_cache = 0;
 
 template <typename T>
 void print_vector(const std::vector<T>& vec) {
@@ -504,16 +500,15 @@ void print_sorted_dict(const std::unordered_map<int64_t, int64_t>& umap) {
 }
 
 // ---------------------------------- CLASSES ----------------------------------
-struct AsteroidOLD {
+struct Asteroid {
     double x = 0, y = 0, vx = 0, vy = 0;
     int64_t size = 0;
     double mass = 0, radius = 0;
     int64_t timesteps_until_appearance = 0;
     bool alive = true;
-    int64_t start_frame = 0;
 
-    AsteroidOLD() = default;
-    AsteroidOLD(double x, double y, double vx, double vy, int64_t size, double mass, double radius, int64_t t = 0)
+    Asteroid() = default;
+    Asteroid(double x, double y, double vx, double vy, int64_t size, double mass, double radius, int64_t t = 0)
         : x(x), y(y), vx(vx), vy(vy), size(size), mass(mass), radius(radius), timesteps_until_appearance(t), alive(true) {}
 
     std::string str() const {
@@ -524,253 +519,21 @@ struct AsteroidOLD {
             + ", alive=" + std::to_string(alive) + ")";
     }
     std::string repr() const { return str(); }
-    bool operator==(const AsteroidOLD& other) const {
-        //return x == other.x && y == other.y && vx == other.vx && vy == other.vy && size == other.size && mass == other.mass && radius == other.radius && timesteps_until_appearance == other.timesteps_until_appearance;
-        // Simplified equality, should hold
-        return x == other.x && y == other.y && vx == other.vx && vy == other.vy && size == other.size && timesteps_until_appearance == other.timesteps_until_appearance;
-    }
-    std::size_t hash() const {
-        double combined = x + 0.4266548291679171*y + 0.8164926348982552*vx + 0.8397584399461026*vy;
-        double scaled = combined * 1000000000.0;
-        return static_cast<std::size_t>(scaled) + static_cast<std::size_t>(size);
-    }
-    double float_hash() const {
-        return x + 0.4266548291679171*y + 0.8164926348982552*vx + 0.8397584399461026*vy;
-    }
-    int64_t int_hash() const {
-        return static_cast<int64_t>(1000000000.0*float_hash());
-    }
-};
-
-inline double pymod(double x, double y)
-{
-    //return std::fmod(std::fmod(x, y) + y, y);
-    // Or, equivalently and more numerically stable:
-    // double result = std::fmod(x, y);
-    // if (result < 0) result += y;
-    // return result;
-    return x - y * std::floor(x / y);
-}
-
-struct Asteroid {
-private:
-    mutable std::vector<Asteroid> wrap_clones;
-    // Wrap cache
-    bool wrap_cache_initialized = false;
-    std::vector<std::pair<int64_t, int64_t>> wrap_offsets;         // (dx, dy) offset
-    std::vector<int64_t> wrap_change_frames;                       // frames when offset changes
-
-public:
-    double x = 0, y = 0, vx = 0, vy = 0;
-    int64_t size = 0;
-    double mass = 0, radius = 0;
-    int64_t timesteps_until_appearance = 0;
-    bool alive = true;
-    int64_t start_frame = 0;
-
-    Asteroid() = default;
-
-    Asteroid(double x, double y, double vx, double vy, int64_t size,
-            double mass, double radius, int64_t t = 0, int64_t start_frame = 0,
-            bool do_unwrap = false,
-            double map_width = 0.0,
-            double map_height = 0.0,
-            double time_horizon_seconds = 0.0,
-            int64_t current_frame = 0)
-        : x(x), y(y), vx(vx), vy(vy),
-        size(size), mass(mass), radius(radius),
-        timesteps_until_appearance(t),
-        alive(true),
-        start_frame(start_frame)
-    {
-        if (do_unwrap) {
-            initialize_wrap_cache(map_width, map_height, time_horizon_seconds, current_frame);
-        }
-    }
-
-
-    std::string str() const {
-        return "Asteroid(position=(" + std::to_string(x) + ", " + std::to_string(y)
-            + "), velocity=(" + std::to_string(vx) + ", " + std::to_string(vy) + "), size=" + std::to_string(size)
-            + ", mass=" + std::to_string(mass) + ", radius=" + std::to_string(radius)
-            + ", timesteps_until_appearance=" + std::to_string(timesteps_until_appearance)
-            + ", alive=" + std::to_string(alive)
-            + ", start_frame=" + std::to_string(start_frame)
-            + ", wrap_cache_initialized=" + std::to_string(wrap_cache_initialized) + ")";
-    }
-
-    void print_wrap_change_frames() const {
-        print_vector(wrap_change_frames);
-    }
-
-    std::string repr() const {
-        return str();
-    }
-
     bool operator==(const Asteroid& other) const {
         //return x == other.x && y == other.y && vx == other.vx && vy == other.vy && size == other.size && mass == other.mass && radius == other.radius && timesteps_until_appearance == other.timesteps_until_appearance;
         // Simplified equality, should hold
         return x == other.x && y == other.y && vx == other.vx && vy == other.vy && size == other.size && timesteps_until_appearance == other.timesteps_until_appearance;
     }
-
     std::size_t hash() const {
         double combined = x + 0.4266548291679171*y + 0.8164926348982552*vx + 0.8397584399461026*vy;
         double scaled = combined * 1000000000.0;
         return static_cast<std::size_t>(scaled) + static_cast<std::size_t>(size);
     }
-
     double float_hash() const {
         return x + 0.4266548291679171*y + 0.8164926348982552*vx + 0.8397584399461026*vy;
     }
-
     int64_t int_hash() const {
         return static_cast<int64_t>(1000000000.0*float_hash());
-    }
-
-    void initialize_wrap_cache(double map_width, double map_height, double time_horizon_seconds, int64_t current_frame) {
-        /*if (wrap_cache_initialized) {
-            ++times_skipping_reinitialization_of_wrap_cache;
-            return;
-        }*/
-        ++times_initializing_wrap_cache;
-        wrap_cache_initialized = true;
-
-        const int64_t total_frame_horizon = static_cast<int64_t>(FPS * time_horizon_seconds);
-
-        int64_t universe_offset_x = 0, universe_offset_y = 0;
-        int64_t direction_x = (vx > EPS) ? 1 : (vx < -EPS) ? -1 : 0;
-        int64_t direction_y = (vy > EPS) ? 1 : (vy < -EPS) ? -1 : 0;
-
-        if (direction_x == 0 && direction_y == 0) {
-            // This asteroid ain't going anywhere
-            wrap_offsets = { {0, 0} };
-            wrap_change_frames = { start_frame };
-            return;
-        }
-
-        double interval_x = (std::abs(vx) > EPS) ? map_width / std::abs(vx) : std::numeric_limits<double>::infinity();
-        double interval_y = (std::abs(vy) > EPS) ? map_height / std::abs(vy) : std::numeric_limits<double>::infinity();
-
-        double seconds_from_start = static_cast<double>(current_frame) * DELTA_TIME;
-        double x_0 = pymod(x - seconds_from_start * vx, map_width);
-        double y_0 = pymod(y - seconds_from_start * vy, map_height);
-
-        double time_to_next_x = std::numeric_limits<double>::infinity();
-        if (direction_x == 1) {
-            time_to_next_x = (map_width - x_0) / vx;
-        } else if (direction_x == -1) {
-            time_to_next_x = -(x_0 / vx);
-        }
-
-        double time_to_next_y = std::numeric_limits<double>::infinity();
-        if (direction_y == 1) {
-            time_to_next_y = (map_height - y_0) / vy;
-        } else if (direction_y == -1) {
-            time_to_next_y = -y_0 / vy;
-        }
-
-        double current_time = 0.0;
-        std::vector<std::pair<int64_t, std::pair<int64_t, int64_t>>> events;
-
-        while (true) {
-            bool x_first = time_to_next_x < time_to_next_y;
-            current_time = x_first ? time_to_next_x : time_to_next_y;
-            int64_t frame = start_frame + static_cast<int64_t>(current_time * FPS + EPS);
-
-            if (frame > start_frame + total_frame_horizon) {
-                break;
-            }
-
-            if (x_first) {
-                universe_offset_x += direction_x;
-                time_to_next_x += interval_x;
-            } else {
-                universe_offset_y += direction_y;
-                time_to_next_y += interval_y;
-            }
-
-            events.emplace_back(frame, std::make_pair(universe_offset_x, universe_offset_y));
-        }
-
-        wrap_offsets.reserve(events.size() + 1);
-        wrap_change_frames.reserve(events.size() + 1);
-
-        wrap_offsets.emplace_back(0, 0);
-        wrap_change_frames.push_back(start_frame);
-
-        for (const auto& [frame, offset] : events) {
-            wrap_change_frames.push_back(frame);
-            wrap_offsets.push_back(offset);
-        }
-    }
-
-    /*// Returns the current (dx, dy) offset at the given frame
-    std::pair<int64_t, int64_t> unwrap_offset(int64_t current_frame) const {
-        if (!wrap_cache_initialized || wrap_change_frames.empty()) return {0, 0};
-
-        // Binary search for the last offset change not after current_frame
-        auto it = std::upper_bound(wrap_change_frames.begin(), wrap_change_frames.end(), current_frame);
-        if (it == wrap_change_frames.begin()) return {0, 0};
-
-        size_t index = std::distance(wrap_change_frames.begin(), it) - 1;
-        return wrap_offsets[index];
-    }*/
-
-    std::pair<const std::vector<Asteroid>&, size_t> unwrap(int64_t current_frame, int64_t time_horizon_frames, double map_width, double map_height) const {
-        /*if (!wrap_cache_initialized) {
-            // Lazy initialization
-            const_cast<Asteroid*>(this)->initialize_wrap_cache(map_width, map_height, static_cast<double>(time_horizon_frames) * DELTA_TIME, current_frame);
-        }*/
-        assert(wrap_cache_initialized);
-
-        std::vector<std::pair<int64_t, int64_t>> normalized_offsets;
-        std::pair<int64_t, int64_t> current_wrap = {0, 0};
-
-        // Locate the starting wrap index
-        size_t start_index = 0;
-        while (start_index + 1 < wrap_change_frames.size() && wrap_change_frames[start_index + 1] <= current_frame) {
-            ++start_index;
-        }
-        current_wrap = wrap_offsets[start_index];
-
-        // Collect all relevant normalized wrap offsets from current_frame to current_frame + time_horizon
-        for (size_t i = start_index; i < wrap_change_frames.size(); ++i) {
-            int64_t frame = wrap_change_frames[i];
-            if (frame >= current_frame + time_horizon_frames) {
-                break;
-            }
-
-            const auto& offset = wrap_offsets[i];
-            normalized_offsets.emplace_back(
-                offset.first - current_wrap.first,
-                offset.second - current_wrap.second
-            );
-        }
-
-        // Ensure at least the current offset is included (e.g. when no transitions occur)
-        if (normalized_offsets.empty()) {
-            normalized_offsets.emplace_back(0, 0);
-        }
-
-        size_t num_unwrapped = normalized_offsets.size();
-
-        // Resize only if needed
-        if (wrap_clones.size() < num_unwrapped) {
-            size_t old_size = wrap_clones.size();
-            wrap_clones.resize(num_unwrapped);
-            for (size_t i = old_size; i < wrap_clones.size(); ++i) {
-                wrap_clones[i] = *this;
-            }
-        }
-
-        // Update positions
-        for (size_t i = 0; i < num_unwrapped; ++i) {
-            auto& clone = wrap_clones[i];
-            clone.x = x - normalized_offsets[i].first * map_width;
-            clone.y = y - normalized_offsets[i].second * map_height;
-        }
-
-        return {wrap_clones, num_unwrapped};
     }
 };
 
@@ -1099,7 +862,7 @@ inline std::ostream& operator<<(std::ostream& os, const Target& t) { return os <
 
 // ------------------------------- TYPEDDICT EQUIVALENTS -------------------------------
 
-Asteroid create_asteroid_from_dict(nb::dict d, int64_t start_frame, double map_width, double map_height) {
+Asteroid create_asteroid_from_dict(nb::dict d) {
     auto pos = nb::cast<std::pair<double, double>>(d["position"]);
     auto vel = nb::cast<std::pair<double, double>>(d["velocity"]);
     return Asteroid(
@@ -1107,14 +870,7 @@ Asteroid create_asteroid_from_dict(nb::dict d, int64_t start_frame, double map_w
         vel.first, vel.second,
         nb::cast<int64_t>(d["size"]),
         nb::cast<double>(d["mass"]),
-        nb::cast<double>(d["radius"]),
-        0,
-        start_frame,
-        true,
-        map_width,
-        map_height,
-        10.0,
-        start_frame
+        nb::cast<double>(d["radius"])
     );
 }
 
@@ -1180,33 +936,29 @@ GameState create_game_state_from_dict(nb::dict game_state_dict) {
     nb::list asteroid_list = nb::cast<nb::list>(game_state_dict["asteroids"]);
     std::vector<Asteroid> asteroids;
     asteroids.reserve(asteroid_list.size());
-    for (auto a : asteroid_list) {
-        asteroids.push_back(create_asteroid_from_dict(nb::cast<nb::dict>(a), nb::cast<int64_t>(game_state_dict["sim_frame"]), nb::cast<double>(game_state_dict["map_size"][0]), nb::cast<double>(game_state_dict["map_size"][1])));
-    }
+    for (auto a : asteroid_list)
+        asteroids.push_back(create_asteroid_from_dict(nb::cast<nb::dict>(a)));
 
     // Ships
     nb::list ship_list = nb::cast<nb::list>(game_state_dict["ships"]);
     std::vector<Ship> ships;
     ships.reserve(ship_list.size());
-    for (auto s : ship_list) {
+    for (auto s : ship_list)
         ships.push_back(create_ship_from_dict(nb::cast<nb::dict>(s)));
-    }
 
     // Bullets
     nb::list bullet_list = nb::cast<nb::list>(game_state_dict["bullets"]);
     std::vector<Bullet> bullets;
     bullets.reserve(bullet_list.size());
-    for (auto b : bullet_list) {
+    for (auto b : bullet_list)
         bullets.push_back(create_bullet_from_dict(nb::cast<nb::dict>(b)));
-    }
 
     // Mines
     nb::list mine_list = nb::cast<nb::list>(game_state_dict["mines"]);
     std::vector<Mine> mines;
     mines.reserve(mine_list.size());
-    for (auto m : mine_list) {
+    for (auto m : mine_list)
         mines.push_back(create_mine_from_dict(nb::cast<nb::dict>(m)));
-    }
 
     // Construct GameState
     auto map_size = nb::cast<std::pair<double, double>>(game_state_dict["map_size"]);
@@ -1219,6 +971,7 @@ GameState create_game_state_from_dict(nb::dict game_state_dict) {
         nb::cast<double>(game_state_dict["time_limit"])
     );
 }
+
 
 
 struct BasePlanningGameState {
@@ -1240,6 +993,16 @@ struct BasePlanningGameState {
 //inline static thread_local std::mt19937 rng(std::random_device{}());
 inline static thread_local std::mt19937 rng(1);
 inline static thread_local std::uniform_real_distribution<> std_uniform(0.0, 1.0);
+
+inline double pymod(double x, double y)
+{
+    //return std::fmod(std::fmod(x, y) + y, y);
+    // Or, equivalently and more numerically stable:
+    // double result = std::fmod(x, y);
+    // if (result < 0) result += y;
+    // return result;
+    return x - y * std::floor(x / y);
+}
 
 inline void reseed_rng(unsigned int seed) {
     rng.seed(seed);
@@ -1924,9 +1687,9 @@ get_ship_maneuver_move_sequence(double ship_heading_angle, double ship_cruise_sp
     return move_sequence;
 }
 
-// =============== calculate_border_crossings ========================
+// =============== 2. calculate_border_crossings ========================
 // Returns a vector of (universe_x, universe_y) (int,int) pairs in order
-inline std::vector<std::pair<int64_t, int64_t>> calculate_border_crossings_OLD(
+inline std::vector<std::pair<int64_t, int64_t>> calculate_border_crossings(
     double pos_x, double pos_y, double vel_x, double vel_y,
     double width, double height, double time_horizon)
 {
@@ -1984,67 +1747,6 @@ inline std::vector<std::pair<int64_t, int64_t>> calculate_border_crossings_OLD(
         universes.emplace_back(current_universe_x, current_universe_y);
     }
     return universes;
-}
-
-inline void calculate_border_crossings(
-    double position_x, double position_y,
-    double velocity_x, double velocity_y,
-    double map_width, double map_height,
-    double time_horizon_seconds,
-    std::vector<std::pair<int64_t, int64_t>>& output_universe_offsets)
-{
-    output_universe_offsets.clear();
-
-    // Next time we cross a border (in x or y)
-    double next_x_crossing_time = std::numeric_limits<double>::infinity();
-    double next_y_crossing_time = std::numeric_limits<double>::infinity();
-
-    // Time between each border crossing (based on velocity)
-    double x_crossing_interval = std::numeric_limits<double>::infinity();
-    double y_crossing_interval = std::numeric_limits<double>::infinity();
-
-    // Current "universe" position (grid offset in wraparound space)
-    int64_t universe_offset_x = 0;
-    int64_t universe_offset_y = 0;
-
-    // Direction we move through the universe grid
-    int64_t x_step_direction = 0;
-    int64_t y_step_direction = 0;
-
-    // Setup for X crossing (if we’re moving horizontally)
-    if (std::abs(velocity_x) > EPS) {
-        x_step_direction = (velocity_x > 0.0) ? 1 : -1;
-        double distance_to_x_border = (velocity_x > 0.0)
-            ? (map_width - position_x)
-            : position_x;
-        next_x_crossing_time = distance_to_x_border / std::abs(velocity_x);
-        x_crossing_interval = map_width / std::abs(velocity_x);
-    }
-
-    // Setup for Y crossing (if we’re moving vertically)
-    if (std::abs(velocity_y) > EPS) {
-        y_step_direction = (velocity_y > 0.0) ? 1 : -1;
-        double distance_to_y_border = (velocity_y > 0.0)
-            ? (map_height - position_y)
-            : position_y;
-        next_y_crossing_time = distance_to_y_border / std::abs(velocity_y);
-        y_crossing_interval = map_height / std::abs(velocity_y);
-    }
-
-    // Step through each crossing event in order of time
-    while (true) {
-        if (next_x_crossing_time < next_y_crossing_time) {
-            if (next_x_crossing_time > time_horizon_seconds) break;
-            universe_offset_x += x_step_direction;
-            output_universe_offsets.emplace_back(universe_offset_x, universe_offset_y);
-            next_x_crossing_time += x_crossing_interval;
-        } else {
-            if (next_y_crossing_time > time_horizon_seconds) break;
-            universe_offset_y += y_step_direction;
-            output_universe_offsets.emplace_back(universe_offset_x, universe_offset_y);
-            next_y_crossing_time += y_crossing_interval;
-        }
-    }
 }
 
 inline bool coordinates_in_same_wrap(const double &pos1x, const double &pos1y, const double &pos2x, const double &pos2y, const double &map_size_x, const double &map_size_y) {
@@ -2328,13 +2030,12 @@ inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double ma
             }
         }
     }
-    std::vector<std::pair<int64_t, int64_t>> border_crossings;
-    calculate_border_crossings(asteroid.x, asteroid.y, asteroid.vx, asteroid.vy, max_x, max_y, time_horizon_s, border_crossings);
+
     //unwrap_asteroid_expensive_call_count++;
-    for (const auto& universe_offset : border_crossings) {
+    for (const auto& universe : calculate_border_crossings(asteroid.x, asteroid.y, asteroid.vx, asteroid.vy, max_x, max_y, time_horizon_s)) {
         // We move the asteroid the opposite direction virtually, from the direction it actually went! Hence the negative signs.
-        double dx = -static_cast<double>(universe_offset.first) * max_x;
-        double dy = -static_cast<double>(universe_offset.second) * max_y;
+        double dx = -static_cast<double>(universe.first) * max_x;
+        double dy = -static_cast<double>(universe.second) * max_y;
         unwrapped_asteroids.emplace_back(
             asteroid.x + dx,
             asteroid.y + dy,
@@ -2705,7 +2406,8 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
     // Convert other ships to pseudo-asteroids:
     for (const Ship& ship : game_state.ships) {
         if (ship.id != ship_state.id) {
-            asteroids.emplace_back(Asteroid{ship.x, ship.y, 0.0, 0.0, 0, 0.0, ship.radius});
+            asteroids.emplace_back(Asteroid{ship.x, ship.y, 0.0, 0.0, 0, 0.0, ship.radius
+            });
         }
     }
     double ship_pos_x = ship_state.x, ship_pos_y = ship_state.y, ship_vel_x = ship_state.vx, ship_vel_y = ship_state.vy;
@@ -2719,11 +2421,7 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
 
     for (const Asteroid& asteroid : asteroids) {
         assert(asteroid.alive);
-        //for (const Asteroid& a : unwrap_asteroid(asteroid, game_state.map_size_x, game_state.map_size_y, UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON, false)) {
-        //std::cout << "Calling unwrap from 2719" << std::endl;
-        auto [clones, count] = asteroid.unwrap(game_state.sim_frame, UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON_FRAMES, game_state.map_size_x, game_state.map_size_y);
-        for (size_t a_idx = 0; a_idx < count; ++a_idx) {
-            const Asteroid& a = clones[a_idx];
+        for (const Asteroid& a : unwrap_asteroid(asteroid, game_state.map_size_x, game_state.map_size_y, UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON, false)) {
             double imminent_collision_time_s;
             if (is_close_to_zero(ship_vel_x) && is_close_to_zero(ship_vel_y)) {
                 imminent_collision_time_s = predict_next_imminent_collision_time_with_asteroid(
@@ -2901,9 +2599,9 @@ forecast_asteroid_splits(const Asteroid& a, int64_t timesteps_until_appearance, 
 
     if (timesteps_until_appearance == 0) {
         return std::make_tuple(
-            Asteroid(a.x, a.y, v * cos_angle_left, v * sin_angle_left, new_size, new_mass, new_radius, 0, game_state.sim_frame, true, game_state.map_size_x, game_state.map_size_y, 10.0, game_state.sim_frame),
-            Asteroid(a.x, a.y, v * cos_angle_center, v * sin_angle_center, new_size, new_mass, new_radius, 0, game_state.sim_frame, true, game_state.map_size_x, game_state.map_size_y, 10.0, game_state.sim_frame),
-            Asteroid(a.x, a.y, v * cos_angle_right, v * sin_angle_right, new_size, new_mass, new_radius, 0, game_state.sim_frame, true, game_state.map_size_x, game_state.map_size_y, 10.0, game_state.sim_frame)
+            Asteroid(a.x, a.y, v * cos_angle_left, v * sin_angle_left, new_size, new_mass, new_radius, 0),
+            Asteroid(a.x, a.y, v * cos_angle_center, v * sin_angle_center, new_size, new_mass, new_radius, 0),
+            Asteroid(a.x, a.y, v * cos_angle_right, v * sin_angle_right, new_size, new_mass, new_radius, 0)
         );
     } else {
         double dt = DELTA_TIME * static_cast<double>(timesteps_until_appearance);
@@ -2917,17 +2615,17 @@ forecast_asteroid_splits(const Asteroid& a, int64_t timesteps_until_appearance, 
                 wrap(a.x + a.vx * dt - dt * cos_angle_left * v, game_state.map_size_x),
                 wrap(a.y + a.vy * dt - dt * sin_angle_left * v, game_state.map_size_y),
                 v * cos_angle_left, v * sin_angle_left,
-                new_size, new_mass, new_radius, timesteps_until_appearance, game_state.sim_frame, true, game_state.map_size_x, game_state.map_size_y, 10.0, game_state.sim_frame),
+                new_size, new_mass, new_radius, timesteps_until_appearance),
             Asteroid(
                 wrap(a.x + a.vx * dt - dt * cos_angle_center * v, game_state.map_size_x),
                 wrap(a.y + a.vy * dt - dt * sin_angle_center * v, game_state.map_size_y),
                 v * cos_angle_center, v * sin_angle_center,
-                new_size, new_mass, new_radius, timesteps_until_appearance, game_state.sim_frame, true, game_state.map_size_x, game_state.map_size_y, 10.0, game_state.sim_frame),
+                new_size, new_mass, new_radius, timesteps_until_appearance),
             Asteroid(
                 wrap(a.x + a.vx * dt - dt * cos_angle_right * v, game_state.map_size_x),
                 wrap(a.y + a.vy * dt - dt * sin_angle_right * v, game_state.map_size_y),
                 v * cos_angle_right, v * sin_angle_right,
-                new_size, new_mass, new_radius, timesteps_until_appearance, game_state.sim_frame, true, game_state.map_size_x, game_state.map_size_y, 10.0, game_state.sim_frame)
+                new_size, new_mass, new_radius, timesteps_until_appearance)
         );
     }
 }
@@ -2989,7 +2687,6 @@ inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_ship_splits(
 }
 
 // Maintain split asteroids' forecast
-/*
 inline std::vector<Asteroid> maintain_forecasted_asteroids(const std::vector<Asteroid>& forecasted_asteroid_splits, const GameState& game_state) {
     std::vector<Asteroid> updated_asteroids;
     for (const Asteroid& forecasted_asteroid : forecasted_asteroid_splits) {
@@ -3007,25 +2704,6 @@ inline std::vector<Asteroid> maintain_forecasted_asteroids(const std::vector<Ast
         }
     }
     return updated_asteroids;
-}*/
-
-inline void maintain_forecasted_asteroids(std::vector<Asteroid>& asteroids, const GameState& game_state) {
-    for (size_t i = 0; i < asteroids.size(); ) {
-        Asteroid& a = asteroids[i];
-        // Decrement timesteps until appearance
-        --a.timesteps_until_appearance;
-        if (a.timesteps_until_appearance <= 0) {
-            // Remove asteroid by swapping with the last and popping
-            asteroids[i] = asteroids.back();
-            asteroids.pop_back();
-            // Do not increment i, because we now need to check the element swapped in
-        } else {
-            // Update values in place
-            a.x = pymod(a.x + a.vx * DELTA_TIME, game_state.map_size_x);
-            a.y = pymod(a.y + a.vy * DELTA_TIME, game_state.map_size_y);
-            ++i;
-        }
-    }
 }
 
 // --- Asteroid fuzzy equality in list, including wrap handling ---
@@ -3520,13 +3198,7 @@ Asteroid time_travel_asteroid(const Asteroid& asteroid, int64_t timesteps, const
         asteroid.size,
         asteroid.mass,
         asteroid.radius,
-        asteroid.timesteps_until_appearance,
-        asteroid.start_frame + timesteps,
-        true,
-        game_state.map_size_x,
-        game_state.map_size_y,
-        10.0,
-        asteroid.start_frame + timesteps
+        asteroid.timesteps_until_appearance
     );
 }
 
@@ -3540,13 +3212,7 @@ Asteroid time_travel_asteroid_s(const Asteroid& asteroid, double time, const Gam
         asteroid.size,
         asteroid.mass,
         asteroid.radius,
-        asteroid.timesteps_until_appearance,
-        asteroid.start_frame + static_cast<int64_t>(time * FPS),
-        true,
-        game_state.map_size_x,
-        game_state.map_size_y,
-        10.0,
-        asteroid.start_frame + static_cast<int64_t>(time * FPS)
+        asteroid.timesteps_until_appearance
     );
 }
 
@@ -3939,16 +3605,11 @@ public:
         auto process_asteroid = [&](const Asteroid& asteroid, bool asteroid_is_born) {
             if (asteroid.alive) {
                 // For each unwrapped image
-                /*std::vector<Asteroid> unwrapped_asteroids = unwrap_asteroid(
+                std::vector<Asteroid> unwrapped_asteroids = unwrap_asteroid(
                     asteroid, game_state.map_size_x, game_state.map_size_y,
                     UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON, false
-                );*/
-                //std::cout << "Calling unwrap from 3917\n" << asteroid << std::endl;
-                //asteroid.print_wrap_change_frames();
-                auto [clones, count] = asteroid.unwrap(game_state.sim_frame, UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON_FRAMES, game_state.map_size_x, game_state.map_size_y);
-                //for (const Asteroid& a : unwrapped_asteroids) {
-                for (size_t a_idx = 0; a_idx < count; ++a_idx) {
-                    const Asteroid& a = clones[a_idx];
+                );
+                for (const Asteroid& a : unwrapped_asteroids) {
                     // Sanity check: ship should not be moving
                     assert(is_close_to_zero(ship_state.vx) && is_close_to_zero(ship_state.vy));
 
@@ -4032,13 +3693,11 @@ public:
         size_t ast_idx = 0;
         // Iterate over game_state.asteroids
         for (const Asteroid& a : game_state.asteroids) {
-            //std::cout << "Processing gamestate asts" << std::endl;
             process_asteroid(a, true);
             ++ast_idx;
         }
         // ...then over forecasted_asteroid_splits
         for (const Asteroid& a : forecasted_asteroid_splits) {
-            //std::cout << "Processing forecasted splits" << std::endl;
             process_asteroid(a, false);
             ++ast_idx;
         }
@@ -4054,7 +3713,10 @@ public:
                 ship_state.x, ship_state.y, m, 0
             );
             if (!std::isinf(next_imminent_mine_collision_time)) {
-                times_and_mine_pos.emplace_back(next_imminent_mine_collision_time, std::make_pair(m.x, m.y));
+                times_and_mine_pos.emplace_back(
+                    next_imminent_mine_collision_time,
+                    std::make_pair(m.x, m.y)
+                );
             }
         }
         return times_and_mine_pos;
@@ -4573,12 +4235,8 @@ public:
                             }
                         }
                     }
-                    //std::vector<Asteroid> unwrapped_asteroids = unwrap_asteroid(asteroid, game_state.map_size_x, game_state.map_size_y, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON, true);
-                    //std::cout << "Calling unwrap from 4548" << std::endl;
-                    auto [clones, count] = asteroid.unwrap(game_state.sim_frame, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON_FRAMES, game_state.map_size_x, game_state.map_size_y);
-                    //for (const Asteroid& a : unwrapped_asteroids) {
-                    for (size_t a_idx = 0; a_idx < count; ++a_idx) {
-                        const Asteroid& a = clones[a_idx];
+                    std::vector<Asteroid> unwrapped_asteroids = unwrap_asteroid(asteroid, game_state.map_size_x, game_state.map_size_y, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON, true);
+                    for (const Asteroid& a : unwrapped_asteroids) {
                         bool feasible;
                         double shooting_angle_error_deg, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception;
                         int64_t aiming_timesteps_required;
@@ -4596,9 +4254,7 @@ public:
                         std::tie(feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception) = best_feasible_unwrapped_target.value();
                         double imminent_collision_time_s = std::numeric_limits<double>::infinity();
                         assert(is_close_to_zero(ship_state.vx) && is_close_to_zero(ship_state.vy));
-                        //for (const Asteroid& a : unwrapped_asteroids) {
-                        for (size_t i = 0; i < count; ++i) {
-                            const Asteroid& a = clones[i];
+                        for (const Asteroid& a : unwrapped_asteroids) {
                             imminent_collision_time_s = std::min(imminent_collision_time_s,
                                 predict_next_imminent_collision_time_with_asteroid(
                                     ship_state.x, ship_state.y, ship_state.vx, ship_state.vy, SHIP_RADIUS,
@@ -4796,11 +4452,12 @@ public:
             }
         }
 
-        if (!actual_asteroid_hit.has_value() || !check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
+        if (!actual_asteroid_hit.has_value() ||
+            !check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
                 asteroids_pending_death,
                 initial_timestep + future_timesteps + aiming_move_sequence.size(),
                 game_state,
-                time_travel_asteroid(actual_asteroid_hit.value(), aiming_move_sequence.size() - (timesteps_until_bullet_hit_asteroid.has_value() ? timesteps_until_bullet_hit_asteroid.value() : 0), game_state))) {
+                time_travel_asteroid((actual_asteroid_hit.has_value() ? actual_asteroid_hit.value() : Asteroid()), aiming_move_sequence.size() - (timesteps_until_bullet_hit_asteroid.has_value() ? timesteps_until_bullet_hit_asteroid.value() : 0), game_state))) {
             this->fire_next_timestep_flag = false;
 
             int turn_direction = 0; double idle_thrust = 0.0;
@@ -5410,7 +5067,7 @@ public:
         bool fire_this_timestep = false;
         bool drop_mine_this_timestep = false;
         if (!wait_out_mines) {
-            maintain_forecasted_asteroids(forecasted_asteroid_splits, game_state);
+            forecasted_asteroid_splits = maintain_forecasted_asteroids(forecasted_asteroid_splits, game_state);
             //forecasted_asteroid_splits.clear(); // DEBUG
             // Simulate the ship!
             // Bullet firing happens before we turn the ship
@@ -5511,12 +5168,8 @@ public:
 
                                 check_next_asteroid = false;
                                 if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps + 1, game_state, *asteroid)) {
-                                    //std::vector<Asteroid> unwrapped_asteroids = unwrap_asteroid(*asteroid, game_state.map_size_x, game_state.map_size_y, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON, true);
-                                    //std::cout << "Calling unwrap from 5486" << std::endl;
-                                    auto [clones, count] = asteroid->unwrap(game_state.sim_frame, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON_FRAMES, game_state.map_size_x, game_state.map_size_y);
-                                    //for (const Asteroid& a : unwrapped_asteroids) {
-                                    for (size_t a_idx = 0; a_idx < count; ++a_idx) {
-                                        const Asteroid& a = clones[a_idx];
+                                    std::vector<Asteroid> unwrapped_asteroids = unwrap_asteroid(*asteroid, game_state.map_size_x, game_state.map_size_y, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON, true);
+                                    for (const Asteroid& a : unwrapped_asteroids) {
                                         if (check_next_asteroid) {
                                             break;
                                         }
@@ -5720,12 +5373,8 @@ public:
                             }
                             if (avoid_targeting_this_asteroid) continue;
                             if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps + 1, game_state, *asteroid)) {
-                                //std::vector<Asteroid> unwrapped_asteroids = unwrap_asteroid(*asteroid, game_state.map_size_x, game_state.map_size_y, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON, true);
-                                //std::cout << "Calling unwrap from 5695" << std::endl;
-                                auto [clones, count] = asteroid->unwrap(game_state.sim_frame, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON_FRAMES, game_state.map_size_x, game_state.map_size_y);
-                                //for (const Asteroid& a : unwrapped_asteroids) {
-                                for (size_t a_idx = 0; a_idx < count; ++a_idx) {
-                                    const Asteroid& a = clones[a_idx];
+                                std::vector<Asteroid> unwrapped_asteroids = unwrap_asteroid(*asteroid, game_state.map_size_x, game_state.map_size_y, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON, true);
+                                for (const Asteroid& a : unwrapped_asteroids) {
                                     bool feasible;
                                     double shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist;
                                     std::tie(feasible, shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist) =
@@ -6136,13 +5785,13 @@ public:
     bool cruise(int64_t cruise_time, double cruise_turn_rate = 0.0) {
         // Maintain current speed
         for (int64_t i = 0; i < cruise_time; ++i) {
-            if (sim_id == 1234567) {
+            if (sim_id == 4271) {
                 std::cout << "In respawn sim that'll crash, future_timesteps=" << future_timesteps
                         << " respawn_timer=" << respawn_timer
                         << " ship_state=" << ship_state.str() << std::endl;
             }
             if (!update(sign(ship_state.speed) * SHIP_DRAG, cruise_turn_rate)) {
-                if (sim_id == 1234567) {
+                if (sim_id == 4271) {
                     std::cout << "AHA CRUISE FAILED SOMEHOW?!!!! " << ship_state.str() << " ";
                     // Assuming respawn_timer_history is a vector<double>
                     std::cout << "[";
@@ -7211,7 +6860,6 @@ public:
         Ship ship_state = create_ship_from_dict(ship_state_dict);
         GameState game_state = create_game_state_from_dict(game_state_dict);
 
-        //std::cout << "Initialized wrap cache this many times: " << times_initializing_wrap_cache << " and skipped this many: " << times_skipping_reinitialization_of_wrap_cache << std::endl;
         // Check for simulator/controller desync and perform state recovery/reset as in Python
         if constexpr (CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS || STATE_CONSISTENCY_CHECK_AND_RECOVERY) {
             bool timestep_mismatch = !(game_state.sim_frame == this->current_timestep);
