@@ -1699,9 +1699,10 @@ get_ship_maneuver_move_sequence(double ship_heading_angle, double ship_cruise_sp
     return move_sequence;
 }
 
-// =============== 2. calculate_border_crossings ========================
+// =============== calculate_border_crossings ========================
 // Returns a vector of (universe_x, universe_y) (int,int) pairs in order
-inline std::vector<std::pair<int64_t, int64_t>> calculate_border_crossings(
+/*
+inline std::vector<std::pair<int64_t, int64_t>> calculate_border_crossings_OLD(
     double pos_x, double pos_y, double vel_x, double vel_y,
     double width, double height, double time_horizon)
 {
@@ -1759,6 +1760,66 @@ inline std::vector<std::pair<int64_t, int64_t>> calculate_border_crossings(
         universes.emplace_back(current_universe_x, current_universe_y);
     }
     return universes;
+}*/
+
+inline std::vector<std::pair<int64_t, int64_t>> calculate_border_crossings(
+    double position_x, double position_y,
+    double velocity_x, double velocity_y,
+    double map_width, double map_height,
+    double time_horizon_seconds)
+{
+    // Next time we cross a border (in x or y)
+    double next_x_crossing_time = std::numeric_limits<double>::infinity();
+    double next_y_crossing_time = std::numeric_limits<double>::infinity();
+
+    // Time between each border crossing (based on velocity)
+    double x_crossing_interval = std::numeric_limits<double>::infinity();
+    double y_crossing_interval = std::numeric_limits<double>::infinity();
+
+    // Current "universe" position (grid offset in wraparound space)
+    int64_t universe_offset_x = 0;
+    int64_t universe_offset_y = 0;
+
+    // Direction we move through the universe grid
+    int64_t x_step_direction = 0;
+    int64_t y_step_direction = 0;
+
+    // Setup for X crossing (if we’re moving horizontally)
+    if (std::abs(velocity_x) > EPS) {
+        x_step_direction = (velocity_x > 0.0) ? 1 : -1;
+        double distance_to_x_border = (velocity_x > 0.0)
+            ? (map_width - position_x)
+            : position_x;
+        next_x_crossing_time = distance_to_x_border / std::abs(velocity_x);
+        x_crossing_interval = map_width / std::abs(velocity_x);
+    }
+
+    // Setup for Y crossing (if we’re moving vertically)
+    if (std::abs(velocity_y) > EPS) {
+        y_step_direction = (velocity_y > 0.0) ? 1 : -1;
+        double distance_to_y_border = (velocity_y > 0.0)
+            ? (map_height - position_y)
+            : position_y;
+        next_y_crossing_time = distance_to_y_border / std::abs(velocity_y);
+        y_crossing_interval = map_height / std::abs(velocity_y);
+    }
+
+    // Step through each crossing event in order of time
+    std::vector<std::pair<int64_t, int64_t>> universe_offsets;
+    while (true) {
+        if (next_x_crossing_time < next_y_crossing_time) {
+            if (next_x_crossing_time > time_horizon_seconds) break;
+            universe_offset_x += x_step_direction;
+            universe_offsets.emplace_back(universe_offset_x, universe_offset_y);
+            next_x_crossing_time += x_crossing_interval;
+        } else {
+            if (next_y_crossing_time > time_horizon_seconds) break;
+            universe_offset_y += y_step_direction;
+            universe_offsets.emplace_back(universe_offset_x, universe_offset_y);
+            next_y_crossing_time += y_crossing_interval;
+        }
+    }
+    return universe_offsets;
 }
 
 inline bool coordinates_in_same_wrap(const double &pos1x, const double &pos1y, const double &pos2x, const double &pos2y, const double &map_size_x, const double &map_size_y) {
@@ -4247,7 +4308,6 @@ public:
         bool most_imminent_asteroid_exists = false;
         bool asteroids_still_exist = false;
         std::vector<const Asteroid*> chained_asteroids;
-        // TODO: Optimize this
         for (const auto& a : game_state.asteroids) chained_asteroids.push_back(&a);
         for (const auto& a : forecasted_asteroid_splits) chained_asteroids.push_back(&a);
 
@@ -4844,10 +4904,9 @@ public:
                             delta_x * delta_x + delta_y * delta_y <= separation * separation) {
 
                             if (asteroid.size != 1) {
-                                auto splits = forecast_asteroid_ship_splits(asteroid, 0, 0.0, 0.0, game_state);
-                                std::apply([&](const auto&... ast) {
-                                    (new_asteroids.push_back(ast), ...);
-                                }, splits);
+                                for (const Asteroid& new_ast : forecast_asteroid_ship_splits(asteroid, 0, 0.0, 0.0, game_state)) {
+                                    new_asteroids.push_back(new_ast);
+                                }
                             }
 
                             asteroid.alive = false;
@@ -5686,10 +5745,9 @@ public:
                             delta_x * delta_x + delta_y * delta_y <= separation * separation) {
 
                             if (asteroid.size != 1) {
-                                auto splits = forecast_asteroid_ship_splits(asteroid, 0, ship_state.vx, ship_state.vy, game_state);
-                                std::apply([&](const auto&... sp) {
-                                    (new_asteroids.push_back(sp), ...);
-                                }, splits);
+                                for (const Asteroid& new_ast : forecast_asteroid_ship_splits(asteroid, 0, ship_state.vx, ship_state.vy, game_state)) {
+                                    new_asteroids.push_back(new_ast);
+                                }
                             }
 
                             asteroid.alive = false;
