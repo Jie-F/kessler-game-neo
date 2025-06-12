@@ -98,6 +98,7 @@
 #include <set>
 #include <unordered_set>
 #include <thread>
+#include <functional>
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/array.h>
@@ -282,6 +283,7 @@ constexpr std::array<double, 9> normalize(const std::array<double, 9>& arr) {
     }
     return result;
 }
+
 
 constexpr std::array<double, 9> DEFAULT_FITNESS_WEIGHTS = normalize(UNNORMALIZED_WEIGHTS);
 
@@ -500,6 +502,17 @@ void print_sorted_dict(const std::unordered_map<int64_t, int64_t>& umap) {
 }
 
 // ---------------------------------- CLASSES ----------------------------------
+
+struct pair_hash {
+    std::size_t operator()(const std::pair<double, double>& p) const noexcept {
+        auto h1 = std::hash<double>{}(p.first);
+        auto h2 = std::hash<double>{}(p.second);
+        // Combine hashes (standard pattern)
+        return h1 ^ (h2 << 1);
+    }
+};
+
+
 struct Asteroid {
     double x = 0, y = 0, vx = 0, vy = 0;
     int64_t size = 0;
@@ -973,7 +986,6 @@ GameState create_game_state_from_dict(nb::dict game_state_dict) {
 }
 
 
-
 struct BasePlanningGameState {
     int64_t timestep;
     bool respawning;
@@ -984,7 +996,7 @@ struct BasePlanningGameState {
     std::vector<Asteroid> forecasted_asteroid_splits;
     int64_t last_timestep_fired;
     int64_t last_timestep_mined;
-    std::set<std::pair<double, double>> mine_positions_placed;
+    std::unordered_set<std::pair<double, double>, pair_hash> mine_positions_placed;
     bool fire_next_timestep_flag;
 };
 
@@ -2579,7 +2591,7 @@ inline std::tuple<
 }
 
 // Actual splitting logic
-inline std::tuple<Asteroid, Asteroid, Asteroid>
+inline std::array<Asteroid, 3>
 forecast_asteroid_splits(const Asteroid& a, int64_t timesteps_until_appearance, double vfx, double vfy, double v, double split_angle, const GameState& game_state) {
     double theta = std::atan2(vfy, vfx) * RAD_TO_DEG;
     int64_t new_size = a.size - 1;
@@ -2598,11 +2610,11 @@ forecast_asteroid_splits(const Asteroid& a, int64_t timesteps_until_appearance, 
     double sin_angle_right = std::sin(angle_right);
 
     if (timesteps_until_appearance == 0) {
-        return std::make_tuple(
+        return std::array<Asteroid, 3>{
             Asteroid(a.x, a.y, v * cos_angle_left, v * sin_angle_left, new_size, new_mass, new_radius, 0),
             Asteroid(a.x, a.y, v * cos_angle_center, v * sin_angle_center, new_size, new_mass, new_radius, 0),
             Asteroid(a.x, a.y, v * cos_angle_right, v * sin_angle_right, new_size, new_mass, new_radius, 0)
-        );
+        };
     } else {
         double dt = DELTA_TIME * static_cast<double>(timesteps_until_appearance);
         // For fmod; ensure positive modulus results like Python’s %
@@ -2610,7 +2622,7 @@ forecast_asteroid_splits(const Asteroid& a, int64_t timesteps_until_appearance, 
             double r = std::fmod(x, mod);
             return r < 0 ? r + mod : r;
         };
-        return std::make_tuple(
+        return std::array<Asteroid, 3>{
             Asteroid(
                 wrap(a.x + a.vx * dt - dt * cos_angle_left * v, game_state.map_size_x),
                 wrap(a.y + a.vy * dt - dt * sin_angle_left * v, game_state.map_size_y),
@@ -2626,12 +2638,12 @@ forecast_asteroid_splits(const Asteroid& a, int64_t timesteps_until_appearance, 
                 wrap(a.y + a.vy * dt - dt * sin_angle_right * v, game_state.map_size_y),
                 v * cos_angle_right, v * sin_angle_right,
                 new_size, new_mass, new_radius, timesteps_until_appearance)
-        );
+        };
     }
 }
 
 // Heading-based bullet splits
-inline std::tuple<Asteroid, Asteroid, Asteroid>
+inline std::array<Asteroid, 3>
 forecast_asteroid_bullet_splits_from_heading(const Asteroid& a, int64_t timesteps_until_appearance, double bullet_heading_deg, const GameState& game_state) {
     double bullet_heading_rad = bullet_heading_deg * DEG_TO_RAD;
     double bullet_vel_x = std::cos(bullet_heading_rad) * BULLET_SPEED;
@@ -2643,7 +2655,7 @@ forecast_asteroid_bullet_splits_from_heading(const Asteroid& a, int64_t timestep
 }
 
 // Instantaneous (velocity) bullet splits
-inline std::tuple<Asteroid, Asteroid, Asteroid>
+inline std::array<Asteroid, 3>
 forecast_instantaneous_asteroid_bullet_splits_from_velocity(const Asteroid& a, double bullet_vx, double bullet_vy, const GameState& game_state) {
     double vfx = (1.0 / (BULLET_MASS + a.mass)) * (BULLET_MASS * bullet_vx + a.mass * a.vx);
     double vfy = (1.0 / (BULLET_MASS + a.mass)) * (BULLET_MASS * bullet_vy + a.mass * a.vy);
@@ -2652,7 +2664,7 @@ forecast_instantaneous_asteroid_bullet_splits_from_velocity(const Asteroid& a, d
 }
 
 // Mine splits
-inline std::tuple<Asteroid, Asteroid, Asteroid>
+inline std::array<Asteroid, 3>
 forecast_asteroid_mine_instantaneous_splits(const Asteroid& asteroid, const Mine& mine, const GameState& game_state) {
     double delta_x = mine.x - asteroid.x;
     double delta_y = mine.y - asteroid.y;
@@ -2677,7 +2689,7 @@ forecast_asteroid_mine_instantaneous_splits(const Asteroid& asteroid, const Mine
 }
 
 // Ship splits
-inline std::tuple<Asteroid, Asteroid, Asteroid> forecast_asteroid_ship_splits(
+inline std::array<Asteroid, 3> forecast_asteroid_ship_splits(
     const Asteroid& asteroid, int64_t timesteps_until_appearance, double ship_vx, double ship_vy, const GameState& game_state)
 {
     double vfx = (1.0 / (SHIP_MASS + asteroid.mass)) * (SHIP_MASS * ship_vx + asteroid.mass * asteroid.vx);
@@ -2714,7 +2726,7 @@ inline void maintain_forecasted_asteroids(std::vector<Asteroid>& asteroids, cons
         --a.timesteps_until_appearance;
         if (a.timesteps_until_appearance <= 0) {
             // Remove asteroid by swapping with the last and popping
-            asteroids[i] = asteroids.back();
+            std::swap(asteroids[i], asteroids.back());
             asteroids.pop_back();
             // Do not increment i, because we now need to check the element swapped in
         } else {
@@ -3271,8 +3283,8 @@ public:
     std::vector<Action> intended_move_sequence;
     bool sim_placed_a_mine;
     bool verify_maneuver_shots;
-    std::set<std::pair<double, double>> mine_positions_placed;
-    std::unordered_map<int64_t, std::set<std::pair<double, double>>> mine_positions_placed_history;
+    std::unordered_set<std::pair<double, double>, pair_hash> mine_positions_placed;
+    std::unordered_map<int64_t, std::unordered_set<std::pair<double, double>, pair_hash>> mine_positions_placed_history;
     int64_t last_timestep_colliding;
     int64_t respawn_maneuver_pass_number;
     std::vector<bool> random_walk_schedule;
@@ -3289,7 +3301,7 @@ public:
         const std::vector<Asteroid>* forecasted_asteroid_splits_ = nullptr,
         int64_t last_timestep_fired_ = INT_NEG_INF,
         int64_t last_timestep_mined_ = INT_NEG_INF,
-        const std::set<std::pair<double, double>>* mine_positions_placed_ = nullptr,
+        const std::unordered_set<std::pair<double, double>, pair_hash>* mine_positions_placed_ = nullptr,
         bool halt_shooting_ = false,
         bool fire_first_timestep_ = false,
         bool verify_first_shot_ = false,
@@ -3344,8 +3356,10 @@ public:
         for (const auto& a : game_state_.asteroids) {
             game_state.asteroids.push_back(a);
         }
-        for (const auto& a : game_state.asteroids) {
-            assert(a.alive);
+        if constexpr (ENABLE_SANITY_CHECKS) {
+            for (const auto& a : game_state.asteroids) {
+                assert(a.alive);
+            }
         }
         game_state.ships.clear();
         for (const auto& s : game_state_.ships) {
@@ -3355,15 +3369,19 @@ public:
         for (const auto& b : game_state_.bullets) {
             game_state.bullets.push_back(b);
         }
-        for (const auto& b : game_state.bullets) {
-            assert(b.alive);
+        if constexpr (ENABLE_SANITY_CHECKS) {
+            for (const auto& b : game_state.bullets) {
+                assert(b.alive);
+            }
         }
         game_state.mines.clear();
         for (const auto& m : game_state_.mines) {
             game_state.mines.push_back(m);
         }
-        for (const auto& m : game_state.mines) {
-            assert(m.alive);
+        if constexpr (ENABLE_SANITY_CHECKS) {
+            for (const auto& m : game_state.mines) {
+                assert(m.alive);
+            }
         }
         other_ships = get_other_ships(game_state, ship_state.id);
         if constexpr (ENABLE_SANITY_CHECKS) {
@@ -3389,8 +3407,10 @@ public:
         for (const auto& a : local_forecasted_asteroid_splits) {
             forecasted_asteroid_splits.push_back(a);
         }
-        for (const auto& a : forecasted_asteroid_splits) {
-            assert(a.alive);
+        if constexpr (ENABLE_SANITY_CHECKS) {
+            for (const auto& a : forecasted_asteroid_splits) {
+                assert(a.alive);
+            }
         }
         forecasted_asteroid_splits_history.clear();
 
@@ -3406,7 +3426,7 @@ public:
         if (mine_positions_placed_ != nullptr) {
             mine_positions_placed = *mine_positions_placed_;
         } else {
-            mine_positions_placed = std::set<std::pair<double, double>>();
+            mine_positions_placed = std::unordered_set<std::pair<double, double>, pair_hash>();
         }
 
         // 0 - Not a respawn maneuver, 1 - First pass respawn, 2 - Second pass respawn
@@ -3449,7 +3469,7 @@ public:
         return last_timestep_colliding;
     }
 
-    std::set<std::pair<double, double>> get_mine_positions_placed() const {
+    std::unordered_set<std::pair<double, double>, pair_hash> get_mine_positions_placed() const {
         return mine_positions_placed;
     }
 
@@ -3542,13 +3562,13 @@ public:
         return forecasted_asteroid_splits_dict;
     }
 
-    std::unordered_map<int64_t, std::set<std::pair<double, double>>> get_mine_positions_placed_history() const {
+    std::unordered_map<int64_t, std::unordered_set<std::pair<double, double>, pair_hash>> get_mine_positions_placed_history() const {
         // This is a doozy. First of all, if we never shot any asteroids during this sim, then this history dict will be empty!
         // But each time we shoot an asteroid, we add to this dict the timestep the thing was updated, but we plop down the PREVIOUS version!
         // For example we have versions A and B. 0:A, 1:A, 2:A, 3:B, 4:B is how the thing changes. So the dict would say: {3: A}. And then B is held in the variable.
-        std::unordered_map<int64_t, std::set<std::pair<double, double>>> mine_positions_placed_history_dict;
+        std::unordered_map<int64_t, std::unordered_set<std::pair<double, double>, pair_hash>> mine_positions_placed_history_dict;
         // Use pointer to avoid unnecessary copying of the set
-        const std::set<std::pair<double, double>>* latest_version = &mine_positions_placed;
+        const std::unordered_set<std::pair<double, double>, pair_hash>* latest_version = &mine_positions_placed;
         // TODO: Make sure there's no off-by-one error in these bounds and indices!
         for (int64_t t = initial_timestep + future_timesteps; t > initial_timestep; --t) {
             // We add one because it's the frame after this one that we're updating the state to be, and that we read this variable from
@@ -4246,7 +4266,7 @@ public:
                         double delta_y = asteroid_when_mine_explodes.y - m.y;
                         double separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS;
                         if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
-                            if (mine_positions_placed.count(std::make_pair(m.x, m.y))) {
+                            if (mine_positions_placed.contains(std::make_pair(m.x, m.y))) {
                                 asteroid_will_get_hit_by_my_mine = true;
                                 if (asteroid_will_get_hit_by_their_mine) break;
                             } else {
@@ -4505,13 +4525,13 @@ public:
             //    game_state_plotter.value().update_plot(nullptr, nullptr, nullptr, nullptr,std::vector<Asteroid>{actual_asteroid_hit_at_present_time},nullptr, nullptr, nullptr, false, NEW_TARGET_PLOT_PAUSE_TIME_S, "FEASIBLE TARGETS");
             //}
             if (actual_asteroid_hit_at_present_time.size != 1) {
-                std::apply([&](const auto&... asteroids) {
-                    (forecasted_asteroid_splits.push_back(asteroids), ...);
-                }, forecast_asteroid_bullet_splits_from_heading(
+                for (const Asteroid& new_ast : forecast_asteroid_bullet_splits_from_heading(
                     actual_asteroid_hit_at_present_time,
                     timesteps_until_bullet_hit_asteroid.value(),
                     ship_state_after_aiming.heading,
-                    game_state));
+                    game_state)) {
+                        forecasted_asteroid_splits.push_back(new_ast);
+                    }
             }
             bool sim_complete_without_crash = apply_move_sequence(aiming_move_sequence);
             if (sim_complete_without_crash) {
@@ -4574,7 +4594,7 @@ public:
         std::optional<Bullet> my_bullet = std::nullopt;
         bool ship_not_collided_with_asteroid = true;
         int64_t timesteps_until_bullet_hit_asteroid = skip_half_of_first_cycle ? int64_t(-1) : int64_t(0);
-        //std::set<int64_t> asteroid_remove_idxs;
+        //std::unordered_set<int64_t> asteroid_remove_idxs;
         double new_bullet_x, new_bullet_y;
         double rad_heading, cos_heading, sin_heading;
         double thrust, turn_rate, drag_amount;
@@ -4741,10 +4761,9 @@ public:
 
                                     // Create asteroid splits and mark for removal
                                     if (a.size != 1) {
-                                        auto splits = forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, game_state);
-                                        std::apply([&](const auto&... new_ast) {
-                                            (new_asteroids.push_back(new_ast), ...);
-                                        }, splits);
+                                        for (const Asteroid& new_ast: forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, game_state)) {
+                                            new_asteroids.push_back(new_ast);
+                                        }
                                     }
 
                                     a.alive = false;
@@ -4789,9 +4808,9 @@ public:
                             separation = asteroid.radius + MINE_BLAST_RADIUS;
                             if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
                                 if (asteroid.size != 1) {
-                                    std::apply([&](const auto&... sp) {
-                                        (new_asteroids.push_back(sp), ...);
-                                    }, forecast_asteroid_mine_instantaneous_splits(asteroid, mine, game_state));
+                                    for (const Asteroid& new_ast : forecast_asteroid_mine_instantaneous_splits(asteroid, mine, game_state)) {
+                                        new_asteroids.push_back(new_ast);
+                                    }
                                 }
                                 asteroid.alive = false;
                             }
@@ -4979,9 +4998,7 @@ public:
 
         // Track state sequence and forecasted split history
         if (!wait_out_mines) {
-            std::vector<Asteroid> forecasted_splits_copy;
-            for (const auto& a : forecasted_asteroid_splits) forecasted_splits_copy.push_back(a);
-            forecasted_asteroid_splits_history.push_back(forecasted_splits_copy);
+            forecasted_asteroid_splits_history.push_back(forecasted_asteroid_splits);
             if constexpr (ENABLE_SANITY_CHECKS) {
                 for (const auto& a : forecasted_asteroid_splits_history.back()) { assert(a.alive); }
             }
@@ -4999,7 +5016,7 @@ public:
                     ship_state,
                     get_game_state(),
                     asteroids_pending_death, // shallow copy is fine here
-                    forecasted_splits_copy
+                    forecasted_asteroid_splits
                 ));
             }
         }
@@ -5157,7 +5174,7 @@ public:
                                 avoid_targeting_this_asteroid = false;
                                 if (asteroid->size == 1) {
                                     for (const Mine& m : game_state.mines) {
-                                        if (m.alive && mine_positions_placed.count(std::make_pair(m.x, m.y))) {
+                                        if (m.alive && mine_positions_placed.contains(std::make_pair(m.x, m.y))) {
                                             // This mine is mine
                                             //project_asteroid_by_timesteps_num = round(m.remaining_time*FPS)
                                             //asteroid_when_mine_explodes = time_travel_asteroid(asteroid, project_asteroid_by_timesteps_num, self.game_state)
@@ -5267,10 +5284,11 @@ public:
                                         fire_this_timestep = true;
                                         ++asteroids_shot;
                                         explanation_messages.push_back("During the maneuver, I conveniently shot asteroids.");
-                                        if (actual_asteroid_hit_at_fire_time.size != 1)
-                                            std::apply([&](const auto&... sp) {
-                                                (forecasted_asteroid_splits.push_back(sp), ...);
-                                            }, forecast_asteroid_bullet_splits_from_heading(actual_asteroid_hit_at_fire_time, timesteps_until_bullet_hit_asteroid, ship_state.heading, game_state));
+                                        if (actual_asteroid_hit_at_fire_time.size != 1) {
+                                            for (const Asteroid& new_ast : forecast_asteroid_bullet_splits_from_heading(actual_asteroid_hit_at_fire_time, timesteps_until_bullet_hit_asteroid, ship_state.heading, game_state)) {
+                                                forecasted_asteroid_splits.push_back(new_ast);
+                                            }
+                                        }
                                         // The reason we add one to the timestep we track on, is that once we updated the asteroids' position in the update loop, it's technically the asteroid positions in the game state of the next timestep that gets passed to the controllers!
                                         // So the asteroid positions at a certain timestep is before their positions get updated. After updating, it's the next timestep.
                                         asteroids_pending_death_history[initial_timestep + future_timesteps + 1] = asteroids_pending_death;
@@ -5375,7 +5393,7 @@ public:
                             avoid_targeting_this_asteroid = false;
                             if (asteroid->size == 1) {
                                 for (const Mine& m : game_state.mines) {
-                                    if (m.alive && mine_positions_placed.count(std::make_pair(m.x, m.y))) {
+                                    if (m.alive && mine_positions_placed.contains(std::make_pair(m.x, m.y))) {
                                         // This mine is mine
                                         //project_asteroid_by_timesteps_num = round(m.remaining_time*FPS)
                                         //asteroid_when_mine_explodes = time_travel_asteroid(asteroid, project_asteroid_by_timesteps_num, self.game_state)
@@ -5566,10 +5584,9 @@ public:
                         b.alive = false;
 
                         if (a.size != 1) {
-                            auto splits = forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, game_state);
-                            std::apply([&](const auto&... sp) {
-                                (new_asteroids.push_back(sp), ...);
-                            }, splits);
+                            for (const Asteroid& new_ast: forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, game_state)) {
+                                new_asteroids.push_back(new_ast);
+                            }
                         }
 
                         a.alive = false;
@@ -5604,9 +5621,9 @@ public:
                         double separation = asteroid.radius + MINE_BLAST_RADIUS;
                         if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
                             if (asteroid.size != 1) {
-                                std::apply([&](const auto&... sp) {
-                                    (new_asteroids.push_back(sp), ...);
-                                }, forecast_asteroid_mine_instantaneous_splits(asteroid, mine, game_state));
+                                for (const Asteroid& new_ast : forecast_asteroid_mine_instantaneous_splits(asteroid, mine, game_state)) {
+                                    new_asteroids.push_back(new_ast);
+                                }
                             }
                             asteroid.alive = false;
                         }
@@ -5811,7 +5828,7 @@ public:
                         << " ship_state=" << ship_state.str() << std::endl;
             }
             if (!update(sign(ship_state.speed) * SHIP_DRAG, cruise_turn_rate)) {
-                if (sim_id == 4271) {
+                if (sim_id == 42735461) {
                     std::cout << "AHA CRUISE FAILED SOMEHOW?!!!! " << ship_state.str() << " ";
                     // Assuming respawn_timer_history is a vector<double>
                     std::cout << "[";
@@ -5983,7 +6000,7 @@ public:
     std::unordered_set<int64_t> fire_next_timestep_schedule;
     std::unordered_map<int64_t, std::unordered_map<int64_t, std::vector<Asteroid>>> asteroids_pending_death_schedule;
     std::unordered_map<int64_t, std::vector<Asteroid>> forecasted_asteroid_splits_schedule;
-    std::unordered_map<int64_t, std::set<std::pair<double, double>>> mine_positions_placed_schedule;
+    std::unordered_map<int64_t, std::unordered_set<std::pair<double, double>, pair_hash>> mine_positions_placed_schedule;
 
     std::optional<BasePlanningGameState> game_state_to_base_planning;
     std::optional<std::tuple<double, double, double, double, int64_t, double, int64_t, int64_t>> base_gamestate_analysis;
@@ -6277,13 +6294,13 @@ public:
         auto new_ship_state = best_action_sim.get_ship_state();
         bool new_fire_next_timestep_flag = best_action_sim.get_fire_next_timestep_flag();
 
-        if (new_fire_next_timestep_flag && new_ship_state.is_respawning && lives_remaining_that_we_did_respawn_maneuver_for.count(new_ship_state.lives_remaining) == 0) {
+        if (new_fire_next_timestep_flag && new_ship_state.is_respawning && lives_remaining_that_we_did_respawn_maneuver_for.contains(new_ship_state.lives_remaining) == 0) {
             // Forcing off the fire next timestep, because we just took damage and we're going into respawn maneuver mode! Don't want to get wombo combo'd
             new_fire_next_timestep_flag = false;
         }
 
         if constexpr (ENABLE_SANITY_CHECKS) {
-            if (lives_remaining_that_we_did_respawn_maneuver_for.count(new_ship_state.lives_remaining) == 0 && new_ship_state.is_respawning) {
+            if (lives_remaining_that_we_did_respawn_maneuver_for.contains(new_ship_state.lives_remaining) == 0 && new_ship_state.is_respawning) {
             // If our ship is hurt in our next next action and I haven't done a respawn maneuver yet,
             // Then assert our next action is not a respawning action (REMOVED: Python's commented-out assertion).
             //if (game_state_to_base_planning->respawning || new_fire_next_timestep_flag) {
@@ -6298,7 +6315,7 @@ public:
         /*
         game_state_to_base_planning = BasePlanningGameState{
             best_action_sim_last_state.timestep,
-            lives_remaining_that_we_did_respawn_maneuver_for.find(new_ship_state.lives_remaining) == lives_remaining_that_we_did_respawn_maneuver_for.end() && new_ship_state.is_respawning,
+            lives_remaining_that_we_did_respawn_maneuver_for.contains(new_ship_state.lives_remaining) == lives_remaining_that_we_did_respawn_maneuver_for.end() && new_ship_state.is_respawning,
             new_ship_state,
             next_base_game_state,
             best_action_sim.get_respawn_timer(),
@@ -6353,7 +6370,7 @@ public:
         }
         for (const Action& move : best_move_sequence) {
             if constexpr (ENABLE_SANITY_CHECKS) {
-                assert(actioned_timesteps.count(move.timestep) == 0 && "DUPLICATE TIMESTEPS IN ENQUEUED MOVES");
+                assert(actioned_timesteps.contains(move.timestep) == 0 && "DUPLICATE TIMESTEPS IN ENQUEUED MOVES");
                 actioned_timesteps.insert(move.timestep);
                 assert(move.timestep >= game_state.sim_frame);
             }
@@ -6418,7 +6435,7 @@ public:
         // We only plan for respawn maneuvers if we're currently in our respawn invincibility (duh), AND we aren't at the very tail end of a respawn maneuver where we just came to a complete stop, and we should be ditching our invincibility and starting the next non-respawn action!
         // Another criteria for deciding the tail end of the maneuver, is if the ship's respawn invincibility time we have left is below a threshold. Probably want to be "conservative" here and add some buffer to this threshold.
         assert((planning_state.respawning && planning_state.ship_respawn_timer != 0.0) || !planning_state.respawning);
-        if (planning_state.respawning && !planning_state.fire_next_timestep_flag && !(planning_state.ship_respawn_timer < 3.0 - (1.0 + TIMESTEPS_IT_TAKES_SHIP_TO_ACCELERATE_TO_FULL_SPEED_FROM_DEAD_STOP) * DELTA_TIME && is_kinda_close_to_zero(planning_state.ship_state.speed) && this->lives_remaining_that_we_did_respawn_maneuver_for.count(planning_state.ship_state.lives_remaining))) {
+        if (planning_state.respawning && !planning_state.fire_next_timestep_flag && !(planning_state.ship_respawn_timer < 3.0 - (1.0 + TIMESTEPS_IT_TAKES_SHIP_TO_ACCELERATE_TO_FULL_SPEED_FROM_DEAD_STOP) * DELTA_TIME && is_kinda_close_to_zero(planning_state.ship_state.speed) && this->lives_remaining_that_we_did_respawn_maneuver_for.contains(planning_state.ship_state.lives_remaining))) {
             // --- Respawn branch ---
             // Simulate and look for a good move
             //std::cout << "Planning a respawn maneuver" << std::endl;
@@ -6732,7 +6749,7 @@ public:
                             planning_state.game_state.mines.begin(),
                             planning_state.game_state.mines.end(),
                             [this, &planning_state](const Mine& m) {
-                                return planning_state.mine_positions_placed.count({m.x, m.y}) > 0; })
+                                return planning_state.mine_positions_placed.contains({m.x, m.y}); })
                     )
             {
                 print_explanation("We're probably within the radius of a mine we placed! Biasing faster/longer moves to be more likely to escape the mine.",
@@ -6937,9 +6954,9 @@ public:
                 // Originally I thought it'd be a necessary condition to check (not self.last_timestep_ship_is_respawning and ship_state.is_respawning and ship_state.lives_remaining not in self.lives_remaining_that_we_did_respawn_maneuver_for) however WE DO NOT want to check that the last timestep we weren't respawning!
                 // Because a sneaky edge case is, what if we did a respawn maneuver, and then we began to shoot in the middle of the respawn maneuver RIGHT AS the other ship is inside of us? Then we stay in the respawning state without ever getting out of it, but we just lose a life. Losing a life is the main thing we need to check for! And yes, this is an edge case I experienced and spent an hour tracking down.
                 if ((ship_state.is_respawning &&
-                    this->lives_remaining_that_we_did_respawn_maneuver_for.count(ship_state.lives_remaining) == 0) ||
+                    this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining) == 0) ||
                     (!this->action_queue.empty() && !this->last_timestep_ship_is_respawning && ship_state.is_respawning &&
-                    this->lives_remaining_that_we_did_respawn_maneuver_for.count(ship_state.lives_remaining)))
+                    this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining)))
                 {
                     print_explanation("Ouch, I died in the middle of a maneuver where I expected to survive, due to other ships being present!", this->current_timestep);
                     // Clear the move queue, since previous moves have been invalidated by us taking damage
@@ -6955,7 +6972,7 @@ public:
                     this->base_gamestate_analysis = std::nullopt;
                     unexpected_death = true;
                     iterations_boost = true;
-                    if (this->lives_remaining_that_we_did_respawn_maneuver_for.count(ship_state.lives_remaining)) {
+                    if (this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining)) {
                         // We expected to die at the end of the maneuver, however we actually died mid-maneuver, so we have to revoke the respawn maneuver we had planned, and plan a new one.
                         // Removing the life remaining number from this set will allow us to plan a new maneuver for this number of lives remaining
                         this->lives_remaining_that_we_did_respawn_maneuver_for.erase(ship_state.lives_remaining);
@@ -6981,7 +6998,7 @@ public:
                     iterations_boost = true;
                     unexpected_survival = true;
                     // Yoink this life remaining from the respawn maneuvers, since we no longer are doing one
-                    if (this->lives_remaining_that_we_did_respawn_maneuver_for.count(ship_state.lives_remaining - 1)) {
+                    if (this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining - 1)) {
                         // We need to subtract one from the lives remaining, because when we added it, it was from a simulated ship that had one fewer life. In reality we never lost that life, so we subtract one from our actual lives.
                         this->lives_remaining_that_we_did_respawn_maneuver_for.erase(ship_state.lives_remaining - 1);
                     }
@@ -7002,23 +7019,23 @@ public:
                         game_state,
                         3.0, // ship_respawn_timer
                         // asteroids_pending_death: empty if not found, else value for this timestep
-                        asteroids_pending_death_schedule.count(current_timestep) ? asteroids_pending_death_schedule[current_timestep] : std::unordered_map<int64_t, std::vector<Asteroid>>{},
+                        asteroids_pending_death_schedule.contains(current_timestep) ? asteroids_pending_death_schedule[current_timestep] : std::unordered_map<int64_t, std::vector<Asteroid>>{},
                         // forecasted_asteroid_splits: empty if not found, else value for this timestep
-                        forecasted_asteroid_splits_schedule.count(current_timestep) ? forecasted_asteroid_splits_schedule[current_timestep] : std::vector<Asteroid>{},
+                        forecasted_asteroid_splits_schedule.contains(current_timestep) ? forecasted_asteroid_splits_schedule[current_timestep] : std::vector<Asteroid>{},
                         // last_timestep_fired: as per Python logic
                         recovering_from_crash ? (current_timestep-1) :
                             (current_timestep==0 ?
                                 INT_NEG_INF :
-                                (last_timestep_fired_schedule.count(current_timestep) ? last_timestep_fired_schedule[current_timestep] : INT_NEG_INF)
+                                (last_timestep_fired_schedule.contains(current_timestep) ? last_timestep_fired_schedule[current_timestep] : INT_NEG_INF)
                             ),
                         // last_timestep_mined: as per Python logic
                         recovering_from_crash ? (current_timestep-1) :
                             (current_timestep==0 ?
                                 INT_NEG_INF :
-                                (last_timestep_mined_schedule.count(current_timestep) ? last_timestep_mined_schedule[current_timestep] : INT_NEG_INF)
+                                (last_timestep_mined_schedule.contains(current_timestep) ? last_timestep_mined_schedule[current_timestep] : INT_NEG_INF)
                             ),
-                        mine_positions_placed_schedule.count(current_timestep) ? mine_positions_placed_schedule[current_timestep] : std::set<std::pair<double, double>>{},
-                        fire_next_timestep_schedule.count(current_timestep) > 0
+                        mine_positions_placed_schedule.contains(current_timestep) ? mine_positions_placed_schedule[current_timestep] : std::unordered_set<std::pair<double, double>, pair_hash>{},
+                        fire_next_timestep_schedule.contains(current_timestep)
                     };
                     if (game_state_to_base_planning->respawning)
                         this->lives_remaining_that_we_did_respawn_maneuver_for.insert(ship_state.lives_remaining);
@@ -7037,23 +7054,23 @@ public:
                         game_state,
                         0.0, // ship_respawn_timer
                         // asteroids_pending_death: empty if not found, else value for this timestep
-                        asteroids_pending_death_schedule.count(current_timestep) ? asteroids_pending_death_schedule[current_timestep] : std::unordered_map<int64_t, std::vector<Asteroid>>{},
+                        asteroids_pending_death_schedule.contains(current_timestep) ? asteroids_pending_death_schedule[current_timestep] : std::unordered_map<int64_t, std::vector<Asteroid>>{},
                         // forecasted_asteroid_splits: empty if not found, else value for this timestep
-                        forecasted_asteroid_splits_schedule.count(this->current_timestep) ? forecasted_asteroid_splits_schedule[this->current_timestep] : std::vector<Asteroid>{},
+                        forecasted_asteroid_splits_schedule.contains(this->current_timestep) ? forecasted_asteroid_splits_schedule[this->current_timestep] : std::vector<Asteroid>{},
                         // last_timestep_fired: as per Python logic
                         recovering_from_crash ? (this->current_timestep - 1) :
                             (current_timestep==0 ?
                                 INT_NEG_INF :
-                                (last_timestep_fired_schedule.count(this->current_timestep) ? last_timestep_fired_schedule[this->current_timestep] : INT_NEG_INF)
+                                (last_timestep_fired_schedule.contains(this->current_timestep) ? last_timestep_fired_schedule[this->current_timestep] : INT_NEG_INF)
                             ),
                         // last_timestep_mined: as per Python logic
                         recovering_from_crash ? (this->current_timestep - 1) :
                             (this->current_timestep == 0 ?
                                 INT_NEG_INF :
-                                (last_timestep_mined_schedule.count(this->current_timestep) ? last_timestep_mined_schedule[this->current_timestep] : INT_NEG_INF)
+                                (last_timestep_mined_schedule.contains(this->current_timestep) ? last_timestep_mined_schedule[this->current_timestep] : INT_NEG_INF)
                             ),
-                        mine_positions_placed_schedule.count(this->current_timestep) ? mine_positions_placed_schedule[this->current_timestep] : std::set<std::pair<double, double>>{},
-                        fire_next_timestep_schedule.count(this->current_timestep) > 0
+                        mine_positions_placed_schedule.contains(this->current_timestep) ? mine_positions_placed_schedule[this->current_timestep] : std::unordered_set<std::pair<double, double>, pair_hash>{},
+                        fire_next_timestep_schedule.contains(this->current_timestep)
                     };
                 } else if (!game_state_to_base_planning.has_value()) {
                     this->game_state_to_base_planning = {
@@ -7070,23 +7087,23 @@ public:
                         game_state,
                         // ship_respawn_timer: 0.0 if timestep == 0 else respawn_timer_history[cur_timestep]
                         this->current_timestep == 0 ? 0.0 :
-                            (respawn_timer_history.count(this->current_timestep) ?
+                            (respawn_timer_history.contains(this->current_timestep) ?
                                 respawn_timer_history[this->current_timestep] : 3.0),  // fallback to 3.0 if key missing (optional)
 
                         // asteroids_pending_death
-                        asteroids_pending_death_schedule.count(this->current_timestep) ?
+                        asteroids_pending_death_schedule.contains(this->current_timestep) ?
                             asteroids_pending_death_schedule[this->current_timestep] :
                             std::unordered_map<int64_t, std::vector<Asteroid>>{},
 
                         // forecasted_asteroid_splits
-                        forecasted_asteroid_splits_schedule.count(this->current_timestep) ?
+                        forecasted_asteroid_splits_schedule.contains(this->current_timestep) ?
                             forecasted_asteroid_splits_schedule[this->current_timestep] :
                             std::vector<Asteroid>{},
 
                         // last_timestep_fired
                         recovering_from_crash ? (this->current_timestep - 1) :
                             (this->current_timestep == 0 ? INT_NEG_INF :
-                                (last_timestep_fired_schedule.count(this->current_timestep) ?
+                                (last_timestep_fired_schedule.contains(this->current_timestep) ?
                                     last_timestep_fired_schedule[this->current_timestep] : INT_NEG_INF
                                 )
                             ),
@@ -7094,18 +7111,18 @@ public:
                         // last_timestep_mined
                         recovering_from_crash ? (this->current_timestep - 1) :
                             (this->current_timestep == 0 ? INT_NEG_INF :
-                                (last_timestep_mined_schedule.count(this->current_timestep) ?
+                                (last_timestep_mined_schedule.contains(this->current_timestep) ?
                                     last_timestep_mined_schedule[this->current_timestep] : INT_NEG_INF
                                 )
                             ),
 
                         // mine_positions_placed
-                        mine_positions_placed_schedule.count(this->current_timestep) ?
+                        mine_positions_placed_schedule.contains(this->current_timestep) ?
                             mine_positions_placed_schedule[this->current_timestep] :
-                            std::set<std::pair<double, double>>{},
+                            std::unordered_set<std::pair<double, double>, pair_hash>{},
 
                         // fire_next_timestep_flag
-                        fire_next_timestep_schedule.count(this->current_timestep) > 0
+                        fire_next_timestep_schedule.contains(this->current_timestep)
                     };
                     if (game_state_to_base_planning->respawning)
                         this->lives_remaining_that_we_did_respawn_maneuver_for.insert(ship_state.lives_remaining);
@@ -7126,23 +7143,23 @@ public:
                         game_state,
                         // ship_respawn_timer: 0.0 if timestep == 0 else respawn_timer_history[cur_timestep]
                         this->current_timestep == 0 ? 0.0 :
-                            (respawn_timer_history.count(this->current_timestep) ?
+                            (respawn_timer_history.contains(this->current_timestep) ?
                                 respawn_timer_history[this->current_timestep] : 3.0),  // fallback to 3.0 if key missing (optional)
 
                         // asteroids_pending_death
-                        asteroids_pending_death_schedule.count(this->current_timestep) ?
+                        asteroids_pending_death_schedule.contains(this->current_timestep) ?
                             asteroids_pending_death_schedule[this->current_timestep] :
                             std::unordered_map<int64_t, std::vector<Asteroid>>{},
 
                         // forecasted_asteroid_splits
-                        forecasted_asteroid_splits_schedule.count(this->current_timestep) ?
+                        forecasted_asteroid_splits_schedule.contains(this->current_timestep) ?
                             forecasted_asteroid_splits_schedule[this->current_timestep] :
                             std::vector<Asteroid>{},
 
                         // last_timestep_fired
                         recovering_from_crash ? (this->current_timestep - 1) :
                             (this->current_timestep == 0 ? INT_NEG_INF :
-                                (last_timestep_fired_schedule.count(this->current_timestep) ?
+                                (last_timestep_fired_schedule.contains(this->current_timestep) ?
                                     last_timestep_fired_schedule[this->current_timestep] : INT_NEG_INF
                                 )
                             ),
@@ -7150,18 +7167,18 @@ public:
                         // last_timestep_mined
                         recovering_from_crash ? (this->current_timestep - 1) :
                             (this->current_timestep == 0 ? INT_NEG_INF :
-                                (last_timestep_mined_schedule.count(this->current_timestep) ?
+                                (last_timestep_mined_schedule.contains(this->current_timestep) ?
                                     last_timestep_mined_schedule[this->current_timestep] : INT_NEG_INF
                                 )
                             ),
 
                         // mine_positions_placed
-                        mine_positions_placed_schedule.count(this->current_timestep) ?
+                        mine_positions_placed_schedule.contains(this->current_timestep) ?
                             mine_positions_placed_schedule[this->current_timestep] :
-                            std::set<std::pair<double, double>>{},
+                            std::unordered_set<std::pair<double, double>, pair_hash>{},
 
                         // fire_next_timestep_flag
-                        fire_next_timestep_schedule.count(this->current_timestep) > 0
+                        fire_next_timestep_schedule.contains(this->current_timestep)
                     };
                 }
 
@@ -7206,23 +7223,23 @@ public:
                     game_state,
                     // ship_respawn_timer
                     this->current_timestep == 0 ? 0.0 :
-                        (respawn_timer_history.count(this->current_timestep) ?
+                        (respawn_timer_history.contains(this->current_timestep) ?
                             respawn_timer_history[this->current_timestep] : 0.0),  // fallback to 0.0 if key missing (optional)
 
                     // asteroids_pending_death
-                    asteroids_pending_death_schedule.count(this->current_timestep) ?
+                    asteroids_pending_death_schedule.contains(this->current_timestep) ?
                         asteroids_pending_death_schedule[this->current_timestep] :
                         std::unordered_map<int64_t, std::vector<Asteroid>>{},
 
                     // forecasted_asteroid_splits
-                    forecasted_asteroid_splits_schedule.count(this->current_timestep) ?
+                    forecasted_asteroid_splits_schedule.contains(this->current_timestep) ?
                         forecasted_asteroid_splits_schedule[this->current_timestep] :
                         std::vector<Asteroid>{},
 
                     // last_timestep_fired
                     recovering_from_crash ? (this->current_timestep - 1) :
                         (this->current_timestep == 0 ? INT_NEG_INF :
-                            (last_timestep_fired_schedule.count(this->current_timestep) ?
+                            (last_timestep_fired_schedule.contains(this->current_timestep) ?
                                 last_timestep_fired_schedule[this->current_timestep] : INT_NEG_INF
                             )
                         ),
@@ -7230,18 +7247,18 @@ public:
                     // last_timestep_mined
                     recovering_from_crash ? (this->current_timestep - 1) :
                         (this->current_timestep == 0 ? INT_NEG_INF :
-                            (last_timestep_mined_schedule.count(this->current_timestep) ?
+                            (last_timestep_mined_schedule.contains(this->current_timestep) ?
                                 last_timestep_mined_schedule[this->current_timestep] : INT_NEG_INF
                             )
                         ),
 
                     // mine_positions_placed
-                    mine_positions_placed_schedule.count(this->current_timestep) ?
+                    mine_positions_placed_schedule.contains(this->current_timestep) ?
                         mine_positions_placed_schedule[this->current_timestep] :
-                        std::set<std::pair<double, double>>{},
+                        std::unordered_set<std::pair<double, double>, pair_hash>{},
 
                     // fire_next_timestep_flag
-                    fire_next_timestep_schedule.count(this->current_timestep) > 0
+                    fire_next_timestep_schedule.contains(this->current_timestep)
                 };
                 if (action_queue.empty()) {
                     // Only when we're at the end of our sequence, do we run the stationary targeting sim once. Basically we just keep doing stationary targeting unless we have a better maneuver found
@@ -7262,9 +7279,9 @@ public:
                 // == NON-CONTINUOUS, other ships exist! ==
                 bool unexpected_death = false;
                 if ((ship_state.is_respawning &&
-                    this->lives_remaining_that_we_did_respawn_maneuver_for.count(ship_state.lives_remaining) == 0) ||
+                    this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining) == 0) ||
                     (!this->action_queue.empty() && !this->last_timestep_ship_is_respawning && ship_state.is_respawning &&
-                    this->lives_remaining_that_we_did_respawn_maneuver_for.count(ship_state.lives_remaining)))
+                    this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining)))
                 {
                     print_explanation("Ouch, I died in the middle of a maneuver where I expected to survive, due to other ships being present!", this->current_timestep);
                     std::cerr << "CLEAARING ACTION QUEUE\n";
@@ -7279,7 +7296,7 @@ public:
                     this->base_gamestate_analysis = std::nullopt;
                     unexpected_death = true;
                     iterations_boost = true;
-                    if (this->lives_remaining_that_we_did_respawn_maneuver_for.count(ship_state.lives_remaining))
+                    if (this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining))
                         this->lives_remaining_that_we_did_respawn_maneuver_for.erase(ship_state.lives_remaining);
                 }
                 bool unexpected_survival = false;
@@ -7299,7 +7316,7 @@ public:
                     this->base_gamestate_analysis = std::nullopt;
                     iterations_boost = true;
                     unexpected_survival = true;
-                    if (this->lives_remaining_that_we_did_respawn_maneuver_for.count(ship_state.lives_remaining-1))
+                    if (this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining-1))
                         this->lives_remaining_that_we_did_respawn_maneuver_for.erase(ship_state.lives_remaining-1);
                 }
                 if (unexpected_death) {
