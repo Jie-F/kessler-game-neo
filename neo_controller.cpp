@@ -239,7 +239,7 @@ constexpr bool VALIDATE_ALL_SIMULATED_STATES = false;
 constexpr bool VERIFY_AST_TRACKING = false;
 constexpr bool RESEED_RNG = false;
 constexpr bool ENABLE_UNWRAP_CACHE = false; // This is slightly slower than not using the cache lmao
-constexpr bool UNWRAP_CROSS_PRODUCT_CHECK = true;
+constexpr bool UNWRAP_CROSS_PRODUCT_OPTIMIZATION = true;
 
 // Strategic/algorithm switches
 constexpr bool CONTINUOUS_LOOKAHEAD_PLANNING = true;
@@ -1959,7 +1959,7 @@ inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double ma
     // If the asteroid wraps once in the x and once in the y, we can use a cross product to figure out which side of the corner it went on, and also avoid having to calculate border crossings with the general method!
     // The idea is that if it wrapped horizontally and vertically, it ends up past one of the four corners. But we want to figure out which adjacent universe it visited before going there.
     // If we calculate the cross product between the velocity vector of the asteroid, and the direction vector from the asteroid to the corner it went past, and check the sign of it, it'll tell you which adjacent universe it went to first!
-    if constexpr (UNWRAP_CROSS_PRODUCT_CHECK) {
+    if constexpr (UNWRAP_CROSS_PRODUCT_OPTIMIZATION) {
         if (std::abs(x_wrap2) == 1.0 && std::abs(y_wrap2) == 1.0) {
             unwrapped_asteroids.emplace_back(
                 asteroid.x - x_wrap2 * max_x,
@@ -2846,7 +2846,7 @@ inline int64_t calculate_timesteps_until_bullet_hits_asteroid(double time_until_
     return 1 + static_cast<int64_t>(std::ceil(timesteps));
 }
 
-inline bool asteroid_bullet_collision_OLD(
+inline bool asteroid_bullet_collision_kessler(
     double bullet_head_x, double bullet_head_y,
     double bullet_tail_x, double bullet_tail_y,
     double asteroid_x, double asteroid_y,
@@ -2945,7 +2945,7 @@ inline bool asteroid_bullet_collision(
     );
 
     // Height = (2 * area) / base
-    double triangle_height = twice_area * TWICE_BULLET_LENGTH_RECIPROCAL;
+    double triangle_height = twice_area * BULLET_LENGTH_RECIPROCAL;
 
     return triangle_height < asteroid_radius;
 }
