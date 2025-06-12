@@ -104,25 +104,25 @@
 #include <nanobind/stl/array.h>
 #include <nanobind/stl/bind_map.h>
 #include <nanobind/stl/bind_vector.h>
-#include <nanobind/stl/chrono.h>
-#include <nanobind/stl/complex.h>
-#include <nanobind/stl/filesystem.h>
-#include <nanobind/stl/function.h>
+//#include <nanobind/stl/chrono.h>
+//#include <nanobind/stl/complex.h>
+//#include <nanobind/stl/filesystem.h>
+//#include <nanobind/stl/function.h>
 #include <nanobind/stl/list.h>
 #include <nanobind/stl/map.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/pair.h>
-#include <nanobind/stl/set.h>
-#include <nanobind/stl/shared_ptr.h>
+//#include <nanobind/stl/set.h>
+//#include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/string_view.h>
 #include <nanobind/stl/tuple.h>
-#include <nanobind/stl/unique_ptr.h>
-#include <nanobind/stl/unordered_map.h>
-#include <nanobind/stl/unordered_set.h>
-#include <nanobind/stl/variant.h>
-#include <nanobind/stl/vector.h>
-#include <nanobind/stl/wstring.h>
+//#include <nanobind/stl/unique_ptr.h>
+//#include <nanobind/stl/unordered_map.h>
+//#include <nanobind/stl/unordered_set.h>
+//#include <nanobind/stl/variant.h>
+//#include <nanobind/stl/vector.h>
+//#include <nanobind/stl/wstring.h>
 
 //namespace py = pybind11;
 namespace nb = nanobind;
@@ -2846,7 +2846,7 @@ inline int64_t calculate_timesteps_until_bullet_hits_asteroid(double time_until_
     return 1 + static_cast<int64_t>(std::ceil(timesteps));
 }
 
-inline bool asteroid_bullet_collision(
+inline bool asteroid_bullet_collision_OLD(
     double bullet_head_x, double bullet_head_y,
     double bullet_tail_x, double bullet_tail_y,
     double asteroid_x, double asteroid_y,
@@ -2896,6 +2896,56 @@ inline bool asteroid_bullet_collision(
 
     // Heron's height of triangle from asteroid center to bullet line
     double triangle_height = TWICE_BULLET_LENGTH_RECIPROCAL * std::sqrt(std::max(0.0, squared_area));
+
+    return triangle_height < asteroid_radius;
+}
+
+inline bool asteroid_bullet_collision(
+    double bullet_head_x, double bullet_head_y,
+    double bullet_tail_x, double bullet_tail_y,
+    double asteroid_x, double asteroid_y,
+    double asteroid_radius)
+{
+    // This is an optimized version of circle_line_collision() from the Kessler source code
+    // First, do a rough check if there's no chance the collision can occur
+    // Avoid the use of min/max because it should be a bit faster
+    double x_min, x_max, y_min, y_max;
+    if (bullet_head_x < bullet_tail_x) {
+        x_min = bullet_head_x - asteroid_radius;
+        if (asteroid_x < x_min) return false;
+        x_max = bullet_tail_x + asteroid_radius;
+    } else {
+        x_min = bullet_tail_x - asteroid_radius;
+        if (asteroid_x < x_min) return false;
+        x_max = bullet_head_x + asteroid_radius;
+    }
+    if (asteroid_x > x_max) return false;
+
+    if (bullet_head_y < bullet_tail_y) {
+        y_min = bullet_head_y - asteroid_radius;
+        if (asteroid_y < y_min) return false;
+        y_max = bullet_tail_y + asteroid_radius;
+    } else {
+        y_min = bullet_tail_y - asteroid_radius;
+        if (asteroid_y < y_min) return false;
+        y_max = bullet_head_y + asteroid_radius;
+    }
+    if (asteroid_y > y_max) return false;
+
+    // A collision is possible.
+    // Create a triangle between the center of the asteroid, and the two ends of the bullet.
+    // Triangle area via shoelace formula (bullet_tail, bullet_head, asteroid_center)
+    double twice_area = std::abs(
+        bullet_tail_x * bullet_head_y +
+        bullet_head_x * asteroid_y +
+        asteroid_x * bullet_tail_y -
+        bullet_tail_y * bullet_head_x -
+        bullet_head_y * asteroid_x -
+        asteroid_y * bullet_tail_x
+    );
+
+    // Height = (2 * area) / base
+    double triangle_height = twice_area * TWICE_BULLET_LENGTH_RECIPROCAL;
 
     return triangle_height < asteroid_radius;
 }
@@ -4809,6 +4859,9 @@ public:
                     new_asteroids.clear();
                     for (auto& a : asteroids) {
                         if (a.alive) {
+                            if constexpr (ENABLE_SANITY_CHECKS) {
+                                assert(asteroid_bullet_collision(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius) == asteroid_bullet_collision_OLD(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius));
+                            }
                             if (asteroid_bullet_collision(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius)) {
                                 if (b_idx == len_bullets) {
                                     // This bullet is my bullet!
@@ -5600,8 +5653,11 @@ public:
             }
 
             // Respawn timer update
-            if (respawn_timer <= 0) respawn_timer = 0.0;
-            else respawn_timer -= DELTA_TIME;
+            if (respawn_timer <= 0) {
+                respawn_timer = 0.0;
+            } else {
+                respawn_timer -= DELTA_TIME;
+            }
             if (!respawn_timer) {
                 ship_state.is_respawning = false;
                 assert(respawn_timer == 0.0);
@@ -5635,6 +5691,9 @@ public:
         for (Bullet& b : game_state.bullets) {
             if (b.alive) {
                 for (Asteroid& a : game_state.asteroids) {
+                    if constexpr (ENABLE_SANITY_CHECKS) {
+                        assert(asteroid_bullet_collision(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, a.x, a.y, a.radius) == asteroid_bullet_collision_OLD(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, a.x, a.y, a.radius));
+                    }
                     if (a.alive && asteroid_bullet_collision(
                         b.x, b.y,
                         b.x + b.tail_delta_x, b.y + b.tail_delta_y,
@@ -6492,7 +6551,10 @@ public:
         std::string state_type = base_state_is_exact ? "exact" : "predicted";
         // We only plan for respawn maneuvers if we're currently in our respawn invincibility (duh), AND we aren't at the very tail end of a respawn maneuver where we just came to a complete stop, and we should be ditching our invincibility and starting the next non-respawn action!
         // Another criteria for deciding the tail end of the maneuver, is if the ship's respawn invincibility time we have left is below a threshold. Probably want to be "conservative" here and add some buffer to this threshold.
-        assert((planning_state.respawning && planning_state.ship_respawn_timer != 0.0) || !planning_state.respawning);
+        //assert((planning_state.respawning && planning_state.ship_respawn_timer != 0.0) || !planning_state.respawning);
+        if (!((planning_state.respawning && planning_state.ship_respawn_timer != 0.0) || !planning_state.respawning)) {
+            std::cout << std::fixed << std::setprecision(20) << "Weird! planning_state.respawning=" << planning_state.respawning << ", planning_state.ship_respawn_timer=" << planning_state.ship_respawn_timer << std::endl;
+        }
         if (planning_state.respawning && !planning_state.fire_next_timestep_flag && !(planning_state.ship_respawn_timer < 3.0 - (1.0 + TIMESTEPS_IT_TAKES_SHIP_TO_ACCELERATE_TO_FULL_SPEED_FROM_DEAD_STOP) * DELTA_TIME && is_kinda_close_to_zero(planning_state.ship_state.speed) && this->lives_remaining_that_we_did_respawn_maneuver_for.contains(planning_state.ship_state.lives_remaining))) {
             // --- Respawn branch ---
             // Simulate and look for a good move
@@ -6588,6 +6650,11 @@ public:
                 double timesteps_it_takes_to_stop_from_current_speed = std::ceil(current_ship_speed / (SHIP_DRAG + SHIP_MAX_THRUST) * FPS);
                 double timesteps_we_have_for_respawn_maneuver = std::round(planning_state.ship_respawn_timer * FPS);
                 double timesteps_we_have_for_middle_of_maneuver = std::round(timesteps_we_have_for_respawn_maneuver - timesteps_it_takes_to_stop_from_current_speed);
+                //if constexpr (ENABLE_SANITY_CHECKS) {
+                if (timesteps_we_have_for_middle_of_maneuver <= 0.0) {
+                    std::cout << "timesteps_we_have_for_middle_of_maneuver=" << timesteps_we_have_for_middle_of_maneuver << ", timesteps_we_have_for_respawn_maneuver=" << timesteps_we_have_for_respawn_maneuver << ", planning_state.ship_respawn_timer=" << planning_state.ship_respawn_timer << std::endl;
+                }
+                //}
                 assert(timesteps_we_have_for_middle_of_maneuver > 0.0 && "We don't have a positive number of timesteps for a maneuver!");
                 bool start_of_respawn_maneuver = planning_state.ship_respawn_timer == 3.0;
                 // If this is true, then that means the turning and acceleration phase of the existing respawn maneuver is done
