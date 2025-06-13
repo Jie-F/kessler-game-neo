@@ -232,7 +232,7 @@ constexpr double EXPLANATION_MESSAGE_SILENCE_INTERVAL_S = 2.0;
 // Safety and Performance Flags
 constexpr bool STATE_CONSISTENCY_CHECK_AND_RECOVERY = true;
 constexpr bool CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS = true;
-constexpr bool ENABLE_SANITY_CHECKS = false;
+constexpr bool ENABLE_SANITY_CHECKS = true;
 constexpr bool PRUNE_SIM_STATE_SEQUENCE = true;
 constexpr bool VALIDATE_SIMULATED_KEY_STATES = false;
 constexpr bool VALIDATE_ALL_SIMULATED_STATES = false;
@@ -1003,7 +1003,7 @@ struct BasePlanningGameState {
 
 // Thread-safe random (can adjust as needed for your codebase)
 //inline static thread_local std::mt19937 rng(std::random_device{}());
-inline static thread_local std::mt19937 rng(1);
+inline static thread_local std::mt19937 rng(0);
 inline static thread_local std::uniform_real_distribution<> std_uniform(0.0, 1.0);
 
 inline double pymod(double x, double y)
@@ -1017,6 +1017,7 @@ inline double pymod(double x, double y)
 }
 
 inline void reseed_rng(unsigned int seed) {
+    std_uniform = std::uniform_real_distribution<>(0.0, 1.0);
     rng.seed(seed);
 }
 
@@ -2146,40 +2147,48 @@ inline bool check_coordinate_bounds_exact(const GameState& game_state, double x,
 // --- solve_quadratic ---
 // Solves a*x^2 + b*x + c = 0 for real roots. Returns (x1, x2) or (nan, nan) if no real solution.
 inline std::pair<double, double> solve_quadratic(double a, double b, double c) {
-    if (a == 0.0) {
+    if (std::abs(a) <= EPS) {
         // Linear
         if (b == 0.0) {
             if (c == 0.0)
+                // Infinite solutions, but just return this
                 return {0.0, 0.0};
             else
+                // No solutions
                 return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
         } else {
+            // Linear equation
             double x = -c / b;
             return {x, x};
         }
-    }
-    double discriminant = b * b - 4.0 * a * c;
-    if (discriminant < 0.0) {
-        // No real solutions
-        return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    }
-    double sqrt_disc = std::sqrt(discriminant);
-    double q = -0.5 * (b + std::copysign(sqrt_disc, b));
-    if (c == 0.0) {
-        double x1 = -b / a;
-        if (x1 < 0.0) {
-            return {x1, 0.0};
-        } else {
-            return {0.0, x1};
-        }
-    }
-    // q cannot be 0 here
-    double x1 = q / a;
-    double x2 = c / q;
-    if (x1 <= x2) {
-        return {x1, x2};
     } else {
-        return {x2, x1};
+        // a is not 0
+        double discriminant = b * b - 4.0 * a * c;
+        if (discriminant < 0.0) {
+            // No real solutions
+            return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+        }
+        double sqrt_disc = std::sqrt(discriminant);
+        double q = -0.5 * (b + std::copysign(sqrt_disc, b));
+        /*
+        if (c == 0.0) {
+            double x1 = -b / a;
+            if (x1 < 0.0) {
+                return {x1, 0.0};
+            } else {
+                return {0.0, x1};
+            }
+        } else {
+        */
+        // q cannot be 0 here
+        // Grab the roots using the quadratic and citardauq formulas
+        double x1 = q / a;
+        double x2 = c / q;
+        if (x1 <= x2) {
+            return {x1, x2};
+        } else {
+            return {x2, x1};
+        }
     }
 }
 
@@ -5927,7 +5936,7 @@ public:
             thrust_amount = std::min(std::max(-SHIP_MAX_THRUST, thrust_amount), SHIP_MAX_THRUST);
 
             if (!update(thrust_amount, turn_rate)) {
-                if (sim_id == 4271) {
+                if (sim_id == 42345234271) {
                     std::cout << "AHA!" << std::endl;
                 }
                 return false;
@@ -5939,7 +5948,7 @@ public:
     bool cruise(int64_t cruise_time, double cruise_turn_rate = 0.0) {
         // Maintain current speed
         for (int64_t i = 0; i < cruise_time; ++i) {
-            if (sim_id == 4271) {
+            if (sim_id == 4223423471) {
                 std::cout << "In respawn sim that'll crash, future_timesteps=" << future_timesteps
                         << " respawn_timer=" << respawn_timer
                         << " ship_state=" << ship_state.str() << std::endl;
@@ -6151,6 +6160,7 @@ public:
     void reset(const std::optional<std::array<double, 9>> chromosome = std::nullopt)
     {
         init_done = false;
+        reseed_rng(0);
         // DO NOT overwrite _ship_id
         ship_id_internal = -1;
         current_timestep = -1;
@@ -6195,6 +6205,7 @@ public:
         overall_fitness_record.clear();
         unwrap_cache.clear();
         total_sim_timesteps = 0;
+        fire_next_timestep_flag = false;
     }
 
     // --- Init helper ---
@@ -7010,13 +7021,15 @@ public:
         if (RESEED_RNG) {
             std::srand(static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count()));
         }
-        if (current_timestep == -1) {
-            reseed_rng(0);
-        }
+
         //if (unwrap_asteroid_call_count % 10000 == 0) {
         //std::cout << "Unwrap asteroid called " << unwrap_asteroid_call_count << " times, and " << unwrap_asteroid_expensive_call_count << " calls did the full expensive thing!" << std::endl;
         //}
         ++this->current_timestep;
+        //if (current_timestep == 0) {
+        //    reseed_rng(0);
+        //}
+        
         bool recovering_from_crash = false;
         //std::cout << "Calling actions on timestep " << this->current_timestep << std::endl;
         Ship ship_state = create_ship_from_dict(ship_state_dict);
@@ -7051,6 +7064,8 @@ public:
         if (this->current_timestep == 0) {
             inspect_scenario(game_state, ship_state);
         }
+
+        //reseed_rng(this->current_timestep);
 
         if (!this->init_done) {
             this->finish_init(game_state, ship_state);
