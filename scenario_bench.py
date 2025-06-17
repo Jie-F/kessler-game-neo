@@ -22,13 +22,13 @@ from neo_controller import NeoController
 #from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
 from benchmark_controller import BenchmarkController
 
-BENCHMARK_TIME_LIMIT = 10.0
+BENCHMARK_TIME_LIMIT = 20.0
 #BENCHMARK_TIME_LIMIT = 3.0
-JUMP_IND = 0
+JUMP_IND = 10
 global color_text
 color_text = True
 
-TRIALS = 2
+TRIALS = 100
 
 GRAPHICS = True
 

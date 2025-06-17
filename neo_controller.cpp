@@ -4094,24 +4094,30 @@ public:
 
         // Other ship proximity
         auto get_other_ship_proximity_fitness = [&](const std::vector<std::pair<double, double>>& self_positions) -> double {
+            // Penalize being too close to the other ship. If the other ship is moving, penalize that as well by effectively treating the distance as closer to the other ship
+            // There is no maximum detection distance.
+            // On a 1000x800 board, the max distance between two ships is 640.3 pixels
+
+            // If I'm out of bullets and mines, then I actually want to crash into the other ship to try and kill them to make sure they can't get more hits
+            // Alternatively, if our ship is at full health and the other ship is about to die, ram into the other ship to take them out of the competition. Inspired by OMU from XFC 2024.
             bool invert_ship_affinity = false;
-            // Complex logic for invert affinity -- assign as appropriate for your situation.
-            if ((ship_state.bullets_remaining == 0 && ship_state.mines_remaining == 0)
-                || (!other_ships.empty() &&
-                    ((weighted_average(overall_fitness_record) > 0.55 && other_ships[0].lives_remaining == 1 && ship_state.lives_remaining >= 3)
-                    || (weighted_average(overall_fitness_record) > 0.7 && other_ships[0].lives_remaining < ship_state.lives_remaining)))
-            ) {
+            if ((ship_state.bullets_remaining == 0 && ship_state.mines_remaining == 0) || (!other_ships.empty() && ((weighted_average(overall_fitness_record) > 0.55 && other_ships[0].lives_remaining == 1 && ship_state.lives_remaining >= 3) || (weighted_average(overall_fitness_record) > 0.7 && other_ships[0].lives_remaining < ship_state.lives_remaining)))) {
                 invert_ship_affinity = true;
                 explanation_messages.emplace_back("I'm either out of bullets/mines or the other ship is about to die, so I'm gonna try to crash into the other ship mwahahahaha");
             }
 
             for (const Ship& other_ship : other_ships) {
+                // It's assumed there's only one ship, so this returns after the first ship is checked
                 double other_ship_speed = std::sqrt(other_ship.vx * other_ship.vx + other_ship.vy * other_ship.vy);
+                // prox_score_speed_mul = min(1, other_ship_speed/100)*0.7 + 0.3
+                // This multiplier effectively decreases the distance between the ships, at least when the fitness function considers it
+                // If the other ship is stationary, then the multiplier is 1. But if the other ship is moving quickly, I treat the distance between us to be smaller than it actually is, down to 30% the actual distance
                 double other_ship_speed_dist_mul = linear(other_ship_speed, 0.0, 1.0, SHIP_MAX_SPEED, 0.3);
                 std::vector<double> separation_dists;
                 for (const auto& self_pos : self_positions) {
                     double self_pos_x = self_pos.first;
                     double self_pos_y = self_pos.second;
+                    // Account for wrap. We know that the farthest two objects can be separated within the screen in the x and y axes, is by half the width, and half the height
                     double abs_sep_x = std::abs(self_pos_x - other_ship.x);
                     double abs_sep_y = std::abs(self_pos_y - other_ship.y);
                     double sep_x = std::min(abs_sep_x, game_state.map_size_x - abs_sep_x);
@@ -4119,6 +4125,7 @@ public:
                     double separation_dist = std::sqrt(sep_x*sep_x + sep_y*sep_y);
                     separation_dists.push_back(separation_dist);
                 }
+                // TODO: Maybe weigh the more recent separation distances more than the earlier ones
                 double mean_separation_dist = weighted_harmonic_mean(separation_dists);
                 double fit_val = invert_ship_affinity ?
                     1.0 - fast_sigmoid(mean_separation_dist * other_ship_speed_dist_mul, 0.032, 120.0)
@@ -4732,58 +4739,141 @@ public:
         // Timestep [self.initial_timestep + self.future_timesteps + len(aiming_move_sequence)] gives us the timestep after we do our aiming, and when we shoot our bullet
         // Timestep [self.initial_timestep + self.future_timesteps + timesteps_until_bullet_hit_asteroid] gives us the timestep the asteroid got hit
 
-        if (!actual_asteroid_hit.has_value() ||
+        if (actual_asteroid_hit.has_value()) {
+            assert(timesteps_until_bullet_hit_asteroid.has_value());
+
+            // Backtrack asteroid to when the bullet would have been fired
+            actual_asteroid_hit_when_firing = time_travel_asteroid(
+                actual_asteroid_hit.value(),
+                int(aiming_move_sequence.size()) - timesteps_until_bullet_hit_asteroid.value(),
+                game_state
+            );
+
+            if (!std::isinf(game_state.time_limit) && initial_timestep + future_timesteps + timesteps_until_bullet_hit_asteroid.value() > static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
+
+                // Added one to the timesteps to prevent off by one :P
+                // std::cout << "WITHHOLDING SHOT IN TARGET SELECTION BECAUSE SCENARIO IS ENDING\n";
+                fire_next_timestep_flag = false;
+                bool sim_complete_without_crash = update(0.0, 0.0, false, false);
+                return sim_complete_without_crash;
+            }
+        }
+
+        // TODO: This following statement, doesn't this mean if I accidentally hit something in the way that I already shot, 
+        // then I just won't even try to shoot at all? Even though the bullet should still hit what's behind it some of the time at least?
+        // TODO: Or maybe this case isn't even possible because I do the sim to make sure that I hit whatever I wanted to hit, 
+        // and if I had a pending shot, that shot would have hit it so this would never happen!
+        if (!actual_asteroid_hit.has_value() || 
             !check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
                 asteroids_pending_death,
                 initial_timestep + future_timesteps + aiming_move_sequence.size(),
                 game_state,
-                time_travel_asteroid((actual_asteroid_hit.has_value() ? actual_asteroid_hit.value() : Asteroid()), aiming_move_sequence.size() - (timesteps_until_bullet_hit_asteroid.has_value() ? timesteps_until_bullet_hit_asteroid.value() : 0), game_state))) {
-            this->fire_next_timestep_flag = false;
-
+                actual_asteroid_hit_when_firing)) {
             int turn_direction = 0; double idle_thrust = 0.0;
+            // We can't seem to hit anything on this timestep. Maybe the asteroids are done being shot, or maybe we can't hit
+            // them because of the way things are lined up and the bullets skip over the asteroids, idk.
+
+            fire_next_timestep_flag = false;
             if (asteroids_still_exist) {
+                // std::cout << "asteroids still exist\n";
                 if (randint(1, 10) == 1) {
                     explanation_messages.push_back("Asteroids exist but we can't hit them. Moving around a bit randomly.");
+                    // Setting this to -1 is a signal to set the asteroid fitness really low
                     asteroids_shot -= 1;
                 }
+                turn_direction = 0;
+                idle_thrust = 0.0;
+            } else {
+                // std::cout << "asteroids DO NOT exist\n";
+                turn_direction = 0;
+                idle_thrust = 0.0;
             }
-            bool sim_complete_without_crash = update(idle_thrust, SHIP_MAX_TURN_RATE*double(turn_direction), false, false);
+
+            // std::cout << "Calling update from targ sel:\n";
+            bool sim_complete_without_crash = update(idle_thrust, SHIP_MAX_TURN_RATE * double(turn_direction), false, false);
+            // std::cout << "Sim id " << sim_id << " is returning from target sim with success value " << sim_complete_without_crash << "\n";
             assert(is_close_to_zero(ship_state.speed));
             return sim_complete_without_crash;
         } else {
+            // We're able to hit an asteroid! We're committing to it.
             assert(timesteps_until_bullet_hit_asteroid.has_value());
+
+            // if ENABLE_SANITY_CHECKS:
             if constexpr (ENABLE_SANITY_CHECKS) {
                 assert(check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
-                    asteroids_pending_death, initial_timestep + future_timesteps + timesteps_until_bullet_hit_asteroid.value(), game_state, actual_asteroid_hit.value()));
+                    asteroids_pending_death,
+                    initial_timestep + future_timesteps + timesteps_until_bullet_hit_asteroid.value(),
+                    game_state,
+                    actual_asteroid_hit.value()
+                ));
+
                 assert(check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
-                    asteroids_pending_death, initial_timestep + future_timesteps + aiming_move_sequence.size(), game_state,
-                    time_travel_asteroid(actual_asteroid_hit.value(), aiming_move_sequence.size() - timesteps_until_bullet_hit_asteroid.value(), game_state)));
+                    asteroids_pending_death,
+                    initial_timestep + future_timesteps + aiming_move_sequence.size(),
+                    game_state,
+                    actual_asteroid_hit_when_firing
+                ));
             }
-            actual_asteroid_hit_at_present_time = time_travel_asteroid(actual_asteroid_hit.value(), -timesteps_until_bullet_hit_asteroid.value(), game_state);
-            //if (game_state_plotter.has_value() && GAMESTATE_PLOTTING && NEXT_TARGET_PLOTTING && (!START_GAMESTATE_PLOTTING_AT_SECOND.has_value() || START_GAMESTATE_PLOTTING_AT_SECOND.value()*FPS <= double(initial_timestep + future_timesteps))) {
-            //    actual_asteroid_hit_at_present_time = time_travel_asteroid(actual_asteroid_hit.value(), -timesteps_until_bullet_hit_asteroid.value() - 1, game_state);
-            //    game_state_plotter.value().update_plot(nullptr, nullptr, nullptr, nullptr,std::vector<Asteroid>{actual_asteroid_hit_at_present_time},nullptr, nullptr, nullptr, false, NEW_TARGET_PLOT_PAUSE_TIME_S, "FEASIBLE TARGETS");
-            //}
+
+            actual_asteroid_hit_at_present_time = time_travel_asteroid(
+                actual_asteroid_hit.value(), 
+                -timesteps_until_bullet_hit_asteroid.value(), 
+                game_state
+            );
+
+            // if game_state_plotter is enabled
+            /*
+            if (game_state_plotter.has_value() && GAMESTATE_PLOTTING && NEXT_TARGET_PLOTTING &&
+                (!START_GAMESTATE_PLOTTING_AT_SECOND.has_value() || 
+                START_GAMESTATE_PLOTTING_AT_SECOND.value() * FPS <= double(initial_timestep + future_timesteps))) {
+                
+                Asteroid a = time_travel_asteroid(
+                    actual_asteroid_hit.value(),
+                    -timesteps_until_bullet_hit_asteroid.value() - 1,
+                    game_state
+                );
+                game_state_plotter->update_plot(nullptr, nullptr, nullptr, nullptr,
+                    std::vector<Asteroid>{a}, nullptr, nullptr, nullptr,
+                    false, NEW_TARGET_PLOT_PAUSE_TIME_S, "FEASIBLE TARGETS");
+            }*/
+
+            int64_t future_ts_backup = future_timesteps;
+
             if (actual_asteroid_hit_at_present_time.size != 1) {
-                for (const Asteroid& new_ast : forecast_asteroid_bullet_splits_from_heading(
+                // Forecast asteroid splits from heading
+                auto splits = forecast_asteroid_bullet_splits_from_heading(
                     actual_asteroid_hit_at_present_time,
                     timesteps_until_bullet_hit_asteroid.value(),
                     ship_state_after_aiming.heading,
-                    game_state)) {
-                        forecasted_asteroid_splits.push_back(new_ast);
-                    }
+                    game_state
+                );
+                forecasted_asteroid_splits.insert(forecasted_asteroid_splits.end(), splits.begin(), splits.end());
             }
+
+            // Apply move sequence and shoot if safe
             bool sim_complete_without_crash = apply_move_sequence(aiming_move_sequence);
             if (sim_complete_without_crash) {
                 asteroids_shot += 1;
-                this->fire_next_timestep_flag = true;
-                assert(future_timesteps == future_timesteps); // Remove if wrong
+                fire_next_timestep_flag = true;
+                assert(future_ts_backup + int64_t(aiming_move_sequence.size()) == future_timesteps);
+
+                // Deep copy history
                 asteroids_pending_death_history[initial_timestep + future_timesteps] = asteroids_pending_death;
-                //std::cout << "Tracking from targ sel in sim number " << std::to_string(this->sim_id) << std::endl;
-                track_asteroid_we_shot_at(asteroids_pending_death, initial_timestep + future_timesteps, game_state, timesteps_until_bullet_hit_asteroid.value() - aiming_move_sequence.size(), actual_asteroid_hit_when_firing);
+
+                track_asteroid_we_shot_at(
+                    asteroids_pending_death,
+                    initial_timestep + future_timesteps,
+                    game_state,
+                    timesteps_until_bullet_hit_asteroid.value() - int(aiming_move_sequence.size()),
+                    actual_asteroid_hit_when_firing
+                );
             } else {
-                this->fire_next_timestep_flag = false;
+                // If we died, don't fire so we retain invincibility
+                fire_next_timestep_flag = false;
             }
+
+            // std::cout << "THE ACTUAL MOVE SEQUENCE WE GET BACK FROM THE SIM:\n";
+            // debug print if needed
             assert(is_close_to_zero(ship_state.speed));
             return sim_complete_without_crash;
         }
@@ -4990,7 +5080,7 @@ public:
                     for (auto& a : asteroids) {
                         if (a.alive) {
                             if constexpr (ENABLE_SANITY_CHECKS) {
-                                assert(asteroid_bullet_collision(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius) == asteroid_bullet_collision_OLD(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius));
+                                assert(asteroid_bullet_collision(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius) == asteroid_bullet_collision_kessler(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius));
                             }
                             if (asteroid_bullet_collision(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius)) {
                                 if (b_idx == len_bullets) {
@@ -5742,10 +5832,13 @@ public:
                 }
             }
 
-            // --- Drop mine logic
+            // We can drop a mine once every 30 frames, so make sure we wait at least that long before we try dropping another one
             if (ship_state.mines_remaining != 0 && last_timestep_mined <= initial_timestep + future_timesteps - MINE_COOLDOWN_TS) {
+                // It's possible to drop a mine at this timestep. We now check whether we want to.
                 if (!drop_mine.has_value()) {
                     // Determine whether we want to drop a mine
+                    // It's expensive to check the mine FIS every timestep, so do it periodically as the ship moves around
+                    // I also artificially restrict the mines to be placed at least 3 seconds (90 frames) apart. Technically it might be optimal to place them quicker than that though.
                     bool should_drop_a_mine = false;
 
                     if (last_timestep_mined <= initial_timestep + future_timesteps - MINE_COOLDOWN_TS - MINE_DROP_COOLDOWN_FUDGE_TS &&
@@ -5753,20 +5846,29 @@ public:
                         should_drop_a_mine = check_mine_opportunity(ship_state, game_state, other_ships);
 
                     if (!std::isinf(game_state.time_limit)) {
-                        if (initial_timestep + future_timesteps + 90 > std::floor(FPS * game_state.time_limit)) should_drop_a_mine = false;
-                        if (!halt_shooting && initial_timestep + future_timesteps + 90 == std::floor(FPS * game_state.time_limit) &&
-                            count_asteroids_in_mine_blast_radius(game_state, ship_state.x, ship_state.y, lround(MINE_FUSE_TIME * FPS)) > 0) should_drop_a_mine = true;
+                        // The scenario has a time limit
+                        if (initial_timestep + future_timesteps + 90 > std::floor(FPS * game_state.time_limit)) {
+                            // Dropping a mine at or past this timestep is useless because the mine won't get to explode before the scenario runs out of time, so we just veto it to not drop the mine
+                            should_drop_a_mine = false;
+                        }
+                        if (!halt_shooting && initial_timestep + future_timesteps + 90 == std::floor(FPS * game_state.time_limit) && count_asteroids_in_mine_blast_radius(game_state, ship_state.x, ship_state.y, lround(MINE_FUSE_TIME * FPS)) > 0) {
+                            // This is the last possible frame to drop a mine and have it do something. Dump the mine!
+                            should_drop_a_mine = true;
+                        }
                     }
                     drop_mine_this_timestep = should_drop_a_mine;
                 } else {
+                    // We're prescribing a mine drop since we're replaying actions we've already simulated and we decided to place a mine the first time we simmed this action
                     drop_mine_this_timestep = drop_mine.value();
                 }
 
                 if (drop_mine_this_timestep) {
                     sim_placed_a_mine = true;
                     last_timestep_mined = initial_timestep + future_timesteps;
+                    // This doesn't check whether it's valid to place a mine! It just does it!
                     explanation_messages.push_back(
                         "This is a good chance to drop a mine to hit some asteroids and even the other ship. Bombs away!");
+                    // Remove respawn cooldown if we were in it
                     ship_state.is_respawning = false;
                     respawn_timer = 0.0;
                     Mine new_mine(ship_state.x, ship_state.y, MINE_MASS, MINE_FUSE_TIME, MINE_FUSE_TIME);
@@ -5774,7 +5876,9 @@ public:
                     mine_positions_placed.insert(std::make_pair(ship_state.x, ship_state.y));
                     game_state.mines.push_back(new_mine);
                     --ship_state.mines_remaining;
-                    if constexpr (ENABLE_SANITY_CHECKS) assert(ship_state.mines_remaining >= 0);
+                    if constexpr (ENABLE_SANITY_CHECKS) {
+                        assert(ship_state.mines_remaining >= 0);
+                    }
                 }
             }
             else {
@@ -5782,7 +5886,7 @@ public:
                 drop_mine_this_timestep = false;
             }
 
-            // Respawn timer update
+            // Update respawn timer
             if (respawn_timer <= 0) {
                 respawn_timer = 0.0;
             } else {
@@ -5792,12 +5896,15 @@ public:
                 ship_state.is_respawning = false;
                 assert(respawn_timer == 0.0);
             }
-            // Ship dynamics
+            // Simulate ship dynamics
             double drag_amount = SHIP_DRAG * DELTA_TIME;
             if (std::abs(ship_state.speed) < drag_amount) ship_state.speed = 0.0;
             else ship_state.speed -= drag_amount * sign(ship_state.speed);
-
-            if constexpr (ENABLE_SANITY_CHECKS) { assert(-SHIP_MAX_THRUST <= thrust && thrust <= SHIP_MAX_THRUST); }
+            // Bounds check the thrust
+            if constexpr (ENABLE_SANITY_CHECKS) {
+                assert(-SHIP_MAX_THRUST <= thrust && thrust <= SHIP_MAX_THRUST);
+            }
+            // Apply thrust
             ship_state.speed += thrust * DELTA_TIME;
             if constexpr (ENABLE_SANITY_CHECKS) {
                 assert(-SHIP_MAX_SPEED-EPS <= ship_state.speed && ship_state.speed <= SHIP_MAX_SPEED+EPS);
@@ -5822,7 +5929,7 @@ public:
             if (b.alive) {
                 for (Asteroid& a : game_state.asteroids) {
                     if constexpr (ENABLE_SANITY_CHECKS) {
-                        assert(asteroid_bullet_collision(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, a.x, a.y, a.radius) == asteroid_bullet_collision_OLD(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, a.x, a.y, a.radius));
+                        assert(asteroid_bullet_collision(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, a.x, a.y, a.radius) == asteroid_bullet_collision_kessler(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, a.x, a.y, a.radius));
                     }
                     if (a.alive && asteroid_bullet_collision(
                         b.x, b.y,
@@ -7717,7 +7824,7 @@ public:
             action_queue.pop_front();
         } else {
             throw std::runtime_error("Sequence error on timestep "+std::to_string(this->current_timestep)+"!");
-            thrust = 0.0; turn_rate = 0.0; fire = false; drop_mine = false;
+            //thrust = 0.0; turn_rate = 0.0; fire = false; drop_mine = false;
         }
 
         if constexpr (ENABLE_SANITY_CHECKS) {
