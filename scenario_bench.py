@@ -19,16 +19,16 @@ from src.kesslergame.controller_gamepad import GamepadController
 #from src.neo_controller import NeoController
 from neo_controller import NeoController
 #from src.neo_controller_cont_working import NeoController 
-#from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
+from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
 from benchmark_controller import BenchmarkController
 
-BENCHMARK_TIME_LIMIT = 20.0
+BENCHMARK_TIME_LIMIT = 60.0
 #BENCHMARK_TIME_LIMIT = 3.0
-JUMP_IND = 108
+JUMP_IND = 2000
 global color_text
 color_text = True
 
-TRIALS = 1
+TRIALS = 1000000
 
 GRAPHICS = False
 

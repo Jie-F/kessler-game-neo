@@ -4749,8 +4749,7 @@ public:
                 game_state
             );
 
-            if (!std::isinf(game_state.time_limit) && initial_timestep + future_timesteps + timesteps_until_bullet_hit_asteroid.value() > static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
-
+            if (!std::isinf(game_state.time_limit) && initial_timestep + future_timesteps + timesteps_until_bullet_hit_asteroid.value() + 1 > static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
                 // Added one to the timesteps to prevent off by one :P
                 // std::cout << "WITHHOLDING SHOT IN TARGET SELECTION BECAUSE SCENARIO IS ENDING\n";
                 fire_next_timestep_flag = false;
@@ -5627,7 +5626,7 @@ public:
                                         //std::cout << "Tracking from sim number " << std::to_string(this->sim_id) << std::endl;
                                         track_asteroid_we_shot_at(asteroids_pending_death, initial_timestep + future_timesteps + 1, game_state, timesteps_until_bullet_hit_asteroid, actual_asteroid_hit_at_fire_time);
                                     }
-                                    if (fire_this_timestep && !std::isinf(game_state.time_limit) && initial_timestep + future_timesteps + timesteps_until_bullet_hit_asteroid + 1 > std::floor(FPS*game_state.time_limit)) {
+                                    if (fire_this_timestep && !std::isinf(game_state.time_limit) && initial_timestep + future_timesteps + timesteps_until_bullet_hit_asteroid + 1 > static_cast<int64_t>(std::floor(FPS*game_state.time_limit))) {
                                         //std::cout << FPS*game_state.time_limit << std::floor(FPS*game_state.time_limit) << std::endl;
                                         // Added one to the timesteps to prevent off by one :P
                                         fire_this_timestep = false;
@@ -5848,11 +5847,11 @@ public:
 
                     if (!std::isinf(game_state.time_limit)) {
                         // The scenario has a time limit
-                        if (initial_timestep + future_timesteps + 90 > std::floor(FPS * game_state.time_limit)) {
+                        if (initial_timestep + future_timesteps + 90 > static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
                             // Dropping a mine at or past this timestep is useless because the mine won't get to explode before the scenario runs out of time, so we just veto it to not drop the mine
                             should_drop_a_mine = false;
                         }
-                        if (!halt_shooting && initial_timestep + future_timesteps + 90 == std::floor(FPS * game_state.time_limit) && count_asteroids_in_mine_blast_radius(game_state, ship_state.x, ship_state.y, lround(MINE_FUSE_TIME * FPS)) > 0) {
+                        if (!halt_shooting && initial_timestep + future_timesteps + 90 == static_cast<int64_t>(std::floor(FPS * game_state.time_limit)) && count_asteroids_in_mine_blast_radius(game_state, ship_state.x, ship_state.y, static_cast<int64_t>(lround(MINE_FUSE_TIME * FPS))) > 0) {
                             // This is the last possible frame to drop a mine and have it do something. Dump the mine!
                             should_drop_a_mine = true;
                         }
