@@ -24,13 +24,13 @@ from benchmark_controller import BenchmarkController
 
 BENCHMARK_TIME_LIMIT = 20.0
 #BENCHMARK_TIME_LIMIT = 3.0
-JUMP_IND = 10
+JUMP_IND = 108
 global color_text
 color_text = True
 
-TRIALS = 100
+TRIALS = 1
 
-GRAPHICS = True
+GRAPHICS = False
 
 def color_print(text='', color='white', style='normal', same=False, previous=False) -> None:
     global color_text

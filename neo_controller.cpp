@@ -5627,7 +5627,8 @@ public:
                                         //std::cout << "Tracking from sim number " << std::to_string(this->sim_id) << std::endl;
                                         track_asteroid_we_shot_at(asteroids_pending_death, initial_timestep + future_timesteps + 1, game_state, timesteps_until_bullet_hit_asteroid, actual_asteroid_hit_at_fire_time);
                                     }
-                                    if (fire_this_timestep && !std::isinf(game_state.time_limit) && initial_timestep + future_timesteps + timesteps_until_bullet_hit_asteroid > std::floor(FPS*game_state.time_limit)) {
+                                    if (fire_this_timestep && !std::isinf(game_state.time_limit) && initial_timestep + future_timesteps + timesteps_until_bullet_hit_asteroid + 1 > std::floor(FPS*game_state.time_limit)) {
+                                        //std::cout << FPS*game_state.time_limit << std::floor(FPS*game_state.time_limit) << std::endl;
                                         // Added one to the timesteps to prevent off by one :P
                                         fire_this_timestep = false;
                                         --asteroids_shot;
