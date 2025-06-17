@@ -22,15 +22,15 @@ from neo_controller import NeoController
 #from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
 from benchmark_controller import BenchmarkController
 
-BENCHMARK_TIME_LIMIT = 120.0
+BENCHMARK_TIME_LIMIT = 10.0
 #BENCHMARK_TIME_LIMIT = 3.0
-
+JUMP_IND = 0
 global color_text
 color_text = True
 
-TRIALS = 1
+TRIALS = 2
 
-GRAPHICS = False
+GRAPHICS = True
 
 def color_print(text='', color='white', style='normal', same=False, previous=False) -> None:
     global color_text
@@ -74,7 +74,7 @@ width, height = (1000, 800)
 
 
 #controllers_used = [NeoController(), NeoControllerWCCI()]
-controllers_used = [NeoController()]
+
 
 # Define Game Settings
 game_settings = {'perf_tracker': True,
@@ -294,15 +294,25 @@ benchmark_scenario = Scenario(name="Benchmark Scenario",
                                 seed=0,
                                 time_limit=BENCHMARK_TIME_LIMIT)
 
-scenario_to_run = xfc_2021_portfolio[11]
 scenario_to_run = benchmark_scenario
 
 run_times = []
-
-for i in range(TRIALS):
+missed = False
+for i in range(JUMP_IND, JUMP_IND + TRIALS):
+    random.seed(i)
     print()
+    print(f"Trial {i}")
     print()
-    
+    benchmark_scenario = Scenario(name="Benchmark Scenario",
+                                    num_asteroids=60,
+                                    ship_states=[
+                                        {'position': (width/2.0, height/2.0), 'angle': 0.0, 'lives': 1000000, 'team': 1, 'mines_remaining': 1000000},
+                                    ],
+                                    map_size=(width, height),
+                                    seed=i,
+                                    time_limit=BENCHMARK_TIME_LIMIT)
+    controllers_used = [NeoController()]
+    scenario_to_run = benchmark_scenario
     if scenario_to_run is not None:
         print(f"Evaluating scenario {scenario_to_run.name}")
     pre_time = time.perf_counter()
@@ -360,7 +370,8 @@ for i in range(TRIALS):
     print(f"Team 1, 2 accuracies: ({team_1_bullets_hit/(team_1_shots_fired + 0.000000000000001)}, {team_2_bullets_hit/(team_2_shots_fired + 0.000000000000001)})")
     print(f"Team 1, 2 shot efficiencies: ({team_1_shot_efficiency:.02%}, {team_2_shot_efficiency:.02%})")
     print(f"Team 1, 2 shot efficiencies inc. mines/ship hits: ({team_1_shot_efficiency_including_mines:.02%}, {team_2_shot_efficiency_including_mines:.02%})")
-
+    if missed:
+        break
 print(f"Run times are: {run_times}")
 print(f"The average time over {TRIALS} trials is {sum(run_times)/len(run_times)} s")
 assert len(run_times) == TRIALS, f"Looks like not all trials completed!"

@@ -78,6 +78,13 @@
         "cstdarg": "cpp",
         "filesystem": "cpp",
         "set": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "cwctype": "cpp",
+        "queue": "cpp",
+        "semaphore": "cpp",
+        "span": "cpp",
+        "memory_resource": "cpp",
+        "string_view": "cpp",
+        "cinttypes": "cpp"
     }
 }

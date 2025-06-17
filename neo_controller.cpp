@@ -3909,15 +3909,22 @@ public:
         // Asteroid safe time fitness
         auto get_asteroid_safe_time_fitness = [&](double next_extrapolated_asteroid_collision_time, double displacement, double move_sequence_length_s) -> double {
             // NOTE THAT the move sequence length is discounted, because if we're deciding between maneuvers, we really mostly care about how long you're safe for after the maneuver is done!
-            if (!std::isinf(game_state.time_limit) 
-                && initial_timestep + future_timesteps + END_OF_SCENARIO_DONT_CARE_TIMESTEPS >= static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
+            if (!std::isinf(game_state.time_limit) && initial_timestep + future_timesteps + END_OF_SCENARIO_DONT_CARE_TIMESTEPS >= static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
+                // The scenario is done! We don't care about the future past the end of time!
                 return 1.0;
             } else if (ship_state.bullets_remaining == 0 && ship_state.mines_remaining == 0) {
+                // We stop caring at this point!
                 return 1.0;
             } else {
                 if (displacement < EPS) {
+                    // Stationary
+                    // TODO: See whether there's something wrong with counting the move sequence length in this. It might be fine to count it all, or maybe use a discount factor
+                    // Only has to be safe for 4 seconds to get the max score, to encourage staying put and eliminating threats by shooting rather than by maneuvering and missing shot opportunities
+                    // asteroid_safe_time_fitness = max(0, min(5, 5 - 5/4*next_extrapolated_asteroid_collision_time)) # Goes through (0, 0) (4, 1) SCRATCH THIS
                     return fast_sigmoid(next_extrapolated_asteroid_collision_time + move_sequence_length_s * 0.25, 1.4, 3.0);
                 } else {
+                    // Maneuvering
+                    // asteroid_safe_time_fitness = max(0, min(5, 5 - next_extrapolated_asteroid_collision_time)) # Goes through (0, 0) (5, 1) SCRATCH THIS
                     return fast_sigmoid(next_extrapolated_asteroid_collision_time + move_sequence_length_s * 0.25, 1.4, 3.0);
                 }
             }
@@ -3936,27 +3943,36 @@ public:
         };
 
         // Mine safety
-        auto get_mine_safety_fitness = [&](const std::vector<std::pair<double, std::pair<double, double>>>& next_extrapolated_mine_collision_times)
-            -> std::pair<double, double> {
+        auto get_mine_safety_fitness = [&](const std::vector<std::pair<double, std::pair<double, double>>>& next_extrapolated_mine_collision_times) -> std::pair<double, double> {
+            // If there's no mine in the final ship position's range, the fitness is perfect.
+            // For each additional mine within the range, the fitness will go down.
+            // Having two mines which are freshly placed isn't as bad as a single mine that's about to blow up.
+            // For each mine, as the time goes down, the danger should go up more than linearly
             if (next_extrapolated_mine_collision_times.empty()) {
                 return std::make_pair(1.0, std::numeric_limits<double>::infinity());
             }
-            if (!std::isinf(game_state.time_limit)
-                && initial_timestep + future_timesteps + END_OF_SCENARIO_DONT_CARE_TIMESTEPS >= static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
+            if (!std::isinf(game_state.time_limit) && initial_timestep + future_timesteps + END_OF_SCENARIO_DONT_CARE_TIMESTEPS >= static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
+                // The scenario's done so we don't care about mine safety past the end of time!
                 return std::make_pair(1.0, std::numeric_limits<double>::infinity());
             }
+            // Regardless of stationary or maneuvering, the mine safe time score is calculated the same way
             double mines_threat_level = 0.0;
             double next_extrapolated_mine_collision_time = std::numeric_limits<double>::infinity();
             for (const auto& mc_pair : next_extrapolated_mine_collision_times) {
                 double mine_collision_time = mc_pair.first;
                 const std::pair<double, double>& mine_pos = mc_pair.second;
                 next_extrapolated_mine_collision_time = std::min(next_extrapolated_mine_collision_time, mine_collision_time);
+                // next_extrapolated_mine_collision_time = max(0, min(3, next_extrapolated_mine_collision_time))
                 if constexpr (ENABLE_SANITY_CHECKS) {
                     assert(-EPS <= mine_collision_time && mine_collision_time <= MINE_FUSE_TIME + EPS);
                 }
                 double dist_to_ground_zero = dist(ship_state.x, ship_state.y, mine_pos.first, mine_pos.second);
+                // This is a linear function that is maximum when I'm right over the mine, and minimum at 0 when I'm just touching the blast radius of it
+                // This will penalize being at ground zero more than penalizing being right at the edge of the blast, where it's easier to get out
                 double mine_ground_zero_fudge = linear(dist_to_ground_zero, 0.0, 1.0, MINE_BLAST_RADIUS + SHIP_RADIUS, 0.6);
-                mines_threat_level += std::pow(MINE_FUSE_TIME - next_extrapolated_mine_collision_time, 2.0) / 9.0 * mine_ground_zero_fudge;
+                // mine_ground_zero_fudge = max(0.0, (MINE_BLAST_RADIUS + SHIP_RADIUS - dist_to_ground_zero)/(MINE_BLAST_RADIUS + SHIP_RADIUS))
+                double diff_in_fuse_time_and_time_to_blast_hit = MINE_FUSE_TIME - next_extrapolated_mine_collision_time;
+                mines_threat_level += (diff_in_fuse_time_and_time_to_blast_hit * diff_in_fuse_time_and_time_to_blast_hit) / 9.0 * mine_ground_zero_fudge;
             }
             double mine_safe_time_fitness = fast_sigmoid(mines_threat_level, -6.8, 0.232);
             return std::make_pair(mine_safe_time_fitness, next_extrapolated_mine_collision_time);
@@ -3964,22 +3980,38 @@ public:
 
         // Asteroid aiming cone fitness
         auto get_asteroid_aiming_cone_fitness = [&]() -> double {
-            if (!std::isinf(game_state.time_limit)
-                && initial_timestep + future_timesteps + END_OF_SCENARIO_DONT_CARE_TIMESTEPS >= static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
+            if (!std::isinf(game_state.time_limit) && initial_timestep + future_timesteps + END_OF_SCENARIO_DONT_CARE_TIMESTEPS >= static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
+                // The scenario's done so we don't care about this anymore
                 return 1.0;
             } else if (ship_state.bullets_remaining == 0 && ship_state.mines_remaining == 0) {
+                // Can't shoot anyway so don't care about this
                 return 1.0;
             }
+            // Iterate over all asteroids and get their heading angle from the ship's final position/heading, and see whether it's within +-30 degrees
             double ship_heading_rad = ship_state.heading * DEG_TO_RAD;
             int asts_within_cone = 0;
             // Chain together game_state.asteroids and forecasted_asteroid_splits
-            for (const auto& a : game_state.asteroids) {
+            for (const Asteroid& a : game_state.asteroids) {
                 if (a.alive) {
+                    // Actually for performance reasons, I think I won’t even check that the asteroid is one we don’t have a pending shot for.
+                    // My logic is that, well first of all, this is a heuristic.
+                    // But also, in what situation would I have already shot at those asteroids?
+                    // If I shot at them way in the past, they would already be dead, and we won’t have a pending shot.
+                    // We’d only have a pending shot if we JUST shot them.
+                    // But say we have case A where I do a maneuver and don’t shoot the asteroids.
+                    // Is that really better than a case where I did a maneuver, but I shot the asteroids and now there’s no asteroids in the cone in front of me? The latter is preferable.
+                    //if check_whether_this_is_a_new_asteroid_we_do_not_have_a_pending_shot_for(self.asteroids_pending_death, self.initial_timestep + self.future_timesteps, self.game_state, a):
+                    
                     if (heading_diff_within_threshold(
                             ship_heading_rad, a.x - ship_state.x, a.y - ship_state.y,
                             AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE)) {
                         ++asts_within_cone;
                     }
+                    //theta = degrees(super_fast_atan2(a.y - ship_pos[1], a.x - ship_pos[0]))
+                    //if abs(angle_difference_deg(theta, ship_heading)) <= 30.0:
+                    //    asts_within_cone += 1
+                    //if abs(ship_heading - theta) <= 30.0 or abs(360 - abs(ship_heading - theta)) <= 30.0:
+                    //    asts_within_cone += 1
                 }
             }
             for (const auto& a : forecasted_asteroid_splits) {
@@ -3991,25 +4023,47 @@ public:
                     }
                 }
             }
+            /*
+            if asts_within_cone == 0:
+                asteroid_aiming_cone_score = 0.0
+            elif asts_within_cone == 1:
+                asteroid_aiming_cone_score = 0.8
+            elif asts_within_cone == 2:
+                asteroid_aiming_cone_score = 0.85
+            elif asts_within_cone == 3:
+                asteroid_aiming_cone_score = 0.90
+            elif asts_within_cone == 4:
+                asteroid_aiming_cone_score = 0.95
+            else:
+                asteroid_aiming_cone_score = 1.0
+            */
             return fast_sigmoid(asts_within_cone, 1.0, 2.4);
         };
 
         // Crash fitness
         auto get_crash_fitness = [&]() -> double {
             double crash_fitness = 1.0;
-            if (!std::isinf(game_state.time_limit)
-                && initial_timestep + future_timesteps + END_OF_SCENARIO_DONT_CARE_TIMESTEPS >= static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
-                crash_fitness = ship_crashed ? 1.0 : 0.0;
+            if (!std::isinf(game_state.time_limit) && initial_timestep + future_timesteps + END_OF_SCENARIO_DONT_CARE_TIMESTEPS >= static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
+                // If we're near the end of the scenario, we're gonna fudge things so that we don't care if the ship crashes near the end.
+                // If anything, sacrificing a life to get another hit is probably optimal behavior, since we don't care about deaths, and we only care about asteroid hits!
+                if (ship_crashed) {
+                    crash_fitness = 1.0;
+                } else {
+                    crash_fitness = 0.0;
+                }
             } else {
                 if (ship_crashed) {
                     if (ship_state.bullets_remaining == 0 && ship_state.mines_remaining == 0) {
+                        // Out of ammo. We WANT to crash! It's the only way to gain points then!
                         crash_fitness = 1.0;
                     } else {
-                        if (ship_state.lives_remaining >= 2) {
+                        // Crashing is generally bad. But the more lives we have, the less bad it is.
+                        if (ship_state.lives_remaining >= 2) { // Only took first life
                             crash_fitness = 0.5;
                         } else if (ship_state.lives_remaining >= 1) {
                             crash_fitness = 0.2;
                         } else {
+                            // This is my last life! Better not lose it.
                             crash_fitness = 0.0;
                         }
                     }
@@ -4017,6 +4071,7 @@ public:
                     if (ship_state.bullets_remaining == 0 && ship_state.mines_remaining == 0) {
                         crash_fitness = 0.0;
                     } else {
+                        // Not out of ammo, and we didn't crash. Good fitness!
                         crash_fitness = 1.0;
                     }
                 }
@@ -4284,10 +4339,20 @@ public:
         // The job of this method is to calculate how to hit each asteroid, and then pick the best one to try to target
 
         // --- Simulate shooting at a particular target, returning all the information the inner Python function did ---
-        auto simulate_shooting_at_target =
-            [&](const Asteroid& target_asteroid_original, double target_asteroid_shooting_angle_error_deg, double target_asteroid_interception_time_s, int64_t target_asteroid_turning_timesteps)
+        auto simulate_shooting_at_target = [&](const Asteroid& target_asteroid_original, double target_asteroid_shooting_angle_error_deg, double target_asteroid_interception_time_s, int64_t target_asteroid_turning_timesteps)
                 -> std::tuple<std::optional<Asteroid>, std::vector<Action>, Asteroid, double, double, int64_t, std::optional<int64_t>, Ship>
         {
+            // Uses the bullet sim to check whether we'll hit a target, and which target we end up hitting since we might hit an asteroid in front of our intended target
+            // target_asteroid_original: Our target asteroid
+            // target_asteroid_shooting_angle_error_deg: The amount in degrees the ship needs to turn to be able to shoot the target
+            // target_asteroid_interception_time_s: The time in seconds between firing and hitting the center of the target. The turning time is not included!
+            // target_asteroid_turning_timesteps: The number of timesteps we need to turn for before shooting. Well, we might require fewer timesteps than this, but this is the prescribed number of timesteps we must wait out until we shoot, to be able to hit our target.
+            // Just because we're lined up for a shot doesn't mean our shot will hit, unfortunately.
+            // Bullets and asteroids travel in discrete timesteps, and it's possible for the bullet to miss the asteroid hitbox between timesteps, where the interception would have occurred on an intermediate timestep.
+            // This is unavoidable, and we just have to choose targets that don't do this.
+            // If the asteroids are moving slow enough, this should be rare, but especially if small asteroids are moving very quickly, this issue is common.
+            // A simulation will easily show whether this will happen or not
+            
             std::vector<Action> aiming_move_sequence = get_rotate_heading_move_sequence(target_asteroid_shooting_angle_error_deg);
 
             int64_t timesteps_until_can_fire;
@@ -4305,8 +4370,10 @@ public:
                 assert(asteroid_advance_timesteps <= target_asteroid_turning_timesteps || target_asteroid_turning_timesteps == 0);
             }
             if (asteroid_advance_timesteps < target_asteroid_turning_timesteps) {
-                for (int64_t i = 0; i < (target_asteroid_turning_timesteps - asteroid_advance_timesteps); ++i)
+                // We're given a budget of target_asteroid_turning_timesteps timesteps to turn, however we find that the turn actually required fewer timesteps than that. We still need to wait the full number, so we just pad with null actions to wait out the time. This case should be super rare.
+                for (int64_t i = 0; i < (target_asteroid_turning_timesteps - asteroid_advance_timesteps); ++i) {
                     aiming_move_sequence.push_back(Action{0.0, 0.0, false, false, 0});
+                }
             }
             Asteroid target_asteroid = time_travel_asteroid(target_asteroid_original, asteroid_advance_timesteps, game_state);
 
@@ -4330,7 +4397,7 @@ public:
         };
 
         // --- Target acquisition loop ---
-
+        // First, find the most imminent asteroid
         std::vector<Target> target_asteroids_list;
         Ship dummy_ship_state(
             /*is_respawning=*/false,
@@ -4367,8 +4434,12 @@ public:
         bool most_imminent_asteroid_exists = false;
         bool asteroids_still_exist = false;
         std::vector<const Asteroid*> chained_asteroids;
-        for (const auto& a : game_state.asteroids) chained_asteroids.push_back(&a);
-        for (const auto& a : forecasted_asteroid_splits) chained_asteroids.push_back(&a);
+        for (const auto& a : game_state.asteroids) {
+            chained_asteroids.push_back(&a);
+        }
+        for (const auto& a : forecasted_asteroid_splits) {
+            chained_asteroids.push_back(&a);
+        }
 
         for (const Asteroid* astptr : chained_asteroids) {
             const Asteroid& asteroid = *astptr;
@@ -4376,7 +4447,9 @@ public:
                 if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps, game_state, asteroid)) {
                     asteroids_still_exist = true;
                     std::optional<std::tuple<bool, double, int64_t, double, double, double, double>> best_feasible_unwrapped_target;
-                    bool asteroid_will_get_hit_by_my_mine = false, asteroid_will_get_hit_by_their_mine = false;
+                    // Check whether there are any mines that are about to go off, and if so, project this asteroid into the future to when the mine goes off to get a boolean of whether the asteroid will get hit by the mine or not.
+                    bool asteroid_will_get_hit_by_my_mine = false;
+                    bool asteroid_will_get_hit_by_their_mine = false;
 
                     for (const auto& m : game_state.mines) {
                         assert(m.alive);
@@ -4385,6 +4458,7 @@ public:
                         double delta_y = asteroid_when_mine_explodes.y - m.y;
                         double separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS;
                         if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                            // Keep track of whose mine this is. If it's mine, I want more asteroids to be in its blast radius so it does more damage. If it's theirs, I want to shoot asteroids within its blast radius so it does less damage.
                             if (mine_positions_placed.contains(std::make_pair(m.x, m.y))) {
                                 asteroid_will_get_hit_by_my_mine = true;
                                 if (asteroid_will_get_hit_by_their_mine) break;
@@ -4394,6 +4468,9 @@ public:
                             }
                         }
                     }
+                    // Iterate through all unwrapped asteroids to find which one of the unwraps is the best feasible target.
+                    // 99% of the time, only one of the unwraps will have a feasible target, but there's situations where we could either shoot the asteroid before it wraps, or wait for it to wrap and then shoot it.
+                    // In these cases, we need to pick whichever option is the fastest when factoring in turn time and waiting time.
                     std::vector<Asteroid> unwrapped_asteroids = unwrap_asteroid(asteroid, game_state.map_size_x, game_state.map_size_y, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON, true);
                     for (const Asteroid& a : unwrapped_asteroids) {
                         bool feasible;
@@ -4419,6 +4496,8 @@ public:
                                     ship_state.x, ship_state.y, ship_state.vx, ship_state.vy, SHIP_RADIUS,
                                     a.x, a.y, a.vx, a.vy, a.radius, game_state));
                         }
+                        // Record the canonical asteroid even if we're shooting at an unwrapped one
+                        // The feasible bool will be true
                         target_asteroids_list.emplace_back(
                             Target{
                                 asteroid, feasible, shooting_angle_error_deg, aiming_timesteps_required,
@@ -4431,8 +4510,12 @@ public:
                 }
             }
         }
+        // Check whether we have enough time to aim at it and shoot it down
+        // PROBLEM, what if the asteroid breaks into pieces and I need to shoot those down too? But I have plenty of time, and I still want the fitness function to be good in that case, but there's no easy way to evaluate that. It's hard to decide whether we want to shoot the asteroids that are about to hit us, or to just dodge it by moving myself.
 
         double turn_angle_deg_until_can_fire = double(timesteps_until_can_fire)*SHIP_MAX_TURN_RATE*DELTA_TIME;
+        // if there’s an imminent shot coming toward me, I will aim at the asteroid that gets me CLOSEST to the direction of the imminent shot.
+        // So it only plans one shot at a time instead of a series of shots, and it’ll keep things simpler
         std::optional<Asteroid> actual_asteroid_hit;
         std::vector<Action> aiming_move_sequence;
         Asteroid target_asteroid, target_asteroid_when_firing, actual_asteroid_hit_when_firing, actual_asteroid_hit_at_present_time;
@@ -4442,6 +4525,13 @@ public:
         Ship ship_state_after_aiming;
 
         if (most_imminent_asteroid_exists) {
+            // First try to shoot the most imminent asteroids, if they exist
+
+            // debug_print(f"Shooting at most imminent asteroids. Most imminent collision time is {most_imminent_collision_time_s}s with turn angle error {most_imminent_asteroid_shooting_angle_error_deg}")
+            // debug_print(most_imminent_asteroid)
+            // Find the asteroid I can shoot at that gets me closest to the imminent shot, if I can't reach the imminent shot in time until I can shoot
+            // Sort the targets such that we prioritize asteroids that are about to hit me
+            // If there's a bullet limit, penalize risky shots more
             std::vector<Target> sorted_imminent_targets = target_asteroids_list;
             if (!other_ships.empty()) {
                 double frontrun_score_multiplier = ship_state.bullets_remaining > 0 ? 4.0 : 3.0;
@@ -4449,7 +4539,7 @@ public:
                     auto score = [&](const Target& t) {
                         return std::min(10.0, t.imminent_collision_time_s) +
                             ASTEROID_SIZE_SHOT_PRIORITY[t.asteroid.size]*0.25 +
-                            t.interception_time_s +
+                            t.interception_time_s + // Might be more correct to do t.interception_time_s + t.aiming_timesteps_required*DELTA_TIME - get_adversary_interception_time_lower_bound(t.asteroid, self.other_ships, self.game_state)
                             t.asteroid_dist_during_interception/400.0 +
                             frontrun_score_multiplier*std::min(0.5, std::max(0.0, t.interception_time_s - get_adversary_interception_time_lower_bound(t.asteroid, other_ships, game_state))) +
                             ((t.asteroid.size == 1 ? 5.0 : -5.0) * (t.asteroid_will_get_hit_by_my_mine ? 1.0 : 0.0)) +
@@ -4468,8 +4558,13 @@ public:
                     return score(t1) < score(t2);
                 });
             }
+            // The frontrun time is bounded by 0 and 0.5 seconds, since anything after half a second away is basically the same and there's no point differentiating between them
+            // TODO: For each asteroid, give it a couple feasible times where we wait longer and longer. This way we can choose to wait a timestep to fire again if we'll get luckier with the bullet lining up
             for (const Target& candidate_target : sorted_imminent_targets) {
-                if (std::isinf(candidate_target.imminent_collision_time_s)) break;
+                if (std::isinf(candidate_target.imminent_collision_time_s)) {
+                    // Ran through all imminent asteroids! Everything onward won't collide with me anytime soon.
+                    break;
+                }
                 int64_t most_imminent_asteroid_aiming_timesteps = candidate_target.aiming_timesteps_required;
                 Asteroid most_imminent_asteroid = candidate_target.asteroid;
                 double most_imminent_asteroid_shooting_angle_error_deg = candidate_target.shooting_angle_error_deg;
@@ -4479,20 +4574,26 @@ public:
                     if constexpr (ENABLE_SANITY_CHECKS) {
                         assert(most_imminent_asteroid_aiming_timesteps == timesteps_until_can_fire);
                     }
+                    // I can reach the imminent shot without wasting a shot opportunity, so do it
                     std::tie(actual_asteroid_hit, aiming_move_sequence, target_asteroid,
                         target_asteroid_shooting_angle_error_deg, target_asteroid_interception_time_s,
                         target_asteroid_turning_timesteps, timesteps_until_bullet_hit_asteroid, ship_state_after_aiming) =
                             simulate_shooting_at_target(most_imminent_asteroid, most_imminent_asteroid_shooting_angle_error_deg, most_imminent_asteroid_interception_time_s, most_imminent_asteroid_aiming_timesteps);
                     if (actual_asteroid_hit.has_value()) {
+                        // We can hit the target
                         assert(timesteps_until_bullet_hit_asteroid.has_value());
                         int64_t len_aiming_move_sequence = aiming_move_sequence.size();
                         actual_asteroid_hit_when_firing = time_travel_asteroid(actual_asteroid_hit.value(), len_aiming_move_sequence - timesteps_until_bullet_hit_asteroid.value(), game_state);
                         if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps + len_aiming_move_sequence, game_state, actual_asteroid_hit_when_firing)) {
+                            // We haven't already shot at the target. This is good, so let's use it. Break out of the loop and don't check any more asteroids.
                             break;
                         }
                     }
                 } else {
                     // Not enough time to aim; try for "closest along the way"
+                    // Between now and when I can shoot, I don't have enough time to aim at the imminent asteroid.
+                    // Instead, find the closest asteroid along the way to shoot
+                    // Sort by angular distance, with the unlikely tie broken by shot size
                     std::vector<Target> sorted_targets = target_asteroids_list;
                     std::sort(sorted_targets.begin(), sorted_targets.end(), [](const Target& t1, const Target& t2) {
                         int a1 = int(std::round(t1.shooting_angle_error_deg)), a2 = int(std::round(t2.shooting_angle_error_deg));
@@ -4503,14 +4604,14 @@ public:
                     std::optional<Target> target;
                     if (most_imminent_asteroid_shooting_angle_error_deg > 0.0) {
                         target = find_extreme_shooting_angle_error(sorted_targets, turn_angle_deg_until_can_fire, "largest_below");
-                        if (!target.has_value() || target->shooting_angle_error_deg < 0.0 ||
-                            target->shooting_angle_error_deg < turn_angle_deg_until_can_fire - TARGETING_AIMING_UNDERTURN_ALLOWANCE_DEG) {
+                        if (!target.has_value() || target->shooting_angle_error_deg < 0.0 || target->shooting_angle_error_deg < turn_angle_deg_until_can_fire - TARGETING_AIMING_UNDERTURN_ALLOWANCE_DEG) {
+                            // We're underturning too much, so instead find the next overturn
                             target = find_extreme_shooting_angle_error(sorted_targets, turn_angle_deg_until_can_fire, "smallest_above");
                         }
                     } else {
                         target = find_extreme_shooting_angle_error(sorted_targets, -turn_angle_deg_until_can_fire, "smallest_above");
-                        if (!target.has_value() || target->shooting_angle_error_deg > 0.0 ||
-                            target->shooting_angle_error_deg > -turn_angle_deg_until_can_fire + TARGETING_AIMING_UNDERTURN_ALLOWANCE_DEG) {
+                        if (!target.has_value() || target->shooting_angle_error_deg > 0.0 || target->shooting_angle_error_deg > -turn_angle_deg_until_can_fire + TARGETING_AIMING_UNDERTURN_ALLOWANCE_DEG) {
+                            // We're underturning too much, so instead find the next overturn
                             target = find_extreme_shooting_angle_error(sorted_targets, -turn_angle_deg_until_can_fire, "largest_below");
                         }
                     }
@@ -4526,9 +4627,10 @@ public:
                             if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps + len_aiming_move_sequence, game_state, actual_asteroid_hit_when_firing)) {
                                 break;
                             }
+                            // DANG IT, we're shooting something on the way to the most imminent asteroid, but we'll miss this particular one!
                         }
                     } else {
-                        // Waste shot: turn all the way
+                        // Just gonna have to waste shot opportunities and turn all the way
                         std::tie(actual_asteroid_hit, aiming_move_sequence, target_asteroid,
                             target_asteroid_shooting_angle_error_deg, target_asteroid_interception_time_s,
                             target_asteroid_turning_timesteps, timesteps_until_bullet_hit_asteroid, ship_state_after_aiming) =
@@ -4547,17 +4649,21 @@ public:
         }
 
         if (!actual_asteroid_hit.has_value()) {
+            // Nothing has been hit from the imminent shots so far. Either no imminent asteroids exist, or we tried (simulated) hitting some but we missed them all.
+            // Move down the list to trying for convenient shots.
             // Try for least aiming delay targets
             if (!target_asteroids_list.empty()) {
                 explanation_messages.push_back("No asteroids on collision course with me. Shooting at asteroids with least turning delay.");
                 std::vector<Target> sorted_targets = target_asteroids_list;
                 if (!other_ships.empty()) {
+                    // If there's a bullet limit, penalize risky shots more
                     double frontrun_score_multiplier = ship_state.bullets_remaining > 0 ? 25.0 : 15.0;
+                    // Sort by just convenience (and anything else I'd like)
                     std::sort(sorted_targets.begin(), sorted_targets.end(), [&](const Target& t1, const Target& t2) {
                         auto score = [&](const Target& t) {
                             return double(t.aiming_timesteps_required)*2.0 +
                                 ASTEROID_SIZE_SHOT_PRIORITY[t.asteroid.size] +
-                                t.interception_time_s +
+                                t.interception_time_s + // Might be more correct to do t.interception_time_s + t.aiming_timesteps_required*DELTA_TIME - get_adversary_interception_time_lower_bound(t.asteroid, self.other_ships, self.game_state)
                                 t.asteroid_dist_during_interception/400.0 +
                                 frontrun_score_multiplier*std::min(0.5, std::max(0.0, t.interception_time_s - get_adversary_interception_time_lower_bound(t.asteroid, other_ships, game_state))) +
                                 ((t.asteroid.size == 1 ? 20.0 : -20.0) * (t.asteroid_will_get_hit_by_my_mine ? 1.0 : 0.0)) +
@@ -4587,6 +4693,9 @@ public:
                         target_asteroid_turning_timesteps, timesteps_until_bullet_hit_asteroid, ship_state_after_aiming) =
                         simulate_shooting_at_target(least_shot_delay_asteroid, least_shot_delay_asteroid_shooting_angle_error_deg,
                             least_shot_delay_asteroid_interception_time_s, least_shot_delay_asteroid_aiming_timesteps);
+                    // actual_asteroid_hit is at the timestep (self.initial_timestep + self.future_timesteps + timesteps_until_bullet_hit_asteroid)
+                    // The timesteps_until_bullet_hit_asteroid time INCLUDES the aiming time!
+                    // The reason we can't just check whether the asteroid in the future has a pending shot, and we have to back-extrapolate to when we fire, is that, say I do a shot at time 0, and it’ll hit the ast at time 10. If at time 8, I check whether I’ve shot at the asteroid already, and say it’ll take 5 timesteps to hit it. I need to check at time 8, NOT TIME 13! Time 13 is after the original shot hits it, so I can’t be checking it after. So THAT’S WHY I should be back-projecting the asteroid.
                     if (actual_asteroid_hit.has_value()) {
                         assert(timesteps_until_bullet_hit_asteroid.has_value());
                         int64_t len_aiming_move_sequence = aiming_move_sequence.size();
@@ -4597,19 +4706,31 @@ public:
                     }
                 }
             } else {
+                // Ain't nothing to shoot at
                 explanation_messages.push_back("There's nothing I can feasibly shoot at!");
                 int turn_direction = 0; double idle_thrust = 0.0;
+                // Pick a direction to turn the ship anyway, just to better line it up with more shots
                 if (asteroids_still_exist) {
                     if (randint(1, 10) == 1) {
                         explanation_messages.push_back("Asteroids exist but we can't hit them. Moving around a bit randomly.");
+                        // Setting this to -1 is a signal to set the asteroid fitness really low, so hopefully we'll choose actions that'll move around
                         asteroids_shot -= 1;
                     }
                 }
+                // We still simulate one iteration of this, because if we had a pending shot from before, this will do the shot!
                 bool sim_complete_without_crash = update(idle_thrust, SHIP_MAX_TURN_RATE*double(turn_direction), false, false);
                 assert(is_close_to_zero(ship_state.speed));
                 return sim_complete_without_crash;
             }
         }
+
+        // The following code is confusing, because we're working with different times.
+        // We need to make sure that when we talk about an asteroid, we talk about its position at a specific time. If the time we talk about is not synced up with the position, everything's wrong.
+        // So if an asteroid is on position 1 at time 1, position 2 at time 2, position 3 at time 3, etc, then we must associate the asteroid with a timestep.
+        // A smarter, less buggy way to store asteroids is to include not only their position, but their timestep as well. But too late.
+        // Timestep [self.initial_timestep + self.future_timesteps] is the current timestep, or the timestep the sim was started on. Future timesteps should be 0 so far since we haven't moved.
+        // Timestep [self.initial_timestep + self.future_timesteps + len(aiming_move_sequence)] gives us the timestep after we do our aiming, and when we shoot our bullet
+        // Timestep [self.initial_timestep + self.future_timesteps + timesteps_until_bullet_hit_asteroid] gives us the timestep the asteroid got hit
 
         if (!actual_asteroid_hit.has_value() ||
             !check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
