@@ -7,7 +7,9 @@ else()
   set(DEV_MODULE Development.Module)
 endif()
 
-find_package(Python 3.8 COMPONENTS Interpreter ${DEV_MODULE} REQUIRED)
+find_package(Python 3.13 COMPONENTS Interpreter ${DEV_MODULE} REQUIRED)
+set(Python_LIBRARY "C:/Python313/libs/python313.lib")
+set(Python_INCLUDE_DIR "C:/Python313/include")
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,6 +18,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_subdirectory(nanobind)
 
 nanobind_add_module(neo_controller neo_controller.cpp)
+
+target_compile_definitions(neo_controller PRIVATE Py_GIL_DISABLED=0)
+
+
+target_include_directories(neo_controller PRIVATE ${Python_INCLUDE_DIR})
+target_link_libraries(neo_controller PRIVATE ${Python_LIBRARY})
 
 set_target_properties(neo_controller PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}"

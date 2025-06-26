@@ -431,7 +431,7 @@ while True:
             # [ReplayController0(), ReplayController1()] GamepadController()])#, NeoController()])#, TestController()])GamepadController NeoController Neo
         random.seed(randseed)
         from neo_controller import NeoController
-        controllers_used = [NovaController(), JamieController()]
+        controllers_used = [NeoController(), NeoController()]
         #random.setstate(state)
         #print(f"RNG State: {random.getstate()}")
         #score, perf_data = game.run(scenario=ex_adv_four_corners_pt1, controllers=controllers_used)

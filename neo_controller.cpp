@@ -4,7 +4,7 @@
 // _  /|  / /  __/ /_/ /
 // /_/ |_/  \___/\____/ 
 
-// Kessler controller
+// Kessler controller for Kessler v2.1.9
 // Jie Fan (jie.f@pm.me)
 
 // TODO: Show stats at the end
@@ -222,7 +222,7 @@ constexpr double inf = std::numeric_limits<double>::infinity();
 //constexpr double nan = std::numeric_limits<double>::quiet_NaN();
 
 // Build Info
-constexpr const char* BUILD_NUMBER = "2025-06-09 Neo";
+constexpr const char* BUILD_NUMBER = "2025-06-25 Neo, for Kessler v2.1.9";
 
 // Output Config
 constexpr bool DEBUG_MODE = false;
@@ -248,6 +248,7 @@ constexpr int64_t END_OF_SCENARIO_DONT_CARE_TIMESTEPS = 8;
 constexpr int64_t ADVERSARY_ROTATION_TIMESTEP_FUDGE = 20;
 constexpr double UNWRAP_ASTEROID_COLLISION_FORECAST_TIME_HORIZON = 6.0;
 constexpr double UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON = 2.3;
+constexpr double TARGETING_AIMING_UNDERTURN_ALLOWANCE_DEG = 6.0;
 
 // Asteroid priorities
 constexpr std::array<double, 5> ASTEROID_SIZE_SHOT_PRIORITY = {std::numeric_limits<double>::quiet_NaN(), 1, 2, 3, 4};
@@ -256,14 +257,13 @@ constexpr std::array<double, 5> ASTEROID_SIZE_SHOT_PRIORITY = {std::numeric_limi
 std::optional<std::array<double, 9>> fitness_function_weights = std::nullopt;
 
 // Mine settings
-constexpr int64_t MINE_DROP_COOLDOWN_FUDGE_TS = 61;
-constexpr double MINE_ASTEROID_COUNT_FUDGE_DISTANCE = 50.0;
-constexpr int64_t MINE_OPPORTUNITY_CHECK_INTERVAL_TS = 10;
-constexpr double MINE_OTHER_SHIP_RADIUS_FUDGE = 40.0;
-constexpr int64_t MINE_OTHER_SHIP_ASTEROID_COUNT_EQUIVALENT = 10;
-constexpr double TARGETING_AIMING_UNDERTURN_ALLOWANCE_DEG = 6.0;
+constexpr int64_t MINE_DROP_COOLDOWN_FUDGE_TS = 0; // This used to be 61, meaning I would drop a mine no more frequently than once every 3 seconds, to make sure my previous mine blew up before I dropped another one. Makes computations and extrapolations easier since I don't have multiple mines to consider!
+constexpr double MINE_ASTEROID_COUNT_FUDGE_DISTANCE = 50.0; // Subtract this from the mine's true blast radius. The idea is that if I hit asteroids in the mine radius, it'll nudge the children, and I want the children to also be hit by the mine! Hence this fudge.
+constexpr int64_t MINE_OPPORTUNITY_CHECK_INTERVAL_TS = 2; // Decimate the check to not be every frame
+constexpr double MINE_OTHER_SHIP_RADIUS_FUDGE = 100.0; // Subtract this from the mine's true blast radius when checking whether we're gonna hit another ship. Since the other ship can easily move!
+constexpr int64_t MINE_OTHER_SHIP_ASTEROID_COUNT_EQUIVALENT = 6; // Dropping a mine beside another ship counts as dropping it on this many asteroids
 
-// Fitness Weights (default)
+// Fitness Weights
 
 constexpr std::array<double, 9> UNNORMALIZED_WEIGHTS = {0.0, 13.0, 15.0, 0.0, 7.0, 20.0, 13.0, 14.0, 17.0};
 
@@ -1291,9 +1291,9 @@ inline bool mine_fis(int64_t mines_remaining, int64_t lives_remaining, int64_t m
 
 inline bool check_mine_opportunity(const Ship& ship_state, const GameState& game_state, const std::vector<Ship>& other_ships) {
     // If there's already more than one mine on the field, don't consider laying another
-    if (game_state.mines.size() > 1) {
-        return false;
-    }
+    //if (game_state.mines.size() > 1) {
+    //    return false;
+    //}
 
     int64_t mine_ast_count = count_asteroids_in_mine_blast_radius(game_state, ship_state.x, ship_state.y, static_cast<int>(std::round(MINE_FUSE_TIME * FPS)));
     int64_t lives_fudge = 0;
@@ -5832,18 +5832,20 @@ public:
                 }
             }
 
+            // Mine dropping logic!
             // We can drop a mine once every 30 frames, so make sure we wait at least that long before we try dropping another one
             if (ship_state.mines_remaining != 0 && last_timestep_mined <= initial_timestep + future_timesteps - MINE_COOLDOWN_TS) {
                 // It's possible to drop a mine at this timestep. We now check whether we want to.
                 if (!drop_mine.has_value()) {
+                    // TODO: Probably refactor this into a function or something. Also we're doing a potentially expensive check, just to veto it later sometimes!
                     // Determine whether we want to drop a mine
                     // It's expensive to check the mine FIS every timestep, so do it periodically as the ship moves around
                     // I also artificially restrict the mines to be placed at least 3 seconds (90 frames) apart. Technically it might be optimal to place them quicker than that though.
                     bool should_drop_a_mine = false;
 
-                    if (last_timestep_mined <= initial_timestep + future_timesteps - MINE_COOLDOWN_TS - MINE_DROP_COOLDOWN_FUDGE_TS &&
-                        !halt_shooting && future_timesteps % MINE_OPPORTUNITY_CHECK_INTERVAL_TS == 0)
+                    if (last_timestep_mined <= initial_timestep + future_timesteps - MINE_COOLDOWN_TS - MINE_DROP_COOLDOWN_FUDGE_TS && !halt_shooting && future_timesteps % MINE_OPPORTUNITY_CHECK_INTERVAL_TS == 0) {
                         should_drop_a_mine = check_mine_opportunity(ship_state, game_state, other_ships);
+                    }
 
                     if (!std::isinf(game_state.time_limit)) {
                         // The scenario has a time limit
@@ -5866,8 +5868,8 @@ public:
                     sim_placed_a_mine = true;
                     last_timestep_mined = initial_timestep + future_timesteps;
                     // This doesn't check whether it's valid to place a mine! It just does it!
-                    explanation_messages.push_back(
-                        "This is a good chance to drop a mine to hit some asteroids and even the other ship. Bombs away!");
+                    // So the previous logic better be right in determining we can drop a mine now.
+                    explanation_messages.push_back("This is a good chance to drop a mine to hit some asteroids and maybe even the other ship. Bombs away!");
                     // Remove respawn cooldown if we were in it
                     ship_state.is_respawning = false;
                     respawn_timer = 0.0;
@@ -5880,8 +5882,7 @@ public:
                         assert(ship_state.mines_remaining >= 0);
                     }
                 }
-            }
-            else {
+            } else {
                 assert(!drop_mine.has_value() || (drop_mine == false));
                 drop_mine_this_timestep = false;
             }
