@@ -20,6 +20,8 @@ from examples.test_controller import TestController
 from neo_controller import NeoController
 #from test_controller import TestController as CPPController
 from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
+from nova_controller import NovaController
+from jamie_controller import JamieController
 
 parser = argparse.ArgumentParser(description='Run Kessler Game with optional CLI flags.')
 parser.add_argument('-invisible', action='store_true', help='Use NoGraphics for the game visualization.')
@@ -429,7 +431,7 @@ while True:
             # [ReplayController0(), ReplayController1()] GamepadController()])#, NeoController()])#, TestController()])GamepadController NeoController Neo
         random.seed(randseed)
         from neo_controller import NeoController
-        controllers_used = [NeoController(), NeoControllerWCCI()]
+        controllers_used = [NovaController(), JamieController()]
         #random.setstate(state)
         #print(f"RNG State: {random.getstate()}")
         #score, perf_data = game.run(scenario=ex_adv_four_corners_pt1, controllers=controllers_used)
