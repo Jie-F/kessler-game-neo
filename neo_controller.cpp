@@ -1255,6 +1255,22 @@ inline int64_t get_min_maneuver_per_period_search_iterations_if_will_die(int64_t
     return MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_IF_WILL_DIE_LUT.at(fitness_lookup_index).at(lives_lookup_index - 1);
 }
 
+// Sigmoid
+inline double sigmoid(double x, double k=1.0, double x0=0.0) {
+    // Logistic sigmoid with scaling and shift
+    return 1.0/(1.0 + std::exp(-k * (x - x0)));
+}
+
+inline double fast_sigmoid(double x, double k=1.0, double x0=0.0) {
+    // Compared to the logistic sigmoid, this has a slightly higher slope at x=0, and the -inf to inf behavior is that it asymptotes-out more gradually. Which might be good.
+    // Handle infinities explicitly
+    if (std::isinf(x)) {
+        return (x * sign(k) > 0) ? 1.0 : 0.0;
+    }
+    double t = k * (x - x0);
+    return 0.5 * (1.0 + t / (1.0 + std::abs(t)));
+}
+
 // Mine FIS stuff is not included
 
 // Forward declarations for helpers/constants assumed as globals or methods somewhere:
@@ -1284,16 +1300,19 @@ inline int64_t count_asteroids_in_mine_blast_radius(const GameState& game_state,
     return count;
 }
 
+/*
 inline bool mine_fis(int64_t mines_remaining, int64_t lives_remaining, int64_t mine_ast_count) {
     int64_t implement_mine_fis_pls = mines_remaining + lives_remaining + mine_ast_count;
     return true;
-}
+}*/
 
-inline bool check_mine_opportunity(const Ship& ship_state, const GameState& game_state, const std::vector<Ship>& other_ships) {
+inline std::pair<bool, int64_t> check_mine_opportunity(const Ship& ship_state, const GameState& game_state, const std::vector<Ship>& other_ships) {
     // If there's already more than one mine on the field, don't consider laying another
     //if (game_state.mines.size() > 1) {
     //    return false;
     //}
+
+    double drop_mine_probability;
 
     int64_t mine_ast_count = count_asteroids_in_mine_blast_radius(game_state, ship_state.x, ship_state.y, static_cast<int>(std::round(MINE_FUSE_TIME * FPS)));
     int64_t lives_fudge = 0;
@@ -1303,8 +1322,7 @@ inline bool check_mine_opportunity(const Ship& ship_state, const GameState& game
         double delta_y = ship_state.y - other_ship.y;
         double separation = (MINE_BLAST_RADIUS - MINE_OTHER_SHIP_RADIUS_FUDGE) + other_ship.radius;
         // Fast circular-rect bound test before full circle
-        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation &&
-            (delta_x * delta_x + delta_y * delta_y <= separation * separation))
+        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && (delta_x * delta_x + delta_y * delta_y <= separation * separation))
         {
             // Like bombing the other ship, count as bonus "asteroids"
             mine_ast_count += MINE_OTHER_SHIP_ASTEROID_COUNT_EQUIVALENT;
@@ -1313,31 +1331,25 @@ inline bool check_mine_opportunity(const Ship& ship_state, const GameState& game
 
     if (ship_state.bullets_remaining == 0) {
         // Fudge mine count, encourage mining when out of ammo
-        mine_ast_count *= 10;
+        mine_ast_count *= 5;
         if (game_state.mines.size() > 0) {
             // If any mine is already present, avoid wasting a mine
-            return false;
+            return std::make_pair(false, 0);
         }
         lives_fudge = 2;
     }
     // return value from mine_fis (fuzzy logic function) for opportunity confirmation
-    return mine_fis(ship_state.mines_remaining, ship_state.lives_remaining + lives_fudge, mine_ast_count);
-}
-
-// Sigmoid
-inline double sigmoid(double x, double k=1.0, double x0=0.0) {
-    // Logistic sigmoid with scaling and shift
-    return 1.0/(1.0 + std::exp(-k * (x - x0)));
-}
-
-inline double fast_sigmoid(double x, double k=1.0, double x0=0.0) {
-    // Compared to the logistic sigmoid, this has a slightly higher slope at x=0, and the -inf to inf behavior is that it asymptotes-out more gradually. Which might be good.
-    // Handle infinities explicitly
-    if (std::isinf(x)) {
-        return (x * sign(k) > 0) ? 1.0 : 0.0;
+    //return mine_fis(ship_state.mines_remaining, ship_state.lives_remaining + lives_fudge, mine_ast_count);
+    if (mine_ast_count == 0) {
+        drop_mine_probability = 0.0;
+    } else {
+        drop_mine_probability = fast_sigmoid(static_cast<double>(mine_ast_count), 0.4, 14.0)*static_cast<double>(MINE_OPPORTUNITY_CHECK_INTERVAL_TS)/300.0;
     }
-    double t = k * (x - x0);
-    return 0.5 * (1.0 + t / (1.0 + std::abs(t)));
+    bool drop_a_mine = random_double() <= drop_mine_probability;
+    if (drop_a_mine) {
+        std::cout << drop_mine_probability << std::endl;
+    }
+    return std::make_pair(drop_a_mine, mine_ast_count);
 }
 
 // Linear interpolation (with clamping)
@@ -3408,6 +3420,7 @@ public:
     int64_t last_timestep_colliding;
     int64_t respawn_maneuver_pass_number;
     std::vector<bool> random_walk_schedule;
+    int64_t total_asteroids_hit_by_mines_this_sim_placed;
 
     // Constructor
     Matrix() {}
@@ -3567,6 +3580,8 @@ public:
                 assert(!fire_first_timestep);
             }
         }
+
+        total_asteroids_hit_by_mines_this_sim_placed = 0;
 
         // Define random walk schedule
         double bias = random_double(); // Random number between 0.0 and 1.0
@@ -4227,14 +4242,10 @@ public:
         double other_ship_proximity_fitness = get_other_ship_proximity_fitness(self_ship_positions);
         double sequence_length_fitness = get_sequence_length_fitness(move_sequence_length_s, displacement);
         double crash_fitness = get_crash_fitness();
+
         double placed_mine_fitness = 0.0;
         if (sim_placed_a_mine) {
-            // Uncommented logic from Py, can adjust if necessary.
-            if (ship_state.lives_remaining >= 3) {
-                placed_mine_fitness = 1.0;
-            } else {
-                placed_mine_fitness = mine_safe_time_fitness;
-            }
+            placed_mine_fitness = fast_sigmoid(total_asteroids_hit_by_mines_this_sim_placed, 0.4, 14.0);
         }
 
         // ====== STATUS/SAFETY MESSAGES ======
@@ -5844,7 +5855,11 @@ public:
                     bool should_drop_a_mine = false;
 
                     if (last_timestep_mined <= initial_timestep + future_timesteps - MINE_COOLDOWN_TS - MINE_DROP_COOLDOWN_FUDGE_TS && !halt_shooting && future_timesteps % MINE_OPPORTUNITY_CHECK_INTERVAL_TS == 0) {
-                        should_drop_a_mine = check_mine_opportunity(ship_state, game_state, other_ships);
+                        auto [drop_a_mine, mine_ast_count] = check_mine_opportunity(ship_state, game_state, other_ships);
+                        if (drop_a_mine) {
+                            should_drop_a_mine = drop_a_mine;
+                            total_asteroids_hit_by_mines_this_sim_placed += mine_ast_count;
+                        }
                     }
 
                     if (!std::isinf(game_state.time_limit)) {
