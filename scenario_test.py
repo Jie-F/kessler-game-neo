@@ -19,7 +19,7 @@ from src.kesslergame.controller_gamepad import GamepadController
 from examples.test_controller import TestController
 from neo_controller import NeoController
 #from test_controller import TestController as CPPController
-from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
+#from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
 from nova_controller import NovaController
 from jamie_controller import JamieController
 

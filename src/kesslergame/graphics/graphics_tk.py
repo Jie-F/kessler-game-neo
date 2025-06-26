@@ -22,8 +22,6 @@ SCALE = 2  # <--- Set graphical scale here
 class GraphicsTK(KesslerGraphics):
     def __init__(self, UI_settings: Optional[Dict[str, bool]] = None) -> None:
         # UI settings
-        # lives, accuracy, asteroids hit, shots taken, bullets left
-        # default_ui = {'ships': True, 'lives_remaining': True, 'accuracy': True, 'asteroids_hit': True}
         UI_settings = {} if UI_settings is None else UI_settings
         self.show_ships = UI_settings.get('ships', True)
         self.show_lives = UI_settings.get('lives_remaining', True)
@@ -93,9 +91,9 @@ class GraphicsTK(KesslerGraphics):
         #self.detonation_timers = []
 
     def update(self, score: Score, ships: List[Ship], asteroids: List[Asteroid], bullets: List[Bullet], mines: List[Mine]) -> None:
-
         # Delete everything from canvas so we can re-plot
         self.game_canvas.delete("all")
+        self._per_frame_images = []  # <--- Patch: Keep PhotoImage references for this frame
 
         # Plot shields, bullets, ships, and asteroids
         self.plot_shields(ships)
@@ -161,7 +159,8 @@ class GraphicsTK(KesslerGraphics):
                 output_location_y = output_location_y + (round(17 * SCALE) * max_lines) + y_offset
 
                 # line separating team rows
-                self.game_canvas.create_line(self.game_width, output_location_y - round(10 * SCALE), self.window_width, output_location_y - round(10 * SCALE), fill="white")
+                self.game_canvas.create_line(self.game_width, output_location_y - round(10 * SCALE),
+                                            self.window_width, output_location_y - round(10 * SCALE), fill="white")
                 max_lines = score_board.count("\n")
             else:
                 output_location_x = int(self.window_width + x_offset - self.score_width / 2)
@@ -205,14 +204,19 @@ class GraphicsTK(KesslerGraphics):
         """
         for idx, ship in enumerate(ships):
             if ship.alive:
-                # plot ship image and id text next to it
                 if ship.custom_sprite_path:
-                    sprite_idx = self.image_paths.index(os.path.join(self.img_dir,ship.custom_sprite_path))
+                    sprite_idx = self.image_paths.index(os.path.join(self.img_dir, ship.custom_sprite_path))
                 else:
-                    sprite_idx = idx
-                self.ship_sprites[sprite_idx] = ImageTk.PhotoImage(self.ship_images[sprite_idx].rotate(180 - (-ship.heading - 90)))
+                    sprite_idx = idx % self.num_images
+
+                # Patch: NEVER OVERWRITE self.ship_sprites!
+                rotated_image = self.ship_images[sprite_idx].rotate(180 - (-ship.heading - 90))
+
+                rotated_sprite = ImageTk.PhotoImage(rotated_image)
+                self._per_frame_images.append(rotated_sprite)  # Keep a reference per frame
+
                 self.game_canvas.create_image(ship.position[0] * SCALE, self.game_height - ship.position[1] * SCALE,
-                                              image=self.ship_sprites[sprite_idx])
+                                              image=rotated_sprite)
                 self.game_canvas.create_text((ship.position[0] + ship.radius) * SCALE,
                                              self.game_height - ((ship.position[1] + ship.radius) * SCALE), text=str(ship.id),
                                              fill="white", font=("Courier New", round(10 * SCALE)))
@@ -276,7 +280,7 @@ class GraphicsTK(KesslerGraphics):
 
             # Detonations
             if mine.countdown_timer < mine.detonation_time:
-                explosion_radius = mine.blast_radius * (1 - mine.countdown_timer / mine.detonation_time)**2 * SCALE
+                explosion_radius = mine.blast_radius * (1 - mine.countdown_timer / mine.detonation_time) ** 2 * SCALE
                 self.game_canvas.create_oval(mine.position[0] * SCALE - explosion_radius,
                                              self.game_height - (mine.position[1] * SCALE + explosion_radius),
                                              mine.position[0] * SCALE + explosion_radius,
