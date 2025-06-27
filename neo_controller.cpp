@@ -278,6 +278,7 @@ constexpr double sum(const std::array<double, 9>& arr) {
 }
 
 constexpr std::array<double, 9> normalize(const std::array<double, 9>& arr) {
+    // Make it so the array of fitness weights sum up to 1.0
     std::array<double, 9> result = {};
     double total = sum(arr);
     for (size_t i = 0; i < arr.size(); ++i) {
@@ -459,6 +460,7 @@ constexpr std::array<double, 5> ASTEROID_MASS_LOOKUP = {
     0.25 * pi * (8 * 3) * (8 * 3),
     0.25 * pi * (8 * 4) * (8 * 4)
 };
+
 constexpr double RESPAWN_INVINCIBILITY_TIME_S = 3.0;
 constexpr std::array<int64_t, 5> ASTEROID_COUNT_LOOKUP = {0, 1, 4, 13, 40};
 constexpr double DEGREES_BETWEEN_SHOTS = double(FIRE_COOLDOWN_TS)*SHIP_MAX_TURN_RATE*DELTA_TIME;
@@ -1095,12 +1097,14 @@ inline double rand_triangular(double low, double high, double mode) {
 }
 
 inline double dist(double p1x, double p1y, double p2x, double p2y) {
+    // Calculate the Euclidean distance between two points in 2D space.
     double dx = p1x - p2x;
     double dy = p1y - p2y;
     return std::sqrt(dx * dx + dy * dy);
 }
 
 inline bool is_close(double x, double y) {
+    // Check if two numbers are close based on absolute tolerance.
     return std::abs(x - y) <= EPS;
 }
 
@@ -1109,14 +1113,13 @@ inline bool is_kinda_close(double x, double y) {
 }
 
 inline bool is_close_to_zero(double x) {
+    // Check if a number is close to zero.
     return std::abs(x) <= EPS;
 }
 
 inline bool is_kinda_close_to_zero(double x) {
     return std::abs(x) <= GRAIN;
 }
-
-// ------ Fast and SuperFast Trig Functions ------
 
 inline double super_fast_acos(double x) {
     return (-0.69813170079773212 * x * x - 0.87266462599716477) * x + 1.5707963267948966;
@@ -1162,6 +1165,7 @@ inline double super_fast_atan2(double y, double x) {
     }
     bool swap = false;
     double atan_input;
+    // Determine the input for the approximation based on |y| and |x|
     if (std::abs(x) < std::abs(y)) {
         swap = true;
         atan_input = x / y;
@@ -1169,8 +1173,10 @@ inline double super_fast_atan2(double y, double x) {
         swap = false;
         atan_input = y / x;
     }
+    // Calculate the atan approximation
     double x_sq = atan_input * atan_input;
     double atan_result = atan_input * (0.995354 - x_sq * (0.288679 - 0.079331 * x_sq));
+    // Adjust the result based on the original input quadrant
     if (swap) {
         if (atan_input >= 0.0) {
             atan_result = 0.5 * pi - atan_result;
@@ -1178,6 +1184,7 @@ inline double super_fast_atan2(double y, double x) {
             atan_result = -0.5 * pi - atan_result;
         }
     }
+    // Adjust for the correct quadrant
     if (x < 0.0) {
         if (y >= 0.0) {
             atan_result += pi;
@@ -1204,8 +1211,11 @@ inline double fast_atan2(double y, double x) {
             return pi;
         }
     }
+
     bool swap = false;
     double atan_input;
+
+    // Determine the input for the approximation based on |y| and |x|
     if (std::abs(x) < std::abs(y)) {
         swap = true;
         atan_input = x / y;
@@ -1213,8 +1223,12 @@ inline double fast_atan2(double y, double x) {
         swap = false;
         atan_input = y / x;
     }
+
+    // Calculate the atan approximation
     double x_sq = atan_input * atan_input;
     double atan_result = atan_input * (0.99997726 - x_sq * (0.33262347 - x_sq * (0.19354346 - x_sq * (0.11643287 - x_sq * (0.05265332 - x_sq * 0.01172120)))));
+    
+    // Adjust the result based on the original input quadrant
     if (swap) {
         if (atan_input >= 0.0) {
             atan_result = 0.5 * pi - atan_result;
@@ -1222,6 +1236,8 @@ inline double fast_atan2(double y, double x) {
             atan_result = -0.5 * pi - atan_result;
         }
     }
+
+    // Adjust for the correct quadrant
     if (x < 0.0) {
         if (y >= 0.0) {
             atan_result += pi;
@@ -1241,12 +1257,20 @@ inline bool heading_diff_within_threshold(double a_vec_theta_rad, double b_vec_x
     // cos_threshold: cosine(angle threshold)
     // This avoids explicit angle math and uses only dot and magnitude with cos threshold.
 
+    // a and b are direction vectors. This checks whether the absolute heading difference between them are within a threshold angle.
+    // This function would work the same way as if we took the ship's heading, and found the absolute wrapped difference between that and the direction vector of the asteroid, and then compared against the threshold
+    // But this method is faster as it avoids the atan2 calculation, and instead does a sin and cos and does the threshold comparison with the cos value of the angle, instead of the angle itself
+    // The old method is shown below for reference:
+    // theta = degrees(atan2(b_vec_y, b_vec_x))
+    // threshold_angle = acos(cos_threshold)
+    // return abs(angle_difference_deg(theta, degrees(a_vec_theta_rad))) <= degrees(threshold_angle)
+
     double a_vec_x = std::cos(a_vec_theta_rad);
     double a_vec_y = std::sin(a_vec_theta_rad);
     double dot_product = a_vec_x * b_vec_x + a_vec_y * b_vec_y;
     double magnitude = std::sqrt(b_vec_x * b_vec_x + b_vec_y * b_vec_y);
     if (magnitude != 0.0) {
-        double cos_theta = dot_product / magnitude;
+        double cos_theta = dot_product / magnitude; // a_vec_norm is 1.0 since it's a unit vector, so we don't need to multiply by that
         return cos_theta >= cos_threshold;
     } else {
         // Zero magnitude means the "other" vector has no direction; treat as always "within"
@@ -1264,28 +1288,30 @@ inline int64_t get_min_respawn_per_timestep_search_iterations(int64_t lives, dou
 inline int64_t get_min_respawn_per_period_search_iterations(int64_t lives, double average_fitness) {
     assert(0.0 <= average_fitness && average_fitness < 1.0);
     size_t lives_lookup_index = static_cast<size_t>(std::min<int64_t>(3, lives));
-    size_t fitness_lookup_index = static_cast<size_t>(std::floor(average_fitness * 10.0));
+    size_t fitness_lookup_index = static_cast<size_t>(std::floor(average_fitness * 10.0)); // Integer from 0 to 9
     return MIN_RESPAWN_PER_PERIOD_SEARCH_ITERATIONS_LUT.at(fitness_lookup_index).at(lives_lookup_index - 1);
 }
 
 inline int64_t get_min_maneuver_per_timestep_search_iterations(int64_t lives, double average_fitness) {
     assert(0.0 <= average_fitness && average_fitness < 1.0);
     size_t lives_lookup_index = static_cast<size_t>(std::min<int64_t>(3, lives));
-    size_t fitness_lookup_index = static_cast<size_t>(std::floor(average_fitness * 10.0));
+    size_t fitness_lookup_index = static_cast<size_t>(std::floor(average_fitness * 10.0)); // Integer from 0 to 9
     return MIN_MANEUVER_PER_TIMESTEP_SEARCH_ITERATIONS_LUT.at(fitness_lookup_index).at(lives_lookup_index - 1);
 }
 
 inline int64_t get_min_maneuver_per_period_search_iterations(int64_t lives, double average_fitness) {
     assert(0.0 <= average_fitness && average_fitness < 1.0);
     size_t lives_lookup_index = static_cast<size_t>(std::min<int64_t>(3, lives));
-    size_t fitness_lookup_index = static_cast<size_t>(std::floor(average_fitness * 10.0));
+    size_t fitness_lookup_index = static_cast<size_t>(std::floor(average_fitness * 10.0)); // Integer from 0 to 9
     return MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_LUT.at(fitness_lookup_index).at(lives_lookup_index - 1);
 }
 
 inline int64_t get_min_maneuver_per_period_search_iterations_if_will_die(int64_t lives, double average_fitness) {
+    // If we plan to die, we might as well search a bunch more iterations to try and avoid the death.
+    // Because if we die, we need to do an expensive respawn maneuver search anyway, so it's more optimal to try and avoid that.
     assert(0.0 <= average_fitness && average_fitness < 1.0);
     size_t lives_lookup_index = static_cast<size_t>(std::min<int64_t>(3, lives));
-    size_t fitness_lookup_index = static_cast<size_t>(std::floor(average_fitness * 10.0));
+    size_t fitness_lookup_index = static_cast<size_t>(std::floor(average_fitness * 10.0)); // Integer from 0 to 9
     return MIN_MANEUVER_PER_PERIOD_SEARCH_ITERATIONS_IF_WILL_DIE_LUT.at(fitness_lookup_index).at(lives_lookup_index - 1);
 }
 
