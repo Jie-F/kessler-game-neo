@@ -1485,6 +1485,7 @@ inline int64_t count_asteroids_in_mine_blast_radius_with_other_mines(const GameS
         }
         // Now that we simulated all mines blowing up, we can count the asteroids!
         int64_t count = 0;
+        assert(future_timesteps >= fast_simulated_timesteps);
         for (const Asteroid& a : copy_of_asteroids) {
             if (a.alive) {
                 // Project asteroid position into future (with correct wrapping)
@@ -5626,7 +5627,7 @@ public:
                     double min_negative_shot_heading_error_rad = -INFINITY, second_min_negative_shot_heading_error_rad = -INFINITY, min_shot_heading_error_rad = std::numeric_limits<double>::quiet_NaN(), second_min_shot_heading_error_rad = std::numeric_limits<double>::quiet_NaN();
                     size_t len_asteroids = game_state.asteroids.size();
                     bool avoid_targeting_this_asteroid = false;
-                    bool check_next_asteroid = false;
+                    //bool move_on_to_next_asteroid = false;
                     if (!halt_shooting || (respawn_maneuver_pass_number == 2 && (initial_timestep + future_timesteps > last_timestep_colliding))) {
                         if (timesteps_until_can_fire == 0) {
                             // We can shoot this timestep! Loop through all asteroids and see which asteroids we can feasibly hit if we shoot at this angle, and take those and simulate with the bullet sim to see which we'll hit
@@ -5683,13 +5684,13 @@ public:
                                     //in_culling_cone = true;
                                 }
 
-                                check_next_asteroid = false;
+                                //move_on_to_next_asteroid = false;
                                 if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps + 1, game_state, *asteroid)) {
                                     std::vector<Asteroid> unwrapped_asteroids = unwrap_asteroid(*asteroid, game_state.map_size_x, game_state.map_size_y, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON, true);
                                     for (const Asteroid& a : unwrapped_asteroids) {
-                                        if (check_next_asteroid) {
-                                            break;
-                                        }
+                                        //if (move_on_to_next_asteroid) {
+                                        //    break;
+                                        //}
                                         // Since we need to find the minimum shot heading errors, we can't break out of this loop early. We should just go through them all.
                                         //unwrapped_ast_angle = super_fast_atan2(a.y - self.ship_state.y, a.x - self.ship_state.x)
                                         //if abs(angle_difference_deg(degrees(unwrapped_ast_angle), self.ship_state.heading)) > MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF:
@@ -5728,9 +5729,11 @@ public:
                                                         culled_target_idxs_for_simulation.push_back(ast_idx);
                                                 }
                                                 feasible_targets_exist = true;
-                                                if (interception_time > max_interception_time)
+                                                if (interception_time > max_interception_time) {
                                                     max_interception_time = interception_time;
-                                                check_next_asteroid = true;
+                                                }
+                                                //move_on_to_next_asteroid = true;
+                                                // Move onto the next asteroid. This one has no hope!
                                                 break;
                                             }
                                         }
