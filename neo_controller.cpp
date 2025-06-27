@@ -99,6 +99,8 @@
 #include <unordered_set>
 #include <thread>
 #include <functional>
+#include <cstdint>
+#include <bit>
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/array.h>
@@ -477,6 +479,7 @@ std::vector<double> overall_fitness_record;
 int64_t total_sim_timesteps = 0;
 int64_t unwrap_asteroid_call_count = 0;
 int64_t unwrap_asteroid_expensive_call_count = 0;
+
 
 template <typename T>
 void print_vector(const std::vector<T>& vec) {
@@ -1001,11 +1004,6 @@ struct BasePlanningGameState {
 };
 
 
-// Thread-safe random (can adjust as needed for your codebase)
-//inline static thread_local std::mt19937 rng(std::random_device{}());
-inline static thread_local std::mt19937 rng(0);
-inline static thread_local std::uniform_real_distribution<> std_uniform(0.0, 1.0);
-
 inline double pymod(double x, double y)
 {
     //return std::fmod(std::fmod(x, y) + y, y);
@@ -1014,15 +1012,6 @@ inline double pymod(double x, double y)
     // if (result < 0) result += y;
     // return result;
     return x - y * std::floor(x / y);
-}
-
-inline void reseed_rng(unsigned int seed) {
-    std_uniform = std::uniform_real_distribution<>(0.0, 1.0);
-    rng.seed(seed);
-}
-
-inline double random_double() {
-    return std_uniform(rng);
 }
 
 // ------ Angle & Math Utilities ------
@@ -1041,15 +1030,60 @@ inline double sign(double x) {
     return (x >= 0.0) ? 1.0 : -1.0;
 }
 
+// Custom RNG that passes PractRand with 32 TB of output, and is fairly fast!
+class Nova64 {
+private:
+    uint64_t s0, s1;
+
+public:
+    Nova64(uint64_t seed = 0) {
+        s0 = 0b1111000011100101000010110011010011001111100101111101100010110010;
+        s1 = 0b1010111100001100010011001100111011001010101111000010011000001101;
+        s0 += seed * 6024737725714810439ULL + 9107022279093798001ULL;
+        s1 += seed * 7789350018617083463ULL + 3175315433162999333ULL;
+    }
+
+    uint64_t rand() {
+        s0 = s0 * 807462326533782377ULL + 5298630352226189181ULL;
+        s1 = s1 * 1329678211065323621ULL + 12530472727566049059ULL;
+        s0 ^= (s1 & (1ULL << 63));
+        s1 ^= (s0 & (1ULL << 63));
+        s0 = std::rotl(s0, 29);
+        s1 = std::rotl(s1, 37);
+        return s0 ^ s1;
+    }
+
+    static constexpr uint64_t min() { return 0; }
+    static constexpr uint64_t max() { return UINT64_MAX; }
+};
+
+// Global RNG instance
+inline Nova64& global_rng() {
+    static Nova64 rng; // Default-seeded
+    return rng;
+}
+
+// Reset/reseed RNG
+inline void seed_rng(uint64_t seed) {
+    global_rng() = Nova64(seed);
+}
+
+// Uniform double in [0, 1)
+inline double random_double() {
+    return (global_rng().rand() >> 11) * (1.0 / (1ULL << 53));
+}
+
+// Uniform integer in [a, b]
 inline int64_t randint(int64_t a, int64_t b) {
-    // Generate uniform random in [a, b]
     return a + static_cast<int64_t>(std::floor((b - a + 1) * random_double()));
 }
 
+// Uniform double in [a, b)
 inline double rand_uniform(double a, double b) {
     return a + (b - a) * random_double();
 }
 
+// Triangular distribution
 inline double rand_triangular(double low, double high, double mode) {
     double u = random_double();
     double c = (mode - low) / (high - low);
@@ -1300,6 +1334,176 @@ inline int64_t count_asteroids_in_mine_blast_radius(const GameState& game_state,
     return count;
 }
 
+
+// Actual splitting logic
+inline std::array<Asteroid, 3>
+forecast_asteroid_splits(const Asteroid& a, int64_t timesteps_until_appearance, double vfx, double vfy, double v, double split_angle, const GameState& game_state) {
+    double theta = std::atan2(vfy, vfx) * RAD_TO_DEG;
+    int64_t new_size = a.size - 1;
+    double new_mass = ASTEROID_MASS_LOOKUP[new_size];
+    double new_radius = ASTEROID_RADII_LOOKUP[new_size];
+
+    double angle_left = (theta + split_angle) * DEG_TO_RAD;
+    double angle_center = theta * DEG_TO_RAD;
+    double angle_right = (theta - split_angle) * DEG_TO_RAD;
+
+    double cos_angle_left = std::cos(angle_left);
+    double sin_angle_left = std::sin(angle_left);
+    double cos_angle_center = std::cos(angle_center);
+    double sin_angle_center = std::sin(angle_center);
+    double cos_angle_right = std::cos(angle_right);
+    double sin_angle_right = std::sin(angle_right);
+
+    if (timesteps_until_appearance == 0) {
+        return std::array<Asteroid, 3>{
+            Asteroid(a.x, a.y, v * cos_angle_left, v * sin_angle_left, new_size, new_mass, new_radius, 0),
+            Asteroid(a.x, a.y, v * cos_angle_center, v * sin_angle_center, new_size, new_mass, new_radius, 0),
+            Asteroid(a.x, a.y, v * cos_angle_right, v * sin_angle_right, new_size, new_mass, new_radius, 0)
+        };
+    } else {
+        double dt = DELTA_TIME * static_cast<double>(timesteps_until_appearance);
+        // For fmod; ensure positive modulus results like Python’s %
+        auto wrap = [](double x, double mod) {
+            double r = std::fmod(x, mod);
+            return r < 0 ? r + mod : r;
+        };
+        return std::array<Asteroid, 3>{
+            Asteroid(
+                wrap(a.x + a.vx * dt - dt * cos_angle_left * v, game_state.map_size_x),
+                wrap(a.y + a.vy * dt - dt * sin_angle_left * v, game_state.map_size_y),
+                v * cos_angle_left, v * sin_angle_left,
+                new_size, new_mass, new_radius, timesteps_until_appearance),
+            Asteroid(
+                wrap(a.x + a.vx * dt - dt * cos_angle_center * v, game_state.map_size_x),
+                wrap(a.y + a.vy * dt - dt * sin_angle_center * v, game_state.map_size_y),
+                v * cos_angle_center, v * sin_angle_center,
+                new_size, new_mass, new_radius, timesteps_until_appearance),
+            Asteroid(
+                wrap(a.x + a.vx * dt - dt * cos_angle_right * v, game_state.map_size_x),
+                wrap(a.y + a.vy * dt - dt * sin_angle_right * v, game_state.map_size_y),
+                v * cos_angle_right, v * sin_angle_right,
+                new_size, new_mass, new_radius, timesteps_until_appearance)
+        };
+    }
+}
+
+// Mine splits
+inline std::array<Asteroid, 3>
+forecast_asteroid_mine_instantaneous_splits(const Asteroid& asteroid, const Mine& mine, const GameState& game_state) {
+    double delta_x = mine.x - asteroid.x;
+    double delta_y = mine.y - asteroid.y;
+    double dist = std::sqrt(delta_x * delta_x + delta_y * delta_y);
+    double F = (-dist / MINE_BLAST_RADIUS + 1.0) * MINE_BLAST_PRESSURE * 2.0 * asteroid.radius;
+    double a_accel = F / asteroid.mass;
+    double vfx, vfy, v, split_angle;
+    if (dist != 0.0) {
+        double cos_theta = (asteroid.x - mine.x) / dist;
+        double sin_theta = (asteroid.y - mine.y) / dist;
+        vfx = asteroid.vx + a_accel * cos_theta;
+        vfy = asteroid.vy + a_accel * sin_theta;
+        v = std::sqrt(vfx * vfx + vfy * vfy);
+        split_angle = 15.0;
+    } else {
+        vfx = asteroid.vx;
+        vfy = asteroid.vy;
+        v = std::sqrt(vfx * vfx + vfy * vfy + a_accel * a_accel);
+        split_angle = 120.0;
+    }
+    return forecast_asteroid_splits(asteroid, 0, vfx, vfy, v, split_angle, game_state);
+}
+
+inline int64_t count_asteroids_in_mine_blast_radius_with_other_mines(const GameState& game_state, double mine_x, double mine_y, int64_t future_timesteps) {
+    if (game_state.mines.size() == 0) {
+        int64_t count = 0;
+        for (const Asteroid& a : game_state.asteroids) {
+            if (a.alive) {
+                // Project asteroid position into future (with correct wrapping)
+                double asteroid_future_pos_x = pymod(a.x + static_cast<double>(future_timesteps) * a.vx * DELTA_TIME, game_state.map_size_x);
+                double asteroid_future_pos_y = pymod(a.y + static_cast<double>(future_timesteps) * a.vy * DELTA_TIME, game_state.map_size_y);
+                // Fast bounding check (no function call)
+                double delta_x = asteroid_future_pos_x - mine_x;
+                double delta_y = asteroid_future_pos_y - mine_y;
+                double separation = a.radius + (MINE_BLAST_RADIUS - MINE_ASTEROID_COUNT_FUDGE_DISTANCE);
+                if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x * delta_x + delta_y * delta_y <= separation * separation)
+                {
+                    ++count;
+                }
+            }
+        }
+        return count;
+    } else {
+        // There are mines, and because they already exist, they're guaranteed to blow up before a mine that we place will blow up.
+        // We're going to take the mines, sort them in order of explosion time, and do a quick simulation of how things play out, so we have an idea of where the asteroids are when our potential mine blows up
+        std::vector<Mine> copy_of_mines;
+        copy_of_mines.reserve(game_state.mines.size()); // optional, for efficiency
+        std::copy_if(game_state.mines.begin(), game_state.mines.end(),
+                    std::back_inserter(copy_of_mines),
+                    [](const Mine& mine) {
+                        return mine.alive;
+                    });
+        
+        std::vector<Asteroid> copy_of_asteroids;
+        copy_of_asteroids.reserve(game_state.asteroids.size()); // optional but efficient
+        std::copy_if(game_state.asteroids.begin(), game_state.asteroids.end(),
+                    std::back_inserter(copy_of_asteroids),
+                    [](const Asteroid& asteroid) {
+                        return asteroid.alive;
+                    });
+
+        // Sort using a lambda function
+        std::sort(copy_of_mines.begin(), copy_of_mines.end(),
+                [](const Mine& a, const Mine& b) {
+                    return a.remaining_time < b.remaining_time;
+                });
+        double fast_simulated_timesteps = 0.0;
+        std::vector<Asteroid> new_asteroids;
+        new_asteroids.reserve(3);
+        for (const Mine& mine: copy_of_mines) {
+            double timesteps_until_explosion = std::round(mine.remaining_time * FPS);
+            assert(timesteps_until_explosion >= fast_simulated_timesteps);
+            // Jump all asteroids forward by this much, and then perform the detonation step
+            for (Asteroid& asteroid : copy_of_asteroids) {
+                if (asteroid.alive) {
+                    asteroid.x = pymod(asteroid.x + asteroid.vx * DELTA_TIME * (timesteps_until_explosion - fast_simulated_timesteps), game_state.map_size_x);
+                    asteroid.y = pymod(asteroid.y + asteroid.vy * DELTA_TIME * (timesteps_until_explosion - fast_simulated_timesteps), game_state.map_size_y);
+                    // Do detonation check, and forecast splits and stuff
+                    double delta_x = asteroid.x - mine.x;
+                    double delta_y = asteroid.y - mine.y;
+                    double separation = asteroid.radius + MINE_BLAST_RADIUS;
+                    if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                        if (asteroid.size != 1) {
+                            for (const Asteroid& new_ast : forecast_asteroid_mine_instantaneous_splits(asteroid, mine, game_state)) {
+                                new_asteroids.push_back(new_ast);
+                            }
+                        }
+                        asteroid.alive = false;
+                    }
+                }
+            }
+            copy_of_asteroids.insert(copy_of_asteroids.end(), new_asteroids.begin(), new_asteroids.end());
+            fast_simulated_timesteps = timesteps_until_explosion;
+        }
+        // Now that we simulated all mines blowing up, we can count the asteroids!
+        int64_t count = 0;
+        for (const Asteroid& a : copy_of_asteroids) {
+            if (a.alive) {
+                // Project asteroid position into future (with correct wrapping)
+                double asteroid_future_pos_x = pymod(a.x + static_cast<double>(future_timesteps - fast_simulated_timesteps) * a.vx * DELTA_TIME, game_state.map_size_x);
+                double asteroid_future_pos_y = pymod(a.y + static_cast<double>(future_timesteps - fast_simulated_timesteps) * a.vy * DELTA_TIME, game_state.map_size_y);
+                // Fast bounding check (no function call)
+                double delta_x = asteroid_future_pos_x - mine_x;
+                double delta_y = asteroid_future_pos_y - mine_y;
+                double separation = a.radius + (MINE_BLAST_RADIUS - MINE_ASTEROID_COUNT_FUDGE_DISTANCE);
+                if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x * delta_x + delta_y * delta_y <= separation * separation)
+                {
+                    ++count;
+                }
+            }
+        }
+        return count;
+    }
+}
+
 /*
 inline bool mine_fis(int64_t mines_remaining, int64_t lives_remaining, int64_t mine_ast_count) {
     int64_t implement_mine_fis_pls = mines_remaining + lives_remaining + mine_ast_count;
@@ -1314,7 +1518,7 @@ inline std::pair<bool, int64_t> check_mine_opportunity(const Ship& ship_state, c
 
     double drop_mine_probability;
 
-    int64_t mine_ast_count = count_asteroids_in_mine_blast_radius(game_state, ship_state.x, ship_state.y, static_cast<int>(std::round(MINE_FUSE_TIME * FPS)));
+    int64_t mine_ast_count = count_asteroids_in_mine_blast_radius_with_other_mines(game_state, ship_state.x, ship_state.y, static_cast<int>(std::round(MINE_FUSE_TIME * FPS)));
     int64_t lives_fudge = 0;
 
     for (const auto& other_ship : other_ships) {
@@ -2672,58 +2876,6 @@ inline std::tuple<
     return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
 }
 
-// Actual splitting logic
-inline std::array<Asteroid, 3>
-forecast_asteroid_splits(const Asteroid& a, int64_t timesteps_until_appearance, double vfx, double vfy, double v, double split_angle, const GameState& game_state) {
-    double theta = std::atan2(vfy, vfx) * RAD_TO_DEG;
-    int64_t new_size = a.size - 1;
-    double new_mass = ASTEROID_MASS_LOOKUP[new_size];
-    double new_radius = ASTEROID_RADII_LOOKUP[new_size];
-
-    double angle_left = (theta + split_angle) * DEG_TO_RAD;
-    double angle_center = theta * DEG_TO_RAD;
-    double angle_right = (theta - split_angle) * DEG_TO_RAD;
-
-    double cos_angle_left = std::cos(angle_left);
-    double sin_angle_left = std::sin(angle_left);
-    double cos_angle_center = std::cos(angle_center);
-    double sin_angle_center = std::sin(angle_center);
-    double cos_angle_right = std::cos(angle_right);
-    double sin_angle_right = std::sin(angle_right);
-
-    if (timesteps_until_appearance == 0) {
-        return std::array<Asteroid, 3>{
-            Asteroid(a.x, a.y, v * cos_angle_left, v * sin_angle_left, new_size, new_mass, new_radius, 0),
-            Asteroid(a.x, a.y, v * cos_angle_center, v * sin_angle_center, new_size, new_mass, new_radius, 0),
-            Asteroid(a.x, a.y, v * cos_angle_right, v * sin_angle_right, new_size, new_mass, new_radius, 0)
-        };
-    } else {
-        double dt = DELTA_TIME * static_cast<double>(timesteps_until_appearance);
-        // For fmod; ensure positive modulus results like Python’s %
-        auto wrap = [](double x, double mod) {
-            double r = std::fmod(x, mod);
-            return r < 0 ? r + mod : r;
-        };
-        return std::array<Asteroid, 3>{
-            Asteroid(
-                wrap(a.x + a.vx * dt - dt * cos_angle_left * v, game_state.map_size_x),
-                wrap(a.y + a.vy * dt - dt * sin_angle_left * v, game_state.map_size_y),
-                v * cos_angle_left, v * sin_angle_left,
-                new_size, new_mass, new_radius, timesteps_until_appearance),
-            Asteroid(
-                wrap(a.x + a.vx * dt - dt * cos_angle_center * v, game_state.map_size_x),
-                wrap(a.y + a.vy * dt - dt * sin_angle_center * v, game_state.map_size_y),
-                v * cos_angle_center, v * sin_angle_center,
-                new_size, new_mass, new_radius, timesteps_until_appearance),
-            Asteroid(
-                wrap(a.x + a.vx * dt - dt * cos_angle_right * v, game_state.map_size_x),
-                wrap(a.y + a.vy * dt - dt * sin_angle_right * v, game_state.map_size_y),
-                v * cos_angle_right, v * sin_angle_right,
-                new_size, new_mass, new_radius, timesteps_until_appearance)
-        };
-    }
-}
-
 // Heading-based bullet splits
 inline std::array<Asteroid, 3>
 forecast_asteroid_bullet_splits_from_heading(const Asteroid& a, int64_t timesteps_until_appearance, double bullet_heading_deg, const GameState& game_state) {
@@ -2745,30 +2897,6 @@ forecast_instantaneous_asteroid_bullet_splits_from_velocity(const Asteroid& a, d
     return forecast_asteroid_splits(a, 0, vfx, vfy, v, 15.0, game_state);
 }
 
-// Mine splits
-inline std::array<Asteroid, 3>
-forecast_asteroid_mine_instantaneous_splits(const Asteroid& asteroid, const Mine& mine, const GameState& game_state) {
-    double delta_x = mine.x - asteroid.x;
-    double delta_y = mine.y - asteroid.y;
-    double dist = std::sqrt(delta_x * delta_x + delta_y * delta_y);
-    double F = (-dist / MINE_BLAST_RADIUS + 1.0) * MINE_BLAST_PRESSURE * 2.0 * asteroid.radius;
-    double a_accel = F / asteroid.mass;
-    double vfx, vfy, v, split_angle;
-    if (dist != 0.0) {
-        double cos_theta = (asteroid.x - mine.x) / dist;
-        double sin_theta = (asteroid.y - mine.y) / dist;
-        vfx = asteroid.vx + a_accel * cos_theta;
-        vfy = asteroid.vy + a_accel * sin_theta;
-        v = std::sqrt(vfx * vfx + vfy * vfy);
-        split_angle = 15.0;
-    } else {
-        vfx = asteroid.vx;
-        vfy = asteroid.vy;
-        v = std::sqrt(vfx * vfx + vfy * vfy + a_accel * a_accel);
-        split_angle = 120.0;
-    }
-    return forecast_asteroid_splits(asteroid, 0, vfx, vfy, v, split_angle, game_state);
-}
 
 // Ship splits
 inline std::array<Asteroid, 3> forecast_asteroid_ship_splits(
@@ -3038,6 +3166,7 @@ inline std::tuple<
         double wacky_component = vb * abs_delta_theta / pi * (avy * cos_theta - avx * sin_theta);
         return sinusoidal_component + wacky_component;
     };
+
     auto root_function_derivative = [&](double theta) -> double {
         theta += theta_0;
         if (!(theta_0 - pi <= theta && theta <= theta_0 + pi))
@@ -3049,6 +3178,7 @@ inline std::tuple<
             (avx * sin_theta - avy * cos_theta + (theta - theta_0) * (avx * cos_theta + avy * sin_theta));
         return sinusoidal_component + wacky_component;
     };
+
     auto root_function_second_derivative = [&](double theta) -> double {
         theta += theta_0;
         if (!(theta_0 - pi <= theta && theta <= theta_0 + pi))
@@ -3090,6 +3220,7 @@ inline std::tuple<
     auto rotation_time = [](double delta_theta_rad) -> double {
         return std::abs(delta_theta_rad) * SHIP_MAX_TURN_RATE_RAD_RECIPROCAL;
     };
+
     auto bullet_travel_time = [&](double theta, double t_rot) -> double {
         theta += theta_0;
         double cos_theta = std::cos(theta);
@@ -4908,10 +5039,14 @@ public:
         std::vector<Asteroid> asteroids;
         if (asteroids_to_check.has_value()) {
             for (const auto& a : asteroids_to_check.value())
-                if (a.alive) asteroids.push_back(a);
+                if (a.alive) {
+                    asteroids.push_back(a);
+                }
         } else {
             for (const auto& a : game_state.asteroids)
-                if (a.alive) asteroids.push_back(a);
+                if (a.alive) {
+                    asteroids.push_back(a);
+                }
         }
         std::vector<Mine> mines;
         for (const auto& m : game_state.mines)
@@ -5526,13 +5661,16 @@ public:
                                             double delta_y = asteroid_when_mine_explodes.y - m.y;
                                             double separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS;
                                             if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                                                // The asteroid will get taken care of by my mine, so we don't want to shoot it.
                                                 avoid_targeting_this_asteroid = true;
                                                 break;
                                             }
                                         }
                                     }
                                 }
-                                if (avoid_targeting_this_asteroid) continue;
+                                if (avoid_targeting_this_asteroid) {
+                                    continue;
+                                }
 
                                 //bool in_culling_cone = false;
                                 if (ast_idx < len_asteroids && heading_diff_within_threshold(ship_heading_rad, asteroid->x - ship_state.x, asteroid->y - ship_state.y, MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF_COSINE)) {
@@ -5620,8 +5758,7 @@ public:
                                 if (actual_asteroid_hit.has_value() && ship_was_safe) {
                                     // Confirmed that the shot will land
                                     assert(timesteps_until_bullet_hit_asteroid >= 0);
-                                    Asteroid actual_asteroid_hit_at_fire_time = time_travel_asteroid(
-                                        actual_asteroid_hit.value(), -timesteps_until_bullet_hit_asteroid, game_state);
+                                    Asteroid actual_asteroid_hit_at_fire_time = time_travel_asteroid(actual_asteroid_hit.value(), -timesteps_until_bullet_hit_asteroid, game_state);
                                     if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps + 1, game_state, actual_asteroid_hit_at_fire_time)) {
                                         fire_this_timestep = true;
                                         ++asteroids_shot;
@@ -5643,6 +5780,12 @@ public:
                                         fire_this_timestep = false;
                                         --asteroids_shot;
                                     }
+                                } else {
+                                    if (ship_was_safe) {
+                                        std::cout << "Bullet sim missed in main maneuver update loop. Womp womp. Simid: " << this->sim_id << std::endl;
+                                    }
+                                    // We just don't shoot. Yeah, it's not ideal. We spent all this time targeting an asteroid and now we're not shooting,
+                                    // but the next timestep we can shoot again so we can just choose a new target and hope it works.
                                 }
                             }
                             assert(asteroids_shot >= 0);
@@ -6404,7 +6547,6 @@ public:
     void reset(const std::optional<std::array<double, 9>> chromosome = std::nullopt)
     {
         init_done = false;
-        reseed_rng(0);
         // DO NOT overwrite _ship_id
         ship_id_internal = -1;
         current_timestep = -1;

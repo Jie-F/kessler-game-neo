@@ -33,6 +33,7 @@ parser.add_argument('-scenario', type=str, help='Name of scenario to evaluate. M
 parser.add_argument('-portfolio', type=str, help='Name of portfolio to run')
 parser.add_argument('-index', type=int, help='Pick the starting index of the portfolio. Count from zero.')
 parser.add_argument('-once', action='store_true', help='Only do one iteration.')
+parser.add_argument('-random', action='store_true', help='Use random scenario.')
 
 args = parser.parse_args()
 
@@ -336,6 +337,12 @@ debug_scenario = Scenario(name="Debug scenario",
                           )
 
 selected_portfolio = [debug_scenario]
+
+if args.random:
+    do_random = True
+else:
+    do_random = False
+
 if args.portfolio is not None:
     match args.portfolio:
         case 'xfc2023':
@@ -384,10 +391,10 @@ while True:
         #controllers_used = [NeoController(), BabyNeoController()]
 
         asteroids_random = generate_asteroids(
-                                        num_asteroids=random.randint(2, 3),
+                                        num_asteroids=random.randint(3, 3),
                                         position_range_x=(0, width),
                                         position_range_y=(0, height),
-                                        speed_range=(-300, 300, 0),
+                                        speed_range=(-300, 2000, 0),
                                         angle_range=(-1, 361),
                                         size_range=(1, 4)
                                     )*random.choice([1])
@@ -431,12 +438,12 @@ while True:
             # [ReplayController0(), ReplayController1()] GamepadController()])#, NeoController()])#, TestController()])GamepadController NeoController Neo
         random.seed(randseed)
         from neo_controller import NeoController
-        controllers_used = [NeoController(), NeoController()]
+        controllers_used = [NeoController(), JamieController()]
         #random.setstate(state)
         #print(f"RNG State: {random.getstate()}")
         #score, perf_data = game.run(scenario=ex_adv_four_corners_pt1, controllers=controllers_used)
         #score, perf_data = game.run(scenario=ex_adv_four_corners_pt2, controllers=controllers_used)
-        if scenario is None:
+        if scenario is None or do_random:
             scenario_to_run = rand_scenario
         else:
             scenario_to_run = scenario
