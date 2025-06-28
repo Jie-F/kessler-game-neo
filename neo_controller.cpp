@@ -463,7 +463,7 @@ constexpr std::array<double, 5> ASTEROID_MASS_LOOKUP = {
 
 constexpr double RESPAWN_INVINCIBILITY_TIME_S = 3.0;
 constexpr std::array<int64_t, 5> ASTEROID_COUNT_LOOKUP = {0, 1, 4, 13, 40};
-constexpr double DEGREES_BETWEEN_SHOTS = double(FIRE_COOLDOWN_TS)*SHIP_MAX_TURN_RATE*DELTA_TIME;
+constexpr double DEGREES_BETWEEN_SHOTS = static_cast<double>(FIRE_COOLDOWN_TS)*SHIP_MAX_TURN_RATE*DELTA_TIME;
 constexpr double DEGREES_TURNED_PER_TIMESTEP = SHIP_MAX_TURN_RATE*DELTA_TIME;
 constexpr double SHIP_RADIUS_PLUS_SIZE_4_ASTEROID_RADIUS = SHIP_RADIUS + ASTEROID_RADII_LOOKUP[4];
 constexpr double TIMESTEPS_IT_TAKES_SHIP_TO_COME_TO_DEAD_STOP_FROM_FULL_SPEED = SHIP_MAX_SPEED / (SHIP_MAX_THRUST + SHIP_DRAG) * FPS;
@@ -1348,11 +1348,7 @@ inline int64_t count_asteroids_in_mine_blast_radius(const GameState& game_state,
             double asteroid_future_pos_x = pymod(a.x + static_cast<double>(future_timesteps) * a.vx * DELTA_TIME, game_state.map_size_x);
             double asteroid_future_pos_y = pymod(a.y + static_cast<double>(future_timesteps) * a.vy * DELTA_TIME, game_state.map_size_y);
             // Fast bounding check (no function call)
-            double delta_x = asteroid_future_pos_x - mine_x;
-            double delta_y = asteroid_future_pos_y - mine_y;
-            double separation = a.radius + (MINE_BLAST_RADIUS - MINE_ASTEROID_COUNT_FUDGE_DISTANCE);
-            if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x * delta_x + delta_y * delta_y <= separation * separation)
-            {
+            if (check_collision(mine_x, mine_y, MINE_BLAST_RADIUS - MINE_ASTEROID_COUNT_FUDGE_DISTANCE, asteroid_future_pos_x, asteroid_future_pos_y, a.radius)) {
                 ++count;
             }
         }
@@ -2934,6 +2930,7 @@ inline std::tuple<
     }
     // No feasible solution found.
     return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+    // feasible, shot_heading_error_rad, shot_heading_tolerance_rad, interception_time_s + 0*future_shooting_timesteps*delta_time, intercept_x, intercept_y, asteroid_dist, asteroid_dist_during_interception
 }
 
 // Heading-based bullet splits
@@ -3208,7 +3205,7 @@ inline std::tuple<
     auto naive_desired_heading_calc = [&](int64_t timesteps_until_fire = 0) -> std::tuple<double, double, int64_t, double, double, double> {
         // Here's a good resource to learn about this: https://www.youtube.com/watch?v=MpUUsDDE1sI
         // https://medium.com/andys-coding-blog/ai-projectile-intercept-formula-for-gaming-without-trigonometry-37b70ef5718b
-        double time_until_can_fire_s = double(timesteps_until_fire) * DELTA_TIME;
+        double time_until_can_fire_s = static_cast<double>(timesteps_until_fire) * DELTA_TIME;
         double ax_delayed = ax + time_until_can_fire_s * avx; // We add a delay to account for the timesteps until we fire delay
         double ay_delayed = ay + time_until_can_fire_s * avy;
         // a is calculated outside of this function since it's a constant
@@ -3320,19 +3317,28 @@ inline std::tuple<
                 return theta_old;
             if (std::isnan(initial_func_value))
                 initial_func_value = func_value;
+            // Update the estimate using Halley's method
             double derivative_value = root_function_derivative(theta_old);
             double second_derivative_value = root_function_second_derivative(theta_old);
             double denominator = 2.0 * derivative_value * derivative_value - func_value * second_derivative_value;
             if (denominator == 0.0) return std::numeric_limits<double>::quiet_NaN();
             theta_new = theta_old - (2.0 * func_value * derivative_value) / denominator;
-            if (theta_new < -pi) theta_new = pi - GRAIN;
-            else if (theta_new > pi) theta_new = -pi + GRAIN;
-            else if (-pi <= theta_old && theta_old <= 0.0 && 0.0 <= theta_new && theta_new <= pi)
+            // The value has jumped past the periodic boundary. Clamp it to right past the boundary just so things don't get too crazy.
+            if (theta_new < -pi) {
+                theta_new = pi - GRAIN;
+            } else if (theta_new > pi) {
+                theta_new = -pi + GRAIN;
+            } else if (-pi <= theta_old && theta_old <= 0.0 && 0.0 <= theta_new && theta_new <= pi) {
+                // The value jumped past the kink in the middle of the graph. set it to right past the kink so the value doesn't jump around like crazy
                 theta_new = GRAIN;
-            else if (-pi <= theta_new && theta_new <= 0.0 && 0.0 <= theta_old && theta_old <= pi)
+            } else if (-pi <= theta_new && theta_new <= 0.0 && 0.0 <= theta_old && theta_old <= pi) {
                 theta_new = -GRAIN;
-            if (std::abs(theta_new - theta_old) < tolerance && std::abs(func_value) < 0.1 * std::abs(initial_func_value))
+            }
+            // Check for convergence
+            // It converged if the theta value isn't changing much, and the function itself takes a value that is close to zero (magnitude at most 1% of the original func value)
+            if (std::abs(theta_new - theta_old) < tolerance && std::abs(func_value) < 0.1 * std::abs(initial_func_value)) {
                 return theta_new;
+            }
             theta_old = theta_new;
         }
         return std::numeric_limits<double>::quiet_NaN();
@@ -3343,6 +3349,7 @@ inline std::tuple<
     };
 
     auto bullet_travel_time = [&](double theta, double t_rot) -> double {
+        // Convert heading error to absolute heading
         theta += theta_0;
         double cos_theta = std::cos(theta);
         double sin_theta = std::sin(theta);
@@ -3351,6 +3358,7 @@ inline std::tuple<
         if (denominator_x == 0.0 && denominator_y == 0.0)
             return inf;
         double t_bul;
+        // At least one of the denominators is nonzero, so if we choose the one with the larger magnitude, we'll avoid division by zero as well as get the more accurate answer
         if (std::abs(denominator_x) > std::abs(denominator_y)) {
             t_bul = (vb * t_0 * cos_theta - ax - avx * t_rot) / denominator_x;
         } else {
@@ -3359,14 +3367,33 @@ inline std::tuple<
         return t_bul;
     };
 
-    double amount_we_can_turn_before_we_can_shoot_rad = double(timesteps_until_can_fire) * SHIP_MAX_TURN_RATE_RAD_TS;
+    auto bullet_travel_time_for_plot = [&](double theta) -> double {
+        // USED FOR DEBUGGING
+        // Convert heading error to absolute heading
+        theta += theta_0;
+        double cos_theta = std::cos(theta);
+        double sin_theta = std::sin(theta);
+        double t_rot = rotation_time(theta - theta_0);
+
+        double denominator = avx * sin_theta - avy * cos_theta;
+        if (denominator == 0.0) {
+            return std::numeric_limits<double>::infinity();
+        } else {
+            double numerator = cos_theta * (ay + avy * t_rot) - sin_theta * (ax + avx * t_rot);
+            return std::max(-200000.0, std::min((numerator / denominator) * 100000.0, 200000.0));
+        }
+    };
+
+    double amount_we_can_turn_before_we_can_shoot_rad = static_cast<double>(timesteps_until_can_fire) * SHIP_MAX_TURN_RATE_RAD_TS;
     auto naive_solution = naive_desired_heading_calc(timesteps_until_can_fire);
+    // naive_solution is this tuple: (interception time in seconds from firing to hit, delta theta rad, timesteps until fire, None, intercept_x, intercept_y, None)
     double naive_angle = std::get<1>(naive_solution);
     if (std::abs(naive_angle) <= amount_we_can_turn_before_we_can_shoot_rad + EPS) {
         // The naive solution works because there's no turning delay
         double n_intercept_x = std::get<3>(naive_solution);
         double n_intercept_y = std::get<4>(naive_solution);
         if (check_coordinate_bounds(game_state, n_intercept_x, n_intercept_y)) {
+            // Tuple is: (feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception)
             return std::make_tuple(
                 true,
                 naive_angle * RAD_TO_DEG,
@@ -3380,8 +3407,10 @@ inline std::tuple<
     } else {
         double delta_theta_solution = std::numeric_limits<double>::quiet_NaN();
         if (std::abs(avx) < GRAIN && std::abs(avy) < GRAIN) {
+            // The asteroid is pretty much stationary. Naive solution works fine.
             delta_theta_solution = std::get<1>(naive_solution);
         } else {
+            // Use more advanced solution
             delta_theta_solution = turbo_rootinator_5000(std::get<1>(naive_solution), TAD, 4);
         }
 
@@ -3391,27 +3420,31 @@ inline std::tuple<
         double absolute_theta_solution = delta_theta_solution + theta_0;
         assert(-pi <= delta_theta_solution && delta_theta_solution <= pi);
 
-        double delta_theta_solution_deg = delta_theta_solution * RAD_TO_DEG;
+        // Check validity of solution to make sure time is positive and stuff
+        double delta_theta_solution_deg = degrees(delta_theta_solution);
         double t_rot = rotation_time(delta_theta_solution);
 
         assert(is_close(t_rot, std::abs(delta_theta_solution_deg) / SHIP_MAX_TURN_RATE));
 
         double t_bullet = bullet_travel_time(delta_theta_solution, t_rot);
-        if (t_bullet < 0)
+        if (t_bullet < 0) {
             return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), -1, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+        }
 
         double bullet_travel_dist = vb * (t_bullet + t_0);
         double intercept_x = origin_x + bullet_travel_dist * std::cos(absolute_theta_solution);
         double intercept_y = origin_y + bullet_travel_dist * std::sin(absolute_theta_solution);
 
         if (check_coordinate_bounds(game_state, intercept_x, intercept_y)) {
+            // Since half timesteps don't exist, we need to discretize this solution by rounding up the amount of timesteps, and now we can use the naive method to confirm and get the exact angle
+            // We max this with ts until can fire, because that's the floor and we can't go below it
             int64_t t_rot_ts = std::max(
                 timesteps_until_can_fire,
                 static_cast<int64_t>(std::ceil(t_rot * FPS))
             );
             auto discrete_solution = naive_desired_heading_calc(t_rot_ts);
             if (!std::isnan(std::get<0>(discrete_solution))) {
-                if (!(std::abs(std::get<1>(discrete_solution) * RAD_TO_DEG) - EPS <= double(t_rot_ts) * SHIP_MAX_TURN_RATE_DEG_TS))
+                if (!(std::abs(std::get<1>(discrete_solution) * RAD_TO_DEG) - EPS <= static_cast<double>(t_rot_ts) * SHIP_MAX_TURN_RATE_DEG_TS))
                     return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), -1, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
                 assert(t_rot_ts == std::get<2>(discrete_solution));
                 if (check_coordinate_bounds(game_state, std::get<3>(discrete_solution), std::get<4>(discrete_solution))) {
@@ -3429,6 +3462,7 @@ inline std::tuple<
         }
     }
     return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), -1, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+    // The returned interception time is the time AFTER FIRING! NOT INCLUDING TURNING!
 }
 
 inline double get_adversary_interception_time_lower_bound(
@@ -3437,10 +3471,11 @@ inline double get_adversary_interception_time_lower_bound(
     const GameState& game_state,
     int64_t adversary_rotation_timestep_fudge = ADVERSARY_ROTATION_TIMESTEP_FUDGE)
 {
-    if (adversary_ships.empty())
+    if (adversary_ships.empty()) {
         return inf;
+    }
 
-    // See your Python: let _2 = aiming_timesteps_required and _3 = interception_time_s
+    // The interception time is just from firing to hitting. It doesn't include the aiming time!
     bool feasible;
     double _1;
     int64_t aiming_timesteps_required;
@@ -3456,7 +3491,7 @@ inline double get_adversary_interception_time_lower_bound(
     );
 
     if (feasible) {
-        return std::max(0.0, interception_time_s + double(aiming_timesteps_required - adversary_rotation_timestep_fudge) * DELTA_TIME);
+        return std::max(0.0, interception_time_s + static_cast<double>(aiming_timesteps_required - adversary_rotation_timestep_fudge) * DELTA_TIME);
     } else {
         return inf;
     }
@@ -4783,7 +4818,7 @@ public:
         // Check whether we have enough time to aim at it and shoot it down
         // PROBLEM, what if the asteroid breaks into pieces and I need to shoot those down too? But I have plenty of time, and I still want the fitness function to be good in that case, but there's no easy way to evaluate that. It's hard to decide whether we want to shoot the asteroids that are about to hit us, or to just dodge it by moving myself.
 
-        double turn_angle_deg_until_can_fire = double(timesteps_until_can_fire)*SHIP_MAX_TURN_RATE*DELTA_TIME;
+        double turn_angle_deg_until_can_fire = static_cast<double>(timesteps_until_can_fire)*SHIP_MAX_TURN_RATE*DELTA_TIME;
         // if there’s an imminent shot coming toward me, I will aim at the asteroid that gets me CLOSEST to the direction of the imminent shot.
         // So it only plans one shot at a time instead of a series of shots, and it’ll keep things simpler
         std::optional<Asteroid> actual_asteroid_hit;
@@ -4931,7 +4966,7 @@ public:
                     // Sort by just convenience (and anything else I'd like)
                     std::sort(sorted_targets.begin(), sorted_targets.end(), [&](const Target& t1, const Target& t2) {
                         auto score = [&](const Target& t) {
-                            return double(t.aiming_timesteps_required)*2.0 +
+                            return static_cast<double>(t.aiming_timesteps_required)*2.0 +
                                 ASTEROID_SIZE_SHOT_PRIORITY[t.asteroid.size] +
                                 t.interception_time_s + // Might be more correct to do t.interception_time_s + t.aiming_timesteps_required*DELTA_TIME - get_adversary_interception_time_lower_bound(t.asteroid, self.other_ships, self.game_state)
                                 t.asteroid_dist_during_interception/400.0 +
@@ -4944,7 +4979,7 @@ public:
                 } else {
                     std::sort(sorted_targets.begin(), sorted_targets.end(), [&](const Target& t1, const Target& t2) {
                         auto score = [&](const Target& t) {
-                            return double(t.aiming_timesteps_required)*2.0
+                            return static_cast<double>(t.aiming_timesteps_required)*2.0
                                 + ASTEROID_SIZE_SHOT_PRIORITY[t.asteroid.size]
                                 + t.asteroid_dist_during_interception/400.0
                                 + ((t.asteroid.size == 1 ? 20.0 : -20.0) * (t.asteroid_will_get_hit_by_my_mine ? 1.0 : 0.0));
@@ -4988,7 +5023,7 @@ public:
                     }
                 }
                 // We still simulate one iteration of this, because if we had a pending shot from before, this will do the shot!
-                bool sim_complete_without_crash = update(idle_thrust, SHIP_MAX_TURN_RATE*double(turn_direction), false, false);
+                bool sim_complete_without_crash = update(idle_thrust, SHIP_MAX_TURN_RATE*static_cast<double>(turn_direction), false, false);
                 assert(is_close_to_zero(ship_state.speed));
                 return sim_complete_without_crash;
             }
@@ -5052,7 +5087,7 @@ public:
             }
 
             // std::cout << "Calling update from targ sel:\n";
-            bool sim_complete_without_crash = update(idle_thrust, SHIP_MAX_TURN_RATE * double(turn_direction), false, false);
+            bool sim_complete_without_crash = update(idle_thrust, SHIP_MAX_TURN_RATE * static_cast<double>(turn_direction), false, false);
             // std::cout << "Sim id " << sim_id << " is returning from target sim with success value " << sim_complete_without_crash << "\n";
             assert(is_close_to_zero(ship_state.speed));
             return sim_complete_without_crash;
@@ -5087,7 +5122,7 @@ public:
             /*
             if (game_state_plotter.has_value() && GAMESTATE_PLOTTING && NEXT_TARGET_PLOTTING &&
                 (!START_GAMESTATE_PLOTTING_AT_SECOND.has_value() || 
-                START_GAMESTATE_PLOTTING_AT_SECOND.value() * FPS <= double(initial_timestep + future_timesteps))) {
+                START_GAMESTATE_PLOTTING_AT_SECOND.value() * FPS <= static_cast<double>(initial_timestep + future_timesteps))) {
                 
                 Asteroid a = time_travel_asteroid(
                     actual_asteroid_hit.value(),
@@ -7453,14 +7488,14 @@ public:
                     } else {
                         random_ship_heading_angle = 0.0;
                     }
-                    ship_accel_turn_rate = rand_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE) * (2.0 * double(rand() % 2) - 1.0);
+                    ship_accel_turn_rate = rand_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE) * (2.0 * static_cast<double>(rand() % 2) - 1.0);
 
                     if (std::isnan(ship_cruise_speed_mode)) {
                         ship_cruise_speed = rand_uniform(-SHIP_MAX_SPEED, SHIP_MAX_SPEED);
                     } else {
-                        ship_cruise_speed = rand_triangular(0, SHIP_MAX_SPEED, ship_cruise_speed_mode) * (2.0 * double(rand() % 2) - 1.0);
+                        ship_cruise_speed = rand_triangular(0, SHIP_MAX_SPEED, ship_cruise_speed_mode) * (2.0 * static_cast<double>(rand() % 2) - 1.0);
                     }
-                    ship_cruise_turn_rate = rand_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE) * (2.0 * double(rand() % 2) - 1.0);
+                    ship_cruise_turn_rate = rand_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE) * (2.0 * static_cast<double>(rand() % 2) - 1.0);
                     if (std::isnan(ship_cruise_timesteps_mode)) {
                         ship_cruise_timesteps = randint(0, int64_t(round(MAX_CRUISE_TIMESTEPS)));
                     } else {
@@ -8135,7 +8170,7 @@ public:
         }
 
         // Optional sleep for visualization
-        if (double(this->current_timestep) > SLOW_DOWN_GAME_AFTER_SECOND*FPS) {
+        if (static_cast<double>(this->current_timestep) > SLOW_DOWN_GAME_AFTER_SECOND*FPS) {
             std::this_thread::sleep_for(std::chrono::duration<double>(SLOW_DOWN_GAME_PAUSE_TIME));
         }
 
