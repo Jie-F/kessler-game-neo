@@ -1316,12 +1316,12 @@ inline int64_t get_min_maneuver_per_period_search_iterations_if_will_die(int64_t
 }
 
 // Sigmoid
-inline double sigmoid(double x, double k=1.0, double x0=0.0) {
+inline double sigmoid(double x, double k = 1.0, double x0 = 0.0) {
     // Logistic sigmoid with scaling and shift
-    return 1.0/(1.0 + std::exp(-k * (x - x0)));
+    return 1.0 / (1.0 + std::exp(-k * (x - x0)));
 }
 
-inline double fast_sigmoid(double x, double k=1.0, double x0=0.0) {
+inline double fast_sigmoid(double x, double k = 1.0, double x0 = 0.0) {
     // Compared to the logistic sigmoid, this has a slightly higher slope at x=0, and the -inf to inf behavior is that it asymptotes-out more gradually. Which might be good.
     // Handle infinities explicitly
     if (std::isinf(x)) {
@@ -1364,14 +1364,18 @@ inline int64_t count_asteroids_in_mine_blast_radius(const GameState& game_state,
 // Actual splitting logic
 inline std::array<Asteroid, 3>
 forecast_asteroid_splits(const Asteroid& a, int64_t timesteps_until_appearance, double vfx, double vfy, double v, double split_angle, const GameState& game_state) {
-    double theta = std::atan2(vfy, vfx) * RAD_TO_DEG;
+    // Calculate angle of center asteroid for split (degrees)
+    double theta = degrees(std::atan2(vfy, vfx)); // DO NOT USE AN APPROXIMATION FOR ATAN2!! This needs to match Kessler or else we can get desyncs.
+    // Split angle is the angle off of the new velocity vector for the two asteroids to the sides, the center child asteroid continues on the new velocity path
+    // We redundantly convert to degrees, add split angle, and back to radians. But it has to do this to match Kessler. No way to optimize without risking desyncs.
+    // This is wacky because we're back-extrapolation the position of the asteroid BEFORE IT WAS BORN!!!!11!
     int64_t new_size = a.size - 1;
     double new_mass = ASTEROID_MASS_LOOKUP[new_size];
     double new_radius = ASTEROID_RADII_LOOKUP[new_size];
 
-    double angle_left = (theta + split_angle) * DEG_TO_RAD;
-    double angle_center = theta * DEG_TO_RAD;
-    double angle_right = (theta - split_angle) * DEG_TO_RAD;
+    double angle_left = radians(theta + split_angle);
+    double angle_center = radians(theta);
+    double angle_right = radians(theta - split_angle);
 
     double cos_angle_left = std::cos(angle_left);
     double sin_angle_left = std::sin(angle_left);
@@ -1411,12 +1415,14 @@ forecast_asteroid_splits(const Asteroid& a, int64_t timesteps_until_appearance, 
 // Mine splits
 inline std::array<Asteroid, 3>
 forecast_asteroid_mine_instantaneous_splits(const Asteroid& asteroid, const Mine& mine, const GameState& game_state) {
+    assert(asteroid.size != 1);
     double delta_x = mine.x - asteroid.x;
     double delta_y = mine.y - asteroid.y;
     double dist = std::sqrt(delta_x * delta_x + delta_y * delta_y);
     double F = (-dist / MINE_BLAST_RADIUS + 1.0) * MINE_BLAST_PRESSURE * 2.0 * asteroid.radius;
     double a_accel = F / asteroid.mass;
     double vfx, vfy, v, split_angle;
+    // calculate "impulse" based on acc
     if (dist != 0.0) {
         double cos_theta = (asteroid.x - mine.x) / dist;
         double sin_theta = (asteroid.y - mine.y) / dist;
@@ -1544,25 +1550,20 @@ inline std::pair<bool, int64_t> check_mine_opportunity(const Ship& ship_state, c
     int64_t lives_fudge = 0;
 
     for (const auto& other_ship : other_ships) {
-        double delta_x = ship_state.x - other_ship.x;
-        double delta_y = ship_state.y - other_ship.y;
-        double separation = (MINE_BLAST_RADIUS - MINE_OTHER_SHIP_RADIUS_FUDGE) + other_ship.radius;
-        // Fast circular-rect bound test before full circle
-        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && (delta_x * delta_x + delta_y * delta_y <= separation * separation))
-        {
+        if (check_collision(ship_state.x, ship_state.y, MINE_BLAST_RADIUS - MINE_OTHER_SHIP_RADIUS_FUDGE, other_ship.x, other_ship.y, other_ship.radius)) {
             // Like bombing the other ship, count as bonus "asteroids"
             mine_ast_count += MINE_OTHER_SHIP_ASTEROID_COUNT_EQUIVALENT;
         }
     }
 
     if (ship_state.bullets_remaining == 0) {
-        // Fudge mine count, encourage mining when out of ammo
+        // If ship is out of bullets, fudge the numbers to make the mine fis more likely to activate
         mine_ast_count *= 5;
         if (game_state.mines.size() > 0) {
-            // If any mine is already present, avoid wasting a mine
+            // We want to conserve mines more if we only have mines left and not bullets, and laying multiple mines at once is risky because the first one may blow asteroids away from the second, so the second one would be a waste
             return std::make_pair(false, 0);
         }
-        lives_fudge = 2;
+        lives_fudge = 2; // Fudge it so that we don't care if we're at a low amount of lives. If we're out of bullets, then it's fine to be reckless, because the assumption is that it's most of the way through the scenario anyway. This assumption has been false for XFC 2024's second corridor scenario though, but it's good enough at avoiding that it doesn't matter.
     }
     // return value from mine_fis (fuzzy logic function) for opportunity confirmation
     //return mine_fis(ship_state.mines_remaining, ship_state.lives_remaining + lives_fudge, mine_ast_count);
@@ -1580,7 +1581,7 @@ inline std::pair<bool, int64_t> check_mine_opportunity(const Ship& ship_state, c
 
 // Linear interpolation (with clamping)
 inline double linear(double x, double x1, double y1, double x2, double y2) {
-    assert(x1 < x2);
+    assert(x1 <= x2);
     if (x <= x1) {
         return y1;
     } else if (x >= x2) {
@@ -1618,7 +1619,8 @@ std::vector<double> tuple_to_vector(const std::tuple<Args...>& tpl) {
     return vec;
 }
 
-// Weighted harmonic mean
+// Calculate the weighted harmonic mean of a list of numbers.
+// If no weights are provided, the regular harmonic mean is calculated
 inline double weighted_harmonic_mean(const std::vector<double>& numbers, const std::vector<double>* weights=nullptr, double offset = 0.0) {
     if (numbers.empty()) return 0.0;
     if (weights) {
@@ -1833,19 +1835,20 @@ inline double angle_difference_deg(double angle1, double angle2) {
 
 inline std::vector<Action>
 get_ship_maneuver_move_sequence(double ship_heading_angle, double ship_cruise_speed, double ship_accel_turn_rate, int64_t ship_cruise_timesteps, double ship_cruise_turn_rate, double ship_starting_speed = 0.0) {
+    // This is a silly code duplication to get a super optimized class for getting the ship's move sequence. Using the entire Simulation class is overkill and too much.
     std::vector<Action> move_sequence;
     double ship_speed = ship_starting_speed;
 
     // --- update helper ---
     auto update = [&](double thrust, double turn_rate) {
-        // Apply drag, stop at zero if needed
+        // Apply drag. Fully stop the ship if it would cross zero speed in this time (prevents oscillation)
         double drag_amount = SHIP_DRAG * DELTA_TIME;
         if (drag_amount > std::abs(ship_speed)) {
             ship_speed = 0.0;
         } else {
             ship_speed -= drag_amount * sign(ship_speed);
         }
-        // Limit thrust
+        // Bounds check the thrust
         thrust = std::clamp(thrust, -SHIP_MAX_THRUST, SHIP_MAX_THRUST);
         // Apply thrust
         ship_speed += thrust * DELTA_TIME;
@@ -1877,10 +1880,13 @@ get_ship_maneuver_move_sequence(double ship_heading_angle, double ship_cruise_sp
 
     // --- accelerate helper ---
     auto accelerate = [&](double target_speed, double turn_rate) {
+        // Keep in mind speed can be negative
+        // Drag will always slow down the ship
         while (std::abs(target_speed - ship_speed) > EPS) {
             double drag = -SHIP_DRAG * sign(ship_speed);
-            double drag_amount = SHIP_DRAG * DELTA_TIME;
+            constexpr double drag_amount = SHIP_DRAG * DELTA_TIME;
             if (drag_amount > std::abs(ship_speed)) {
+                // The drag amount is reduced if it would make the ship cross 0 speed on its own
                 double adjust_drag_by = std::abs((drag_amount - std::abs(ship_speed)) * FPS);
                 drag -= adjust_drag_by * sign(drag);
             }
@@ -1893,6 +1899,7 @@ get_ship_maneuver_move_sequence(double ship_heading_angle, double ship_cruise_sp
 
     // --- cruise helper ---
     auto cruise = [&](int64_t cruise_timesteps, double cruise_turn_rate) {
+        // Maintain current speed
         for (int64_t i = 0; i < cruise_timesteps; ++i) {
             update(sign(ship_speed) * SHIP_DRAG, cruise_turn_rate);
         }
@@ -1905,14 +1912,17 @@ get_ship_maneuver_move_sequence(double ship_heading_angle, double ship_cruise_sp
     accelerate(0.0, 0.0);
 
     // Guarantee at least one action
-    if (move_sequence.empty())
+    // We still need a null sequence here, so that we don't end up with a 0 frame maneuver!
+    if (move_sequence.empty()) {
         move_sequence.emplace_back(0.0, 0.0, false);
+    }
 
     // --- Special: scan for “bad” move sequence; diagnostic printout ---
     bool flag = false;
     for (const auto& a : move_sequence) {
-        if (is_close(a.turn_rate, 81.69680070842742))
+        if (is_close(a.turn_rate, 81.69680070842742)) {
             flag = true;
+        }
     }
     if (is_close(ship_accel_turn_rate, 81.69680070842742))
         flag = true;
@@ -2382,7 +2392,7 @@ inline std::pair<double, double> solve_quadratic(double a, double b, double c) {
         // Linear
         if (b == 0.0) {
             if (c == 0.0)
-                // Infinite solutions, but just return this
+                // Infinite solutions, but just return this single one
                 return {0.0, 0.0};
             else
                 // No solutions
@@ -2506,15 +2516,21 @@ inline std::pair<double, double> collision_prediction(
 inline std::pair<double, double>
 find_time_interval_in_which_unwrapped_asteroid_is_within_main_wrap(double ast_pos_x, double ast_pos_y, double ast_vel_x, double ast_vel_y, const GameState& game_state) {
     std::pair<double, double> x_interval, y_interval;
-
+    // Do the x and y components separately
     if (is_close_to_zero(ast_vel_x)) {
         if (check_coordinate_bounds(game_state, ast_pos_x, 0.0)) {
+            // x coordinates are inbounds, so the asteroid will always be within the main wrap
             x_interval = {-inf, inf};
         } else {
+            // x coordinates are out of bounds, so the asteroid never gets to be within the main wrap
             return { std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN() };
         }
     } else {
+        // x(t) = x_0 + t*vx
+        // 0 = x_0 + t*vx, t = -x_0/vx
+        // width = x_0 + t*vx, t = (width - x_0)/vx
         if (ast_vel_x > 0.0) {
+            // Moving left to right
             x_interval = {-ast_pos_x / ast_vel_x, (game_state.map_size_x - ast_pos_x) / ast_vel_x};
         } else {
             x_interval = {(game_state.map_size_x - ast_pos_x) / ast_vel_x, -ast_pos_x / ast_vel_x};
@@ -2523,12 +2539,18 @@ find_time_interval_in_which_unwrapped_asteroid_is_within_main_wrap(double ast_po
 
     if (is_close_to_zero(ast_vel_y)) {
         if (check_coordinate_bounds(game_state, 0.0, ast_pos_y)) {
+            // y coordinates are inbounds, so the asteroid will always be within the main wrap
             y_interval = { -inf, inf };
         } else {
+            // y coordinates are out of bounds, so the asteroid never gets to be within the main wrap
             return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
         }
     } else {
+        // y(t) = y_0 + t*vy
+        // 0 = y_0 + t*vy, t = -y_0/vy
+        // height = y_0 + t*vy, t = (height - y_0)/vy
         if (ast_vel_y > 0.0) {
+            // Moving up
             y_interval = {-ast_pos_y / ast_vel_y, (game_state.map_size_y - ast_pos_y) / ast_vel_y};
         } else {
             y_interval = {(game_state.map_size_y - ast_pos_y) / ast_vel_y, -ast_pos_y / ast_vel_y};
@@ -2538,11 +2560,16 @@ find_time_interval_in_which_unwrapped_asteroid_is_within_main_wrap(double ast_po
     assert(x_interval.first <= x_interval.second);
     assert(y_interval.first <= y_interval.second);
 
-    // Take the intersection of intervals
+    // Now that we have the x and y intervals, combine them into a unified interval of time
+    // Take the intersection of two intervals:
     if (x_interval.second < y_interval.first || y_interval.second < x_interval.first) {
+        // One interval ends before the next one starts, so there's no overlap
         return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     } else {
+        // The intervals overlap!
+        // The start of the intersection is the maximum of the two start times
         double start = std::max(x_interval.first, y_interval.first);
+        // The end of the intersection is the minimum of the two end times
         double end = std::min(x_interval.second, y_interval.second);
         return {start, end};
     }
@@ -2588,30 +2615,37 @@ inline double predict_next_imminent_collision_time_with_asteroid(
     }
 
     if (std::isnan(start_collision_time) || std::isnan(end_collision_time)) {
+        // If we're already colliding with something, then return 0 as the next imminent collision time
         return inf;
     } else {
         assert(start_collision_time <= end_collision_time);
         if (!(SHIP_RADIUS_PLUS_SIZE_4_ASTEROID_RADIUS < ship_pos_x && ship_pos_x < game_state.map_size_x - SHIP_RADIUS_PLUS_SIZE_4_ASTEROID_RADIUS
            && SHIP_RADIUS_PLUS_SIZE_4_ASTEROID_RADIUS < ship_pos_y && ship_pos_y < game_state.map_size_y - SHIP_RADIUS_PLUS_SIZE_4_ASTEROID_RADIUS))
         {
-            // Asteroid could be outside main area--clip collision time to existence in main wrap
+            // There's the possibility that this isn't a true collision, because the asteroid could have been on the other side of the border, so it never actually hit the ship.
+            // We need to find the time interval in which the asteroid is in the main game area, and see whether the collision time intersects with this time interval.
             auto [t1, t2] = find_time_interval_in_which_unwrapped_asteroid_is_within_main_wrap(
                 ast_pos_x, ast_pos_y, ast_vel_x, ast_vel_y, game_state
             );
-            // Intersect collision interval with asteroid-in-world interval
+            // Find the intersection in the collision period and where the collision is within the main wrap
             if (end_collision_time < t1 || start_collision_time > t2) {
+                // There is no intersection! The collision never occurs.
                 return inf;
             } else {
                 start_collision_time = std::max(start_collision_time, t1);
                 end_collision_time = std::min(end_collision_time, t2);
             }
         }
+        // Now we're essentially finding the intersection between the intervals [start_collision_time, end_collision_time] and [0, infinity], and returning the start of that intersection interval
         // Intersection with [0, inf)
         if (end_collision_time < 0.0) {
+            // No overlap
             return inf;
         } else if (start_collision_time <= 0.0) {
+            // start_collision_time <= 0.0 <= end_collision_time
             return 0.0;
         } else {
+            // start_collision_time > 0.0 and 0.0 <= end_collision_time
             return start_collision_time;
         }
     }
@@ -2668,8 +2702,9 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
             double end_angle = pymod(angle + 0.5 * angular_width + TAU, TAU);
 
             // Check if this asteroid covers the angle 0 (or equivalently, 2π)
-            if (start_angle > end_angle)  // wraps around angle 0
+            if (start_angle > end_angle) { // wraps around angle 0
                 initial_cover_count++;
+            }
 
             // Add angles in original and offset positions
             // True is for start and False for end
@@ -2693,6 +2728,7 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
             if (marker) {
                 // Start
                 if (counter == 0 && !std::isnan(gap_start)) {
+                    // Calculate and check the gap size
                     double gap = angle - gap_start;
                     assert(gap >= 0.0);
                     if (gap > largest_gap) {
@@ -2705,6 +2741,7 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
                 // End
                 counter--;
                 if (counter == 0) {
+                    // Mark the start of a new gap
                     gap_start = angle;
                 }
             }
@@ -2729,7 +2766,7 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
     std::optional<double> most_imminent_asteroid_speed;
     double nearby_asteroid_total_speed = 0.0;
     int64_t nearby_asteroid_count = 0;
-    double nearby_threshold_square = 40000.0; // 200.0**2
+    constexpr double nearby_threshold_square = 200.0*200.0;
     std::vector<Asteroid> nearby_asteroids;
 
     for (const Asteroid& asteroid : asteroids) {
@@ -2801,7 +2838,7 @@ inline bool check_collision(double a_x, double a_y, double a_r, double b_x, doub
     double delta_x = a_x - b_x;
     double delta_y = a_y - b_y;
     double separation = a_r + b_r;
-    // Fast bounding-box rejection, then distance^2 check
+    // Because most of the time the assumption is that there will be no collision, it's faster to do a quick rejection check, and only when it's possible for them to collide, we do the slightly more expensive squaring check
     if (std::abs(delta_x) <= separation &&
         std::abs(delta_y) <= separation &&
         (delta_x * delta_x + delta_y * delta_y <= separation * separation)) {
