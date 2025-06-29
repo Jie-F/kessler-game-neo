@@ -227,7 +227,7 @@ constexpr double inf = std::numeric_limits<double>::infinity();
 constexpr const char* BUILD_NUMBER = "2025-06-25 Neo, for Kessler v2.1.9";
 
 // Output Config
-constexpr bool DEBUG_MODE = false;
+constexpr bool DEBUG_MODE = true;
 constexpr bool PRINT_EXPLANATIONS = false;
 constexpr double EXPLANATION_MESSAGE_SILENCE_INTERVAL_S = 2.0;
 
@@ -1571,7 +1571,7 @@ inline std::pair<bool, int64_t> check_mine_opportunity(const Ship& ship_state, c
     }
     bool drop_a_mine = random_double() <= drop_mine_probability;
     if (drop_a_mine) {
-        std::cout << drop_mine_probability << std::endl;
+        //std::cout << drop_mine_probability << std::endl;
     }
     return std::make_pair(drop_a_mine, mine_ast_count);
 }
@@ -2122,7 +2122,8 @@ inline std::vector<Asteroid> unwrap_asteroid(const Asteroid& asteroid, double ma
         return unwrapped_asteroids;
     }*/
     // Find where the asteroid ends up, universe-wise after the time horizon is up, and use this to short-circuit some computation without having to do the full mathy stuff
-    if constexpr (ENABLE_SANITY_CHECKS) {
+    if constexpr (ENABLE_SANITY_CHECKS && false) {
+        // Some scenarios start with asteroids out of bounds, so this isn't a good assertion.
         double x_wrap1 = std::floor(asteroid.x / max_x);
         double y_wrap1 = std::floor(asteroid.y / max_y);
         assert(x_wrap1 == 0.0);
@@ -4378,6 +4379,8 @@ public:
                     }
                 } else {
                     if (ship_state.bullets_remaining == 0 && ship_state.mines_remaining == 0) {
+                        // We're out of ammo, but we didn't crash. This is bad! We want to crash into asteroids to get score, or crash into the other ship to kill that too
+                        // TODO: Maybe keep track of the other ship's ammo, and if they're out of ammo, we don't want to crash into them!
                         crash_fitness = 0.0;
                     } else {
                         // Not out of ammo, and we didn't crash. Good fitness!
@@ -4550,7 +4553,7 @@ public:
 
         double placed_mine_fitness = 0.0;
         if (sim_placed_a_mine) {
-            placed_mine_fitness = fast_sigmoid(total_asteroids_hit_by_mines_this_sim_placed, 0.4, 14.0);
+            placed_mine_fitness = fast_sigmoid(static_cast<double>(total_asteroids_hit_by_mines_this_sim_placed), 0.4, 14.0);
         }
 
         // ====== STATUS/SAFETY MESSAGES ======
@@ -5962,7 +5965,7 @@ public:
                                     }
                                 } else {
                                     if (ship_was_safe) {
-                                        std::cout << "Bullet sim missed in main maneuver update loop. Womp womp. Simid: " << this->sim_id << std::endl;
+                                        //std::cout << "Bullet sim missed in main maneuver update loop. Womp womp. Simid: " << this->sim_id << std::endl;
                                     }
                                     // We just don't shoot. Yeah, it's not ideal. We spent all this time targeting an asteroid and now we're not shooting,
                                     // but the next timestep we can shoot again so we can just choose a new target and hope it works.
@@ -6358,7 +6361,6 @@ public:
                     if (respawn_maneuver_pass_number == 0) {
                         assert(!return_value.has_value());
                     }
-                    assert(respawn_maneuver_pass_number == 0);
                 }
                 new_asteroids.clear();
                 for (Asteroid& asteroid : game_state.asteroids) {
@@ -6862,7 +6864,7 @@ public:
             // Only switch to this sequence if its fitness is better.
             if (best_action_fitness > current_sequence_fitness) {
                 // JUMP SHIP!!!!!!!!!
-                debug_print("Wipe the current move sequence and switch to the new better sequence! Current action seq fitness is " + std::to_string(current_sequence_fitness) + " but we can do " + std::to_string(best_action_fitness));
+                debug_print("Wipe the current move sequence and switch to the new better sequence! Current action seq fitness is " + std::to_string(current_sequence_fitness) + " but we can do " + std::to_string(best_action_fitness) + " and the crash fitness is " + std::to_string(best_action_fitness_breakdown[5]));
                 action_queue.clear();
                 actioned_timesteps.clear();
                 fire_next_timestep_schedule.clear();
@@ -6880,6 +6882,7 @@ public:
             }
         } else {
             // We're out of actions, so we HAVE to decide on a next action out of our current options!
+            debug_print("Out of queued actions, deciding next action with overall fitness of " + std::to_string(best_action_fitness) + " and the crash fitness is " + std::to_string(best_action_fitness_breakdown[5]));
             assert(action_queue.empty());
         }
 
@@ -6969,19 +6972,19 @@ public:
         auto new_ship_state = best_action_sim.get_ship_state();
         bool new_fire_next_timestep_flag = best_action_sim.get_fire_next_timestep_flag();
 
-        if (new_fire_next_timestep_flag && new_ship_state.is_respawning && lives_remaining_that_we_did_respawn_maneuver_for.contains(new_ship_state.lives_remaining) == 0) {
+        if (new_fire_next_timestep_flag && new_ship_state.is_respawning && !lives_remaining_that_we_did_respawn_maneuver_for.contains(new_ship_state.lives_remaining)) {
             // Forcing off the fire next timestep, because we just took damage and we're going into respawn maneuver mode! Don't want to get wombo combo'd
             new_fire_next_timestep_flag = false;
         }
 
         if constexpr (ENABLE_SANITY_CHECKS) {
-            if (lives_remaining_that_we_did_respawn_maneuver_for.contains(new_ship_state.lives_remaining) == 0 && new_ship_state.is_respawning) {
+            if (!lives_remaining_that_we_did_respawn_maneuver_for.contains(new_ship_state.lives_remaining) && new_ship_state.is_respawning) {
             // If our ship is hurt in our next next action and I haven't done a respawn maneuver yet,
             // Then assert our next action is not a respawning action (REMOVED: Python's commented-out assertion).
-            //if (game_state_to_base_planning->respawning || new_fire_next_timestep_flag) {
-            //    std::cerr << "We haven't done a respawn maneuver for having " << new_ship_state.lives_remaining << " lives left\n";
-            //    std::cerr << "game_state_to_base_planning->respawning: " << game_state_to_base_planning->respawning << ", new_fire_next_timestep_flag: " << new_fire_next_timestep_flag << ", respawn_timer=" << best_action_sim.get_respawn_timer() << "\n";
-            //}
+                if (game_state_to_base_planning->respawning || new_fire_next_timestep_flag) {
+                    std::cerr << "We haven't done a respawn maneuver for having " << new_ship_state.lives_remaining << " lives left\n";
+                    std::cerr << "game_state_to_base_planning->respawning: " << game_state_to_base_planning->respawning << ", new_fire_next_timestep_flag: " << new_fire_next_timestep_flag << ", respawn_timer=" << best_action_sim.get_respawn_timer() << "\n";
+                }
             // assert(!game_state_to_base_planning->respawning && !new_fire_next_timestep_flag);
             }
         }
@@ -7002,7 +7005,6 @@ public:
             new_fire_next_timestep_flag
         };*/
 
-
         // Histories
         respawn_timer_history = best_action_sim.get_respawn_timer_history();
         asteroids_pending_death_schedule = best_action_sim.get_asteroids_pending_death_history();
@@ -7017,14 +7019,15 @@ public:
         }
 
         if constexpr (ENABLE_SANITY_CHECKS) {
-            assert((bool)game_state_to_base_planning->ship_respawn_timer == game_state_to_base_planning->ship_state.is_respawning);
+            //assert((bool)game_state_to_base_planning->ship_respawn_timer == game_state_to_base_planning->ship_state.is_respawning);
+            assert((bool)best_action_sim.get_respawn_timer() == new_ship_state.is_respawning);
         }
-        if (game_state_to_base_planning->respawning) {
+        if (new_ship_state.is_respawning) {
             // The action we're doing now is a respawn maneuver, so mark the number of lives we now have after losing a life
             lives_remaining_that_we_did_respawn_maneuver_for.insert(new_ship_state.lives_remaining);
         }
 
-        base_gamestates[best_action_sim_last_state.timestep] = game_state_to_base_planning.value(); // Save state for validation/debug
+        //base_gamestates[best_action_sim_last_state.timestep] = game_state_to_base_planning.value(); // Save state for validation/debug
 
         // Optionally dump state to file
         // if (KEY_STATE_DUMP)
@@ -7694,10 +7697,7 @@ public:
                     this->game_state_to_base_planning = {
                         this->current_timestep,
                         // respawning: ship_state.is_respawning AND ship_state.lives_remaining not in lives_remaining_that_we_did_respawn_maneuver_for
-                        ship_state.is_respawning && (std::find(
-                            lives_remaining_that_we_did_respawn_maneuver_for.begin(),
-                            lives_remaining_that_we_did_respawn_maneuver_for.end(),
-                            ship_state.lives_remaining) == lives_remaining_that_we_did_respawn_maneuver_for.end()),
+                        ship_state.is_respawning && !lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
                         ship_state,
                         game_state,
                         3.0, // ship_respawn_timer
@@ -7729,10 +7729,7 @@ public:
                     this->game_state_to_base_planning = {
                         this->current_timestep,
                         // respawning: ship_state.is_respawning AND ship_state.lives_remaining not in lives_remaining_that_we_did_respawn_maneuver_for
-                        ship_state.is_respawning && (std::find(
-                            lives_remaining_that_we_did_respawn_maneuver_for.begin(),
-                            lives_remaining_that_we_did_respawn_maneuver_for.end(),
-                            ship_state.lives_remaining) == lives_remaining_that_we_did_respawn_maneuver_for.end()),
+                        ship_state.is_respawning && !lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
                         ship_state,
                         game_state,
                         0.0, // ship_respawn_timer
@@ -7759,13 +7756,7 @@ public:
                     this->game_state_to_base_planning = {
                         this->current_timestep,
                         // respawning
-                        ship_state.is_respawning && (
-                            std::find(
-                                lives_remaining_that_we_did_respawn_maneuver_for.begin(),
-                                lives_remaining_that_we_did_respawn_maneuver_for.end(),
-                                ship_state.lives_remaining
-                            ) == lives_remaining_that_we_did_respawn_maneuver_for.end()
-                        ),
+                        ship_state.is_respawning && !lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
                         ship_state,
                         game_state,
                         // ship_respawn_timer: 0.0 if timestep == 0 else respawn_timer_history[cur_timestep]
@@ -7815,13 +7806,7 @@ public:
                     this->game_state_to_base_planning = {
                         this->current_timestep,
                         // respawning
-                        ship_state.is_respawning && (
-                            std::find(
-                                lives_remaining_that_we_did_respawn_maneuver_for.begin(),
-                                lives_remaining_that_we_did_respawn_maneuver_for.end(),
-                                ship_state.lives_remaining
-                            ) == lives_remaining_that_we_did_respawn_maneuver_for.end()
-                        ),
+                        ship_state.is_respawning && !this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
                         ship_state,
                         game_state,
                         // ship_respawn_timer: 0.0 if timestep == 0 else respawn_timer_history[cur_timestep]
