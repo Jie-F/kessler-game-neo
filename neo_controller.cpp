@@ -236,7 +236,7 @@ constexpr bool STATE_CONSISTENCY_CHECK_AND_RECOVERY = true;
 constexpr bool CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS = true;
 constexpr bool ENABLE_SANITY_CHECKS = true;
 constexpr bool PRUNE_SIM_STATE_SEQUENCE = true;
-constexpr bool VALIDATE_SIMULATED_KEY_STATES = false;
+//constexpr bool VALIDATE_SIMULATED_KEY_STATES = false;
 constexpr bool VALIDATE_ALL_SIMULATED_STATES = false;
 constexpr bool VERIFY_AST_TRACKING = false;
 constexpr bool RESEED_RNG = false;
@@ -1457,12 +1457,7 @@ inline int64_t count_asteroids_in_mine_blast_radius_with_other_mines(const GameS
                 // Project asteroid position into future (with correct wrapping)
                 double asteroid_future_pos_x = pymod(a.x + static_cast<double>(future_timesteps) * a.vx * DELTA_TIME, game_state.map_size_x);
                 double asteroid_future_pos_y = pymod(a.y + static_cast<double>(future_timesteps) * a.vy * DELTA_TIME, game_state.map_size_y);
-                // Fast bounding check (no function call)
-                double delta_x = asteroid_future_pos_x - mine_x;
-                double delta_y = asteroid_future_pos_y - mine_y;
-                double separation = a.radius + (MINE_BLAST_RADIUS - MINE_ASTEROID_COUNT_FUDGE_DISTANCE);
-                if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x * delta_x + delta_y * delta_y <= separation * separation)
-                {
+                if (check_collision(asteroid_future_pos_x, asteroid_future_pos_y, a.radius, mine_x, mine_y, MINE_BLAST_RADIUS - MINE_ASTEROID_COUNT_FUDGE_DISTANCE)) {
                     ++count;
                 }
             }
@@ -1504,10 +1499,7 @@ inline int64_t count_asteroids_in_mine_blast_radius_with_other_mines(const GameS
                     asteroid.x = pymod(asteroid.x + asteroid.vx * DELTA_TIME * (timesteps_until_explosion - fast_simulated_timesteps), game_state.map_size_x);
                     asteroid.y = pymod(asteroid.y + asteroid.vy * DELTA_TIME * (timesteps_until_explosion - fast_simulated_timesteps), game_state.map_size_y);
                     // Do detonation check, and forecast splits and stuff
-                    double delta_x = asteroid.x - mine.x;
-                    double delta_y = asteroid.y - mine.y;
-                    double separation = asteroid.radius + MINE_BLAST_RADIUS;
-                    if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                    if (check_collision(asteroid.x, asteroid.y, asteroid.radius, mine.x, mine.y, MINE_BLAST_RADIUS)) {
                         if (asteroid.size != 1) {
                             for (const Asteroid& new_ast : forecast_asteroid_mine_instantaneous_splits(asteroid, mine, game_state)) {
                                 new_asteroids.push_back(new_ast);
@@ -1528,12 +1520,7 @@ inline int64_t count_asteroids_in_mine_blast_radius_with_other_mines(const GameS
                 // Project asteroid position into future (with correct wrapping)
                 double asteroid_future_pos_x = pymod(a.x + static_cast<double>(future_timesteps - fast_simulated_timesteps) * a.vx * DELTA_TIME, game_state.map_size_x);
                 double asteroid_future_pos_y = pymod(a.y + static_cast<double>(future_timesteps - fast_simulated_timesteps) * a.vy * DELTA_TIME, game_state.map_size_y);
-                // Fast bounding check (no function call)
-                double delta_x = asteroid_future_pos_x - mine_x;
-                double delta_y = asteroid_future_pos_y - mine_y;
-                double separation = a.radius + (MINE_BLAST_RADIUS - MINE_ASTEROID_COUNT_FUDGE_DISTANCE);
-                if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x * delta_x + delta_y * delta_y <= separation * separation)
-                {
+                if (check_collision(asteroid_future_pos_x, asteroid_future_pos_y, a.radius, mine_x, mine_y, MINE_BLAST_RADIUS - MINE_ASTEROID_COUNT_FUDGE_DISTANCE)) {
                     ++count;
                 }
             }
@@ -4622,53 +4609,63 @@ public:
             ? std::vector<double>(fitness_function_weights->begin(), fitness_function_weights->end())
             : std::vector<double>(DEFAULT_FITNESS_WEIGHTS.begin(), DEFAULT_FITNESS_WEIGHTS.end());
 
-
+        // Use fuzzy "AND" by averaging the fuzzy outputs
         double overall_fitness = weighted_harmonic_mean(fitness_breakdown_vector, &fitness_weights, 1.0);
         assert((overall_fitness >= 0.0 && overall_fitness <= 1.0) || asteroids_fitness < 0.0);
         //print_vector(fitness_breakdown_vector);
         if (overall_fitness > 0.9) {
             safety_messages.push_back("I'm safe and chilling");
         }
+        // The overall_fitness is the "fuzzy" output. There's no need to defuzzify it since we're using this as a fitness value to rank the actions and future states
         return overall_fitness;
     }
 
     std::array<double, 9>
     get_fitness_breakdown() const {
+        // This is used to get the individual fitnesses before they got aggregated into the one fitness that was returned.
         assert(fitness_breakdown.has_value() && "fitness_breakdown must not be null");
         return fitness_breakdown.value();
     }
 
     std::optional<Target>
     find_extreme_shooting_angle_error(const std::vector<Target>& asteroid_list, double threshold, const std::string& mode = "largest_below") const {
-        // Extract the angle values
-        std::vector<double> shooting_angles;
-        shooting_angles.reserve(asteroid_list.size());
-        for (const Target& d : asteroid_list) {
-            shooting_angles.push_back(d.shooting_angle_error_deg);
-        }
+        // This takes in a list of targets sorted by the shooting angle required, and it'll let you find the next target above or below a given target.
+        // This is useful if, say you want to shoot at a target, but the ship can't spin that far before you're able to shoot again,
+        // so you can pick a target to shoot along the way.
 
-        size_t idx = 0;
+        // Comparator that can compare both (Target, double) and (double, Target)
+        struct AngleCompare {
+            bool operator()(const Target& t, double val) const {
+                return t.shooting_angle_error_deg < val;
+            }
+            bool operator()(double val, const Target& t) const {
+                return val < t.shooting_angle_error_deg;
+            }
+        };
+
         if (mode == "largest_below") {
-            // std::lower_bound returns the iterator to the first element >= threshold
-            auto it = std::lower_bound(shooting_angles.begin(), shooting_angles.end(), threshold);
-            idx = static_cast<size_t>(it - shooting_angles.begin());
-            if (idx > 0) {
-                --idx;
+            // Find the first element where shooting_angle_error_deg >= threshold
+            auto it = std::lower_bound(asteroid_list.begin(), asteroid_list.end(), threshold, AngleCompare{});
+            // Adjust to get the largest value < threshold
+            if (it != asteroid_list.begin()) {
+                --it;
+                return *it;
             } else {
-                return std::nullopt;
+                return std::nullopt; // All values >= threshold
             }
+
         } else if (mode == "smallest_above") {
-            // std::upper_bound returns iterator to first element > threshold
-            auto it = std::upper_bound(shooting_angles.begin(), shooting_angles.end(), threshold);
-            idx = static_cast<size_t>(it - shooting_angles.begin());
-            if (idx >= asteroid_list.size()) {
-                return std::nullopt;
+            // Find the first element where shooting_angle_error_deg > threshold
+            auto it = std::upper_bound(asteroid_list.begin(), asteroid_list.end(), threshold, AngleCompare{});
+            if (it != asteroid_list.end()) {
+                return *it;
+            } else {
+                return std::nullopt; // All values <= threshold
             }
+
         } else {
             throw std::invalid_argument("Invalid mode. Choose 'largest_below' or 'smallest_above'");
         }
-
-        return asteroid_list[idx];
     }
 
     bool target_selection() {
@@ -4790,10 +4787,7 @@ public:
                     for (const auto& m : game_state.mines) {
                         assert(m.alive);
                         Asteroid asteroid_when_mine_explodes = time_travel_asteroid_s(asteroid, m.remaining_time, game_state);
-                        double delta_x = asteroid_when_mine_explodes.x - m.x;
-                        double delta_y = asteroid_when_mine_explodes.y - m.y;
-                        double separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS;
-                        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                        if (check_collision(asteroid_when_mine_explodes.x, asteroid_when_mine_explodes.y, asteroid_when_mine_explodes.radius, m.x, m.y, MINE_BLAST_RADIUS)) {
                             // Keep track of whose mine this is. If it's mine, I want more asteroids to be in its blast radius so it does more damage. If it's theirs, I want to shoot asteroids within its blast radius so it does less damage.
                             if (mine_positions_placed.contains(std::make_pair(m.x, m.y))) {
                                 asteroid_will_get_hit_by_my_mine = true;
@@ -5261,7 +5255,6 @@ public:
         double rad_heading, cos_heading, sin_heading;
         double thrust, turn_rate, drag_amount;
         double bullet_fired_from_ship_heading, bullet_fired_from_ship_position_x, bullet_fired_from_ship_position_y;
-        double delta_x, delta_y, separation;
         double ship_position_x, ship_position_y;
         std::vector<Asteroid> new_asteroids;
         new_asteroids.reserve(3);
@@ -5468,10 +5461,7 @@ public:
                     mine.alive = false;
                     for (Asteroid& asteroid : asteroids) {
                         if (asteroid.alive) {
-                            delta_x = asteroid.x - mine.x;
-                            delta_y = asteroid.y - mine.y;
-                            separation = asteroid.radius + MINE_BLAST_RADIUS;
-                            if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                            if (check_collision(asteroid.x, asteroid.y, asteroid.radius, mine.x, mine.y, MINE_BLAST_RADIUS)) {
                                 if (asteroid.size != 1) {
                                     for (const Asteroid& new_ast : forecast_asteroid_mine_instantaneous_splits(asteroid, mine, game_state)) {
                                         new_asteroids.push_back(new_ast);
@@ -5500,14 +5490,7 @@ public:
                 new_asteroids.clear();
                 for (Asteroid& asteroid : asteroids) {
                     if (asteroid.alive) {
-                        delta_x = ship_position_x - asteroid.x;
-                        delta_y = ship_position_y - asteroid.y;
-                        separation = SHIP_RADIUS + asteroid.radius;
-
-                        if (std::abs(delta_x) <= separation &&
-                            std::abs(delta_y) <= separation &&
-                            delta_x * delta_x + delta_y * delta_y <= separation * separation) {
-
+                        if (check_collision(ship_position_x, ship_position_y, SHIP_RADIUS, asteroid.x, asteroid.y, asteroid.radius)) {
                             if (asteroid.size != 1) {
                                 for (const Asteroid& new_ast : forecast_asteroid_ship_splits(asteroid, 0, 0.0, 0.0, game_state)) {
                                     new_asteroids.push_back(new_ast);
@@ -5741,7 +5724,7 @@ public:
             }
         }
         // Mines step
-        for (auto& m : game_state.mines) {
+        for (Mine& m : game_state.mines) {
             if (m.alive) { // Might not be faster to do this, since it's not much computation I'm skipping
                 if constexpr (ENABLE_SANITY_CHECKS) {
                     assert(m.remaining_time > EPS - DELTA_TIME);
@@ -5847,11 +5830,7 @@ public:
                                             //project_asteroid_by_timesteps_num = round(m.remaining_time*FPS)
                                             //asteroid_when_mine_explodes = time_travel_asteroid(asteroid, project_asteroid_by_timesteps_num, self.game_state)
                                             Asteroid asteroid_when_mine_explodes = time_travel_asteroid_s(*asteroid, m.remaining_time, game_state);
-                                            //if check_collision(asteroid_when_mine_explodes.x, asteroid_when_mine_explodes.y, asteroid_when_mine_explodes.radius, m.x, m.y, MINE_BLAST_RADIUS):
-                                            double delta_x = asteroid_when_mine_explodes.x - m.x;
-                                            double delta_y = asteroid_when_mine_explodes.y - m.y;
-                                            double separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS;
-                                            if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                                            if (check_collision(asteroid_when_mine_explodes.x, asteroid_when_mine_explodes.y, asteroid_when_mine_explodes.radius, m.x, m.y, MINE_BLAST_RADIUS)) {
                                                 // The asteroid will get taken care of by my mine, so we don't want to shoot it.
                                                 avoid_targeting_this_asteroid = true;
                                                 break;
@@ -6085,11 +6064,7 @@ public:
                                         //project_asteroid_by_timesteps_num = round(m.remaining_time*FPS)
                                         //asteroid_when_mine_explodes = time_travel_asteroid(asteroid, project_asteroid_by_timesteps_num, self.game_state)
                                         Asteroid asteroid_when_mine_explodes = time_travel_asteroid_s(*asteroid, m.remaining_time, game_state);
-                                        //if check_collision(asteroid_when_mine_explodes.x, asteroid_when_mine_explodes.y, asteroid_when_mine_explodes.radius, m.x, m.y, MINE_BLAST_RADIUS):
-                                        double delta_x = asteroid_when_mine_explodes.x - m.x;
-                                        double delta_y = asteroid_when_mine_explodes.y - m.y;
-                                        double separation = asteroid_when_mine_explodes.radius + MINE_BLAST_RADIUS;
-                                        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                                        if (check_collision(asteroid_when_mine_explodes.x, asteroid_when_mine_explodes.y, asteroid_when_mine_explodes.radius, m.x, m.y, MINE_BLAST_RADIUS)) {
                                             avoid_targeting_this_asteroid = true;
                                             break;
                                         }
@@ -6332,10 +6307,7 @@ public:
                 mine_got_destroyed = true;
                 for (Asteroid& asteroid : game_state.asteroids) {
                     if (asteroid.alive) {
-                        double delta_x = asteroid.x - mine.x;
-                        double delta_y = asteroid.y - mine.y;
-                        double separation = asteroid.radius + MINE_BLAST_RADIUS;
-                        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                        if (check_collision(mine.x, mine.y, MINE_BLAST_RADIUS, asteroid.x, asteroid.y, asteroid.radius)) {
                             if (asteroid.size != 1) {
                                 for (const Asteroid& new_ast : forecast_asteroid_mine_instantaneous_splits(asteroid, mine, game_state)) {
                                     new_asteroids.push_back(new_ast);
@@ -6347,24 +6319,18 @@ public:
                 }
                 if (!wait_out_mines) {
                     if (!ship_state.is_respawning) {
-                        double delta_x = ship_state.x - mine.x;
-                        double delta_y = ship_state.y - mine.y;
-                        double separation = SHIP_RADIUS + MINE_BLAST_RADIUS;
-                        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                        if (check_collision(ship_state.x, ship_state.y, SHIP_RADIUS, mine.x, mine.y, MINE_BLAST_RADIUS)) {
                             return_value = false;
                             ship_crashed = true;
                             --ship_state.lives_remaining;
                             ship_state.is_respawning = true;
                             ship_state.speed = 0.0;
-                            ship_state.vx = 0.0; ship_state.vy = 0.0;
+                            ship_state.vx = 0.0;
+                            ship_state.vy = 0.0;
                             respawn_timer = 3.0;
                         }
-                    }
-                    else if (respawn_maneuver_pass_number == 1) {
-                        double delta_x = ship_state.x - mine.x;
-                        double delta_y = ship_state.y - mine.y;
-                        double separation = SHIP_RADIUS + MINE_BLAST_RADIUS;
-                        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                    } else if (respawn_maneuver_pass_number == 1) {
+                        if (check_collision(ship_state.x, ship_state.y, SHIP_RADIUS, mine.x, mine.y, MINE_BLAST_RADIUS)) {
                             last_timestep_colliding = initial_timestep + future_timesteps;
                         }
                     }
@@ -6392,25 +6358,19 @@ public:
                     if (respawn_maneuver_pass_number == 0) {
                         assert(!return_value.has_value());
                     }
+                    assert(respawn_maneuver_pass_number == 0);
                 }
                 new_asteroids.clear();
                 for (Asteroid& asteroid : game_state.asteroids) {
                     if (asteroid.alive) {
-                        double delta_x = ship_state.x - asteroid.x;
-                        double delta_y = ship_state.y - asteroid.y;
-                        double separation = SHIP_RADIUS + asteroid.radius;
-
-                        if (std::abs(delta_x) <= separation &&
-                            std::abs(delta_y) <= separation &&
-                            delta_x * delta_x + delta_y * delta_y <= separation * separation) {
-
+                        if (check_collision(ship_state.x, ship_state.y, SHIP_RADIUS, asteroid.x, asteroid.y, asteroid.radius)) {
                             if (asteroid.size != 1) {
                                 for (const Asteroid& new_ast : forecast_asteroid_ship_splits(asteroid, 0, ship_state.vx, ship_state.vy, game_state)) {
                                     new_asteroids.push_back(new_ast);
                                 }
                             }
-
                             asteroid.alive = false;
+
                             return_value = false;
                             ship_crashed = true;
                             --ship_state.lives_remaining;
@@ -6430,15 +6390,11 @@ public:
                     new_asteroids.begin(),
                     new_asteroids.end()
                 );
-            }
-            else if (respawn_maneuver_pass_number == 1) {
+            } else if (respawn_maneuver_pass_number == 1) {
                 assert(halt_shooting);
                 for (const auto& asteroid : game_state.asteroids) {
                     if (asteroid.alive) {
-                        double delta_x = ship_state.x - asteroid.x;
-                        double delta_y = ship_state.y - asteroid.y;
-                        double separation = SHIP_RADIUS + asteroid.radius;
-                        if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation) {
+                        if (check_collision(ship_state.x, ship_state.y, SHIP_RADIUS, asteroid.x, asteroid.y, asteroid.radius)) {
                             last_timestep_colliding = initial_timestep + future_timesteps;
                             break;
                         }
@@ -7617,9 +7573,6 @@ public:
         //std::cout << "Unwrap asteroid called " << unwrap_asteroid_call_count << " times, and " << unwrap_asteroid_expensive_call_count << " calls did the full expensive thing!" << std::endl;
         //}
         ++this->current_timestep;
-        //if (current_timestep == 0) {
-        //    reseed_rng(0);
-        //}
         
         bool recovering_from_crash = false;
         //std::cout << "Calling actions on timestep " << this->current_timestep << std::endl;
@@ -7683,15 +7636,14 @@ public:
                 bool unexpected_death = false;
                 // If we're dead/respawning but we didn't plan a respawn maneuver for it, OR if we do expect to die at the end of the maneuver, however we actually died mid-maneuver
                 // Originally I thought it'd be a necessary condition to check (not self.last_timestep_ship_is_respawning and ship_state.is_respawning and ship_state.lives_remaining not in self.lives_remaining_that_we_did_respawn_maneuver_for) however WE DO NOT want to check that the last timestep we weren't respawning!
-                // Because a sneaky edge case is, what if we did a respawn maneuver, and then we began to shoot in the middle of the respawn maneuver RIGHT AS the other ship is inside of us? Then we stay in the respawning state without ever getting out of it, but we just lose a life. Losing a life is the main thing we need to check for! And yes, this is an edge case I experienced and spent an hour tracking down.
-                if ((ship_state.is_respawning &&
-                    this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining) == 0) ||
-                    (!this->action_queue.empty() && !this->last_timestep_ship_is_respawning && ship_state.is_respawning &&
-                    this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining)))
-                {
+                // Because a sneaky edge case is, what if we did a respawn maneuver, and then we began to shoot in the middle of the respawn maneuver RIGHT AS the other ship is inside of us?
+                // Then we stay in the respawning state without ever getting out of it, but we just lose a life. Losing a life is the main thing we need to check for!
+                // And yes, this is an edge case I experienced and spent an hour tracking down.
+                if (ship_state.is_respawning && ((!this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining)) ||
+                    (!this->action_queue.empty() && !this->last_timestep_ship_is_respawning && this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining)))) {
                     print_explanation("Ouch, I died in the middle of a maneuver where I expected to survive, due to other ships being present!", this->current_timestep);
                     // Clear the move queue, since previous moves have been invalidated by us taking damage
-                    std::cerr << "CLEAARING ACTION QUEUE\n";
+                    std::cerr << "CLEARING ACTION QUEUE since previous moves have been invalidated by us taking damage\n";
                     this->action_queue.clear();
                     this->actioned_timesteps.clear(); // If we don't clear it, we'll have duplicated moves since we have to overwrite our planned moves to get to safety, which means enqueuing moves on timesteps we already enqueued moves for.
                     this->fire_next_timestep_flag = false; // If we were planning on shooting this timestep but we unexpectedly got hit, DO NOT SHOOT! Actually even if we didn't reset this variable here, we'd only shoot after the respawn maneuver is done and then we'd miss a shot. And yes that was a bug that I fixed lmao
