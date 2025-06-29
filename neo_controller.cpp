@@ -1331,6 +1331,20 @@ inline double fast_sigmoid(double x, double k = 1.0, double x0 = 0.0) {
     return 0.5 * (1.0 + t / (1.0 + std::abs(t)));
 }
 
+inline bool check_collision(double a_x, double a_y, double a_r, double b_x, double b_y, double b_r) {
+    double delta_x = a_x - b_x;
+    double delta_y = a_y - b_y;
+    double separation = a_r + b_r;
+    // Because most of the time the assumption is that there will be no collision, it's faster to do a quick rejection check, and only when it's possible for them to collide, we do the slightly more expensive squaring check
+    if (std::abs(delta_x) <= separation &&
+        std::abs(delta_y) <= separation &&
+        (delta_x * delta_x + delta_y * delta_y <= separation * separation)) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 // Mine FIS stuff is not included
 
 // Forward declarations for helpers/constants assumed as globals or methods somewhere:
@@ -2830,20 +2844,6 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
     return {most_imminent_asteroid_speed_val, imminent_asteroid_relative_heading_deg, largest_gap_relative_heading_deg, nearby_asteroid_average_speed, nearby_asteroid_count, average_directional_speed, total_asteroid_count, current_asteroids_count};
 }
 
-inline bool check_collision(double a_x, double a_y, double a_r, double b_x, double b_y, double b_r) {
-    double delta_x = a_x - b_x;
-    double delta_y = a_y - b_y;
-    double separation = a_r + b_r;
-    // Because most of the time the assumption is that there will be no collision, it's faster to do a quick rejection check, and only when it's possible for them to collide, we do the slightly more expensive squaring check
-    if (std::abs(delta_x) <= separation &&
-        std::abs(delta_y) <= separation &&
-        (delta_x * delta_x + delta_y * delta_y <= separation * separation)) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
 inline std::tuple<
     bool,         // feasible
     double,       // shot_heading_error_rad
@@ -3524,6 +3524,9 @@ bool check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_sho
     const GameState& game_state,
     const Asteroid& asteroid
 ) {
+    //This assumes all asteroids are wrapped/within the game bounds!
+    // Check whether the asteroid has already been shot at, or if we can shoot at it again
+
     // Helper lambda for checks:
     auto verify_asteroid_does_not_appear_in_wrong_timestep = [&](const Asteroid& a) -> bool {
         for (const auto& kv : asteroids_pending_death) {
@@ -3531,6 +3534,7 @@ bool check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_sho
             const auto& asts_list = kv.second;
             if (is_asteroid_in_list(asts_list, a, game_state)) {
                 double delta = static_cast<double>(timestep - current_timestep);
+                // Check for periodic asteroid movement so we don't raise unnecessary false alarms
                 if (std::abs(delta) <= 120) {
                     double movex = std::abs(delta) * DELTA_TIME * a.vx;
                     double movey = std::abs(delta) * DELTA_TIME * a.vy;
@@ -3595,20 +3599,22 @@ void track_asteroid_we_shot_at(
     */
     //debug_print("Tracking asteroid we shot at. Asts pending death: ", ", current_timestep=", current_timestep, ", bullet_travel_timesteps=", bullet_travel_timesteps, ", original_asteroid=", original_asteroid.str());
 
+    // This modifies asteroids_pending_death in place instead of returning it
+
     if constexpr (ENABLE_SANITY_CHECKS) {
         assert(check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(
             asteroids_pending_death, current_timestep, game_state, original_asteroid
         ));
     }
 
-    // Create a copy of the asteroid so we don't mess up the original object
+    // Make a copy of the asteroid so we don't mess up the original object
     Asteroid asteroid = original_asteroid;
 
     // Wrap asteroid position
     asteroid.x = pymod(asteroid.x, game_state.map_size_x);
     asteroid.y = pymod(asteroid.y, game_state.map_size_y);
 
-    // Project asteroid into future positions for each timestep
+    // Project the asteroid into the future, for each timestep, until where it would be on the timestep of its death
     for (int64_t future_timesteps = 0; future_timesteps <= bullet_travel_timesteps; ++future_timesteps) {
         int64_t timestep = current_timestep + future_timesteps;
         auto& list_for_timestep = asteroids_pending_death[timestep];
@@ -3630,8 +3636,9 @@ void track_asteroid_we_shot_at(
                     std::to_string(future_timesteps) + " when tracking. This probably means we're reshooting at the same asteroid we already shot at!").c_str());
         }
         list_for_timestep.push_back(asteroid);
-        // Advance the asteroid to the next position, unless last iteration
+        // Advance the asteroid to the next position
         if (future_timesteps != bullet_travel_timesteps) {
+            // Skip this operation on the last for loop iteration
             asteroid.x = pymod(asteroid.x + asteroid.vx * DELTA_TIME, game_state.map_size_x);
             asteroid.y = pymod(asteroid.y + asteroid.vy * DELTA_TIME, game_state.map_size_y);
         }
@@ -3640,7 +3647,8 @@ void track_asteroid_we_shot_at(
 }
 
 Asteroid time_travel_asteroid(const Asteroid& asteroid, int64_t timesteps, const GameState& game_state) {
-    // Project an asteroid forward or backward in time, with automatic position wrapping
+    // Project an asteroid forward or backward in time, with position wrapping
+    // The ts=0 shortcut isn't good because it doesn't wrap the asteroid!
     return Asteroid(
         pymod(asteroid.x + static_cast<double>(timesteps) * asteroid.vx * DELTA_TIME, game_state.map_size_x),
         pymod(asteroid.y + static_cast<double>(timesteps) * asteroid.vy * DELTA_TIME, game_state.map_size_y),
@@ -3654,7 +3662,8 @@ Asteroid time_travel_asteroid(const Asteroid& asteroid, int64_t timesteps, const
 }
 
 Asteroid time_travel_asteroid_s(const Asteroid& asteroid, double time, const GameState& game_state) {
-    // Project an asteroid forward or backward in time, with automatic position wrapping
+    // Project an asteroid forward or backward in time, with position wrapping
+    // The ts=0 shortcut isn't good because it doesn't wrap the asteroid!
     return Asteroid(
         pymod(asteroid.x + time * asteroid.vx, game_state.map_size_x),
         pymod(asteroid.y + time * asteroid.vy, game_state.map_size_y),
@@ -3668,6 +3677,10 @@ Asteroid time_travel_asteroid_s(const Asteroid& asteroid, double time, const Gam
 }
 
 class Matrix {
+    // Simulates kessler_game.py and ship.py and other game mechanics
+    // Has built-in controllers to do stationary targeting, maneuvers, and respawn maneuvers
+    // Has fitness function to evaluate the set of moves, along with the end state
+    // Can then extract the maneuver along with the future state, to execute the maneuver, and begin planning based on the future state before we actually get there
 public:
     // Member variables
     int64_t initial_timestep;
@@ -3680,12 +3693,12 @@ public:
     std::vector<Action> ship_move_sequence;
     std::vector<SimState> state_sequence;
     int64_t asteroids_shot;
-    std::unordered_map<int64_t, std::vector<Asteroid>> asteroids_pending_death;
+    std::unordered_map<int64_t, std::vector<Asteroid>> asteroids_pending_death; // Keys are timesteps, and the values are the asteroids that still have midair bullets travelling toward them, so we don't want to shoot at them again
     std::unordered_map<int64_t, std::unordered_map<int64_t, std::vector<Asteroid>>> asteroids_pending_death_history;
     std::vector<Asteroid> forecasted_asteroid_splits;
     std::vector<std::vector<Asteroid>> forecasted_asteroid_splits_history;
-    bool halt_shooting;
-    bool fire_next_timestep_flag;
+    bool halt_shooting; // This probably means we're doing a respawn maneuver
+    bool fire_next_timestep_flag; // This is used internally to mark that we want to fire in the next frame for stuff yeah idk
     bool fire_first_timestep;
     //std::optional<GameStatePlotter> game_state_plotter;
     int64_t sim_id;
@@ -3704,7 +3717,9 @@ public:
     bool verify_maneuver_shots;
     std::unordered_set<std::pair<double, double>, pair_hash> mine_positions_placed;
     std::unordered_map<int64_t, std::unordered_set<std::pair<double, double>, pair_hash>> mine_positions_placed_history;
+    // This is to facilitate my two-pass respawn maneuvers. The first pass doesn't shoot, and records when we will no longer hit asteroids. The second pass will begin targeting after the ship is clear from asteroids, since after shooting the respawn invincibility will be gone
     int64_t last_timestep_colliding;
+    // 0 - Not a respawn maneuver, 1 - First pass of respawn maneuver, 2 - Second pass of respawn maneuver
     int64_t respawn_maneuver_pass_number;
     std::vector<bool> random_walk_schedule;
     int64_t total_asteroids_hit_by_mines_this_sim_placed;
@@ -3870,7 +3885,9 @@ public:
 
         total_asteroids_hit_by_mines_this_sim_placed = 0;
 
-        // Define random walk schedule
+        // Define random walk schedule, for shooting while maneuvering
+        // If we just do a random walk (bias = 0.5), we get a normal distribution.
+        // If we do a uniformly distributed bias, then the final random walk will also be uniformly distributed!
         double bias = random_double(); // Random number between 0.0 and 1.0
         random_walk_schedule.clear();
         for (int i = 0; i < RANDOM_WALK_SCHEDULE_LENGTH; ++i) {
@@ -3932,6 +3949,7 @@ public:
     }
 
     GameState get_game_state() const {
+        // In the process of waiting out mines, the game state got messed up so we have to use a backed-up copy
         if (backed_up_game_state_before_post_mutation.has_value()) {
             return backed_up_game_state_before_post_mutation.value().copy();
         }
@@ -4062,6 +4080,7 @@ public:
 
     double get_next_extrapolated_asteroid_collision_time(int64_t additional_timesteps_to_blow_up_mines = 0) const {
         double next_imminent_asteroid_collision_time = std::numeric_limits<double>::infinity();
+        // Assume constant velocity from here
         // The asteroids from the game state could have been from the future since we waited out the mines, but the forecasted splits are from present time, so we need to treat them differently and only back-extrapolate the existing asteroids and not the forecasted ones
         
         auto process_asteroid = [&](const Asteroid& asteroid, bool asteroid_is_born) {
@@ -4138,7 +4157,6 @@ public:
                             }
                         } else {
                             // We're not eliminating this asteroid, and if it was forecasted, it comes into existence before our collision time. Therefore our collision is real and should be considered.
-                            // We're not eliminating it, or it's forecasted, so collision is real
                             next_imminent_asteroid_collision_time = std::min(
                                 next_imminent_asteroid_collision_time, predicted_collision_time
                             );
@@ -4185,14 +4203,11 @@ public:
     }
 
     double get_fitness() {
-        // if (sim_id == 15869 || sim_id == 73186) {
-        //     // Debug print trigger
-        // }
+        // This is meant to be the last method called from this class. This is rather destructive!
         if (fitness_breakdown.has_value()) {
             throw std::runtime_error("Do not call get_fitness twice!");
         }
 
-        // This is meant to be the last method called from this class. This is rather destructive!
         if (!is_close_to_zero(ship_state.speed)) {
             std::cerr << "ship_state.speed = " << ship_state.speed << std::endl;
             assert(false);
@@ -4234,11 +4249,16 @@ public:
 
         // How frequently did we shoot asteroids
         auto get_asteroid_shot_frequency_fitness = [&](int64_t asteroids_shot, double move_sequence_length_s) -> double {
+            // How many asteroids did we shoot? The more the better.
             if (asteroids_shot < 0) {
+                // This is to signal that we won't hit anything ever if we're staying here, so we should defer to the maneuver subcontroller to force a move
+                // This is less effective with this new fitness system, but it should still work eventually.
                 return -0.9;
             } else {
+                // Avoid division by zero
                 double fudged_asteroids_shot = (asteroids_shot == 0) ? 0.1 : static_cast<double>(asteroids_shot);
                 double time_per_asteroids_shot = move_sequence_length_s / fudged_asteroids_shot;
+                // Applying the sigmoid function to smooth the transition
                 double asteroids_fitness = fast_sigmoid(time_per_asteroids_shot, -0.5 * FPS, 10.8*DELTA_TIME);
                 return asteroids_fitness;
             }
@@ -4384,9 +4404,11 @@ public:
         // Sequence length fitness
         auto get_sequence_length_fitness = [&](double move_sequence_length_s, double displacement) -> double {
             if (respawn_maneuver_pass_number > 0) {
+                // This is a respawn maneuver
                 return fast_sigmoid(move_sequence_length_s, -2.8, 1.7);
             } else {
                 if (displacement < EPS) {
+                    // If this is stationary targetting, we give an incentive to do that by discounting the length it takes to aim
                     return fast_sigmoid(move_sequence_length_s, -2.8, 1.7);
                 } else {
                     return fast_sigmoid(move_sequence_length_s, -5.7, 0.8);
@@ -4439,14 +4461,16 @@ public:
 
         // ========== MAIN BODY ==========
 
-        // Only alive mines
+        // Cull dead mines
         std::vector<Mine> filtered_mines;
         for (const auto& m : game_state.mines) {
-            if (m.alive) filtered_mines.push_back(m);
+            if (m.alive) {
+                filtered_mines.push_back(m);
+            }
         }
         game_state.mines = filtered_mines;
 
-        // Get states before mutations
+        // Grab the states first before they get screwed up
         std::vector<SimState> states = this->get_state_sequence();
         assert(states.size() > 0 && "States is empty! WTH?");
 
@@ -4462,8 +4486,14 @@ public:
         int64_t additional_timesteps_to_blow_up_mines = 0;
         double next_extrapolated_asteroid_collision_time = this->get_next_extrapolated_asteroid_collision_time();
 
-        // If we have mines, simulate blowing them up
+        // If mines still have yet to blow up, what we're gonna do is simulate the game until the mines blow up and we know how the mines will blast the asteroids
+        // That way, we can accurately tell what the next extrapolated asteroid collision time is
         if (!game_state.mines.empty()) {
+            if constexpr (ENABLE_SANITY_CHECKS) {
+                for (const auto& m : game_state.mines) {
+                    assert(m.alive);
+                }
+            }
             backed_up_game_state_before_post_mutation = game_state.copy();
             backed_up_game_state_before_post_mutation->asteroids.clear();
             for (const auto& a : game_state.asteroids) if (a.alive) backed_up_game_state_before_post_mutation->asteroids.push_back(a);
@@ -4472,6 +4502,7 @@ public:
             backed_up_game_state_before_post_mutation->bullets.clear();
             for (const auto& b : game_state.bullets) if (b.alive) backed_up_game_state_before_post_mutation->bullets.push_back(b);
 
+            // Mines get culled right away so we can check empty
             while (!game_state.mines.empty()) {
                 additional_timesteps_to_blow_up_mines += 1;
                 // Step simulation forward one tick at a time (disable shooting etc)
@@ -6297,7 +6328,8 @@ public:
         bool mine_got_destroyed = false;
         for (Mine& mine : game_state.mines) {
             if (mine.alive && mine.remaining_time < EPS) {
-                mine.alive = false; mine_got_destroyed = true;
+                mine.alive = false;
+                mine_got_destroyed = true;
                 for (Asteroid& asteroid : game_state.asteroids) {
                     if (asteroid.alive) {
                         double delta_x = asteroid.x - mine.x;
@@ -6339,10 +6371,13 @@ public:
                 }
             }
         }
+        // Cull the mines right now
         if (mine_got_destroyed && wait_out_mines) {
             std::vector<Mine> new_mines;
             for (const auto& m : game_state.mines)
-                if (m.alive) new_mines.push_back(m);
+                if (m.alive) {
+                    new_mines.push_back(m);
+                }
             game_state.mines = new_mines;
         }
         game_state.asteroids.insert(
