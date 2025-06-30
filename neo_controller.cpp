@@ -227,7 +227,7 @@ constexpr double inf = std::numeric_limits<double>::infinity();
 constexpr const char* BUILD_NUMBER = "2025-06-25 Neo, for Kessler v2.1.9";
 
 // Output Config
-constexpr bool DEBUG_MODE = true;
+constexpr bool DEBUG_MODE = false;
 constexpr bool PRINT_EXPLANATIONS = false;
 constexpr double EXPLANATION_MESSAGE_SILENCE_INTERVAL_S = 2.0;
 
@@ -266,7 +266,7 @@ constexpr double MINE_OTHER_SHIP_RADIUS_FUDGE = 100.0; // Subtract this from the
 constexpr int64_t MINE_OTHER_SHIP_ASTEROID_COUNT_EQUIVALENT = 6; // Dropping a mine beside another ship counts as dropping it on this many asteroids
 
 // Fitness Weights
-
+// (asteroid_safe_time_fitness, mine_safe_time_fitness, asteroids_fitness, sequence_length_fitness, other_ship_proximity_fitness, crash_fitness, asteroid_aiming_cone_fitness, placed_mine_fitness, overall_safe_time_fitness)
 constexpr std::array<double, 9> UNNORMALIZED_WEIGHTS = {0.0, 13.0, 15.0, 0.0, 7.0, 20.0, 13.0, 14.0, 17.0};
 
 constexpr double sum(const std::array<double, 9>& arr) {
@@ -1546,7 +1546,7 @@ inline std::pair<bool, int64_t> check_mine_opportunity(const Ship& ship_state, c
     int64_t mine_ast_count = count_asteroids_in_mine_blast_radius_with_other_mines(game_state, ship_state.x, ship_state.y, static_cast<int>(std::round(MINE_FUSE_TIME * FPS)));
     int64_t lives_fudge = 0;
 
-    for (const auto& other_ship : other_ships) {
+    for (const Ship& other_ship : other_ships) {
         if (check_collision(ship_state.x, ship_state.y, MINE_BLAST_RADIUS - MINE_OTHER_SHIP_RADIUS_FUDGE, other_ship.x, other_ship.y, other_ship.radius)) {
             // Like bombing the other ship, count as bonus "asteroids"
             mine_ast_count += MINE_OTHER_SHIP_ASTEROID_COUNT_EQUIVALENT;
@@ -1810,10 +1810,11 @@ inline double super_fast_cos(double x) {
 inline std::vector<Ship> get_other_ships(const GameState& game_state, int64_t self_ship_id) {
     std::vector<Ship> result;
     //result.reserve(game_state.ships.size());
-    result.reserve(2);
+    //result.reserve(1);
     for (const auto& ship : game_state.ships) {
-        if (ship.id != self_ship_id)
+        if (ship.id != self_ship_id) {
             result.push_back(ship);
+        }
     }
     return result;
 }
@@ -2008,12 +2009,12 @@ inline std::vector<std::pair<int64_t, int64_t>> calculate_border_crossings(
     double time_horizon_seconds)
 {
     // Next time we cross a border (in x or y)
-    double next_x_crossing_time = std::numeric_limits<double>::infinity();
-    double next_y_crossing_time = std::numeric_limits<double>::infinity();
+    double next_x_crossing_time = inf;
+    double next_y_crossing_time = inf;
 
     // Time between each border crossing (based on velocity)
-    double x_crossing_interval = std::numeric_limits<double>::infinity();
-    double y_crossing_interval = std::numeric_limits<double>::infinity();
+    double x_crossing_interval = inf;
+    double y_crossing_interval = inf;
 
     // Current "universe" position (grid offset in wraparound space)
     int64_t universe_offset_x = 0;
@@ -2483,7 +2484,7 @@ inline std::pair<double, double> collision_prediction(
     // Both stationary
     if (is_close_to_zero(speed_sq)) {
         if (dist_sq <= sep_sq) {
-            return std::make_pair(-std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()); // Overlapping forever
+            return std::make_pair(-inf, inf); // Overlapping forever
         } else {
             return std::make_pair(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()); // Never collide
         }
@@ -2759,7 +2760,7 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
         }
     }
     double ship_pos_x = ship_state.x, ship_pos_y = ship_state.y, ship_vel_x = ship_state.vx, ship_vel_y = ship_state.vy;
-    double most_imminent_collision_time_s = std::numeric_limits<double>::infinity();
+    double most_imminent_collision_time_s = inf;
     std::optional<Asteroid> most_imminent_asteroid;
     std::optional<double> most_imminent_asteroid_speed;
     double nearby_asteroid_total_speed = 0.0;
@@ -2777,7 +2778,7 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
                     a.x, a.y, a.vx, a.vy, a.radius, game_state
                 );
             } else {
-                imminent_collision_time_s = std::numeric_limits<double>::infinity();
+                imminent_collision_time_s = inf;
             }
 
             double delta_x = a.x - ship_pos_x;
@@ -3365,7 +3366,7 @@ inline std::tuple<
 
         double denominator = avx * sin_theta - avy * cos_theta;
         if (denominator == 0.0) {
-            return std::numeric_limits<double>::infinity();
+            return inf;
         } else {
             double numerator = cos_theta * (ay + avy * t_rot) - sin_theta * (ax + avx * t_rot);
             return std::max(-200000.0, std::min((numerator / denominator) * 100000.0, 200000.0));
@@ -4067,7 +4068,7 @@ public:
     }
 
     double get_next_extrapolated_asteroid_collision_time(int64_t additional_timesteps_to_blow_up_mines = 0) const {
-        double next_imminent_asteroid_collision_time = std::numeric_limits<double>::infinity();
+        double next_imminent_asteroid_collision_time = inf;
         // Assume constant velocity from here
         // The asteroids from the game state could have been from the future since we waited out the mines, but the forecasted splits are from present time, so we need to treat them differently and only back-extrapolate the existing asteroids and not the forecasted ones
         
@@ -4259,18 +4260,16 @@ public:
             // Having two mines which are freshly placed isn't as bad as a single mine that's about to blow up.
             // For each mine, as the time goes down, the danger should go up more than linearly
             if (next_extrapolated_mine_collision_times.empty()) {
-                return std::make_pair(1.0, std::numeric_limits<double>::infinity());
+                return std::make_pair(1.0, inf);
             }
             if (!std::isinf(game_state.time_limit) && initial_timestep + future_timesteps + END_OF_SCENARIO_DONT_CARE_TIMESTEPS >= static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
                 // The scenario's done so we don't care about mine safety past the end of time!
-                return std::make_pair(1.0, std::numeric_limits<double>::infinity());
+                return std::make_pair(1.0, inf);
             }
             // Regardless of stationary or maneuvering, the mine safe time score is calculated the same way
             double mines_threat_level = 0.0;
-            double next_extrapolated_mine_collision_time = std::numeric_limits<double>::infinity();
-            for (const auto& mc_pair : next_extrapolated_mine_collision_times) {
-                double mine_collision_time = mc_pair.first;
-                const std::pair<double, double>& mine_pos = mc_pair.second;
+            double next_extrapolated_mine_collision_time = inf;
+            for (const auto& [mine_collision_time, mine_pos] : next_extrapolated_mine_collision_times) {
                 next_extrapolated_mine_collision_time = std::min(next_extrapolated_mine_collision_time, mine_collision_time);
                 // next_extrapolated_mine_collision_time = max(0, min(3, next_extrapolated_mine_collision_time))
                 if constexpr (ENABLE_SANITY_CHECKS) {
@@ -4821,7 +4820,7 @@ public:
                     if (best_feasible_unwrapped_target.has_value()) {
                         bool feasible; double shooting_angle_error_deg, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception; int64_t aiming_timesteps_required;
                         std::tie(feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception) = best_feasible_unwrapped_target.value();
-                        double imminent_collision_time_s = std::numeric_limits<double>::infinity();
+                        double imminent_collision_time_s = inf;
                         assert(is_close_to_zero(ship_state.vx) && is_close_to_zero(ship_state.vy));
                         for (const Asteroid& a : unwrapped_asteroids) {
                             imminent_collision_time_s = std::min(imminent_collision_time_s,
@@ -4837,7 +4836,7 @@ public:
                                 interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception,
                                 imminent_collision_time_s, asteroid_will_get_hit_by_my_mine, asteroid_will_get_hit_by_their_mine
                             });
-                        if (imminent_collision_time_s < std::numeric_limits<double>::infinity())
+                        if (imminent_collision_time_s < inf)
                             most_imminent_asteroid_exists = true;
                     }
                 }
@@ -6752,7 +6751,9 @@ public:
         abs_cruise_speeds = {SHIP_MAX_SPEED/2};
         cruise_timesteps_global_history = {static_cast<int64_t>(std::round(MAX_CRUISE_TIMESTEPS/2))};
         overall_fitness_record.clear();
-        unwrap_cache.clear();
+        if constexpr (ENABLE_UNWRAP_CACHE) {
+            unwrap_cache.clear();
+        }
         total_sim_timesteps = 0;
         fire_next_timestep_flag = false;
     }
@@ -6767,8 +6768,7 @@ public:
         //     game_state_plotter.emplace(game_state);
         if (!get_other_ships(game_state, ship_id_internal).empty()) {
             other_ships_exist = true;
-            print_explanation("I've got another ship friend here with me..."
-                , current_timestep);
+            print_explanation("I've got another ship friend here with me...", current_timestep);
         } else {
             other_ships_exist = false;
             print_explanation("I'm alone. I can see into the future perfectly!", current_timestep);
@@ -6783,7 +6783,9 @@ public:
 
     bool decide_next_action_continuous(const GameState &game_state, const Ship &ship_state, bool force_decision) {
         // Extern global, as in Python
-        extern std::unordered_map<int64_t, std::vector<Asteroid>> unwrap_cache;
+        if constexpr (ENABLE_UNWRAP_CACHE) {
+            extern std::unordered_map<int64_t, std::vector<Asteroid>> unwrap_cache;
+        }
 
         debug_print("Calling decide next action continuous on timestep " + std::to_string(game_state.sim_frame) + ", and force_decision=" + std::string(force_decision ? "true" : "false"));
         assert(game_state_to_base_planning.has_value());
@@ -6877,7 +6879,9 @@ public:
                 this->second_best_fitness_this_planning_period_index = INT_NEG_INF;
                 this->stationary_targetting_sim_index = INT_NEG_INF;
                 this->base_gamestate_analysis.reset();
-                unwrap_cache.clear();
+                if constexpr (ENABLE_UNWRAP_CACHE) {
+                    unwrap_cache.clear();
+                }
                 return false;
             }
         } else {
@@ -6890,10 +6894,12 @@ public:
         if (best_action_maneuver_tuple.has_value() && !game_state_to_base_planning->respawning && best_action_fitness_breakdown.at(5) != 0.0) {
             abs_cruise_speeds.push_back(std::abs(std::get<1>(best_action_maneuver_tuple.value())));
             cruise_timesteps_global_history.push_back(std::get<3>(best_action_maneuver_tuple.value()));
-            if (abs_cruise_speeds.size() > MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD)
+            if (abs_cruise_speeds.size() > MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD) {
                 abs_cruise_speeds.erase(abs_cruise_speeds.begin(), abs_cruise_speeds.end() - MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD);
-            if (cruise_timesteps_global_history.size() > MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD)
+            }
+            if (cruise_timesteps_global_history.size() > MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD) {
                 cruise_timesteps_global_history.erase(cruise_timesteps_global_history.begin(), cruise_timesteps_global_history.end() - MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD);
+            }
         }
         overall_fitness_record.push_back(best_action_fitness);
         if (overall_fitness_record.size() > OVERALL_FITNESS_ROLLING_AVERAGE_PERIOD)
@@ -7087,8 +7093,9 @@ public:
         this->second_best_fitness_this_planning_period_index = INT_NEG_INF;
         this->stationary_targetting_sim_index = INT_NEG_INF;
         this->base_gamestate_analysis.reset();
-
-        unwrap_cache.clear();
+        if constexpr (ENABLE_UNWRAP_CACHE) {
+            unwrap_cache.clear();
+        }
         return true;
     }
 
@@ -7347,7 +7354,7 @@ public:
                     &planning_state.mine_positions_placed,
                     /* halt_shooting */ false,
                     /* fire_first_timestep */ planning_state.fire_next_timestep_flag,
-                    /* verify_first_shot */ (this->sims_this_planning_period.size() == 0 && this->other_ships_exist),
+                    /* verify_first_shot */ (this->sims_this_planning_period.size() == 0 && this->other_ships_exist), // TODO: Check whether we still need to verify the first shot with continuous planning. This seems pointless!
                     /* verify_maneuver_shots */ false,
                     -1, // Last timestep colliding, dunno
                     0 // Respawn maneuver pass
@@ -7359,6 +7366,7 @@ public:
 
                 if (this->sims_this_planning_period.size() == 0) {
                     if (stationary_targetting_sim.get_cancel_firing_first_timestep()) {
+                        // TODO: I think with continuous planning, this code is obsolete! But check that the verification is pointless.
                         // The plan was to fire at the first timestep this planning period. However, due to non-determinism caused by the existence of another ship, this shot would actually miss. We checked and caught this, so we're going to just nix the idea of shooting on the first timestep.
                         assert(planning_state.fire_next_timestep_flag);
                         planning_state.fire_next_timestep_flag = false;
@@ -7697,7 +7705,7 @@ public:
                     this->game_state_to_base_planning = {
                         this->current_timestep,
                         // respawning: ship_state.is_respawning AND ship_state.lives_remaining not in lives_remaining_that_we_did_respawn_maneuver_for
-                        ship_state.is_respawning && !lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
+                        ship_state.is_respawning,// && !lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
                         ship_state,
                         game_state,
                         3.0, // ship_respawn_timer
@@ -7720,8 +7728,9 @@ public:
                         mine_positions_placed_schedule.contains(current_timestep) ? mine_positions_placed_schedule[current_timestep] : std::unordered_set<std::pair<double, double>, pair_hash>{},
                         fire_next_timestep_schedule.contains(current_timestep)
                     };
-                    if (game_state_to_base_planning->respawning)
+                    if (game_state_to_base_planning->respawning) {
                         this->lives_remaining_that_we_did_respawn_maneuver_for.insert(ship_state.lives_remaining);
+                    }
                 } else if (unexpected_survival) {
                     // We need to refresh the state if we survived unexpectedly. Technically if we still had the remainder of the maneuver from before we could use that, but it's easier to just make a new maneuver from this starting point.
                     debug_print("Unexpected survival, the ship state is "+ship_state.str());
@@ -7729,7 +7738,7 @@ public:
                     this->game_state_to_base_planning = {
                         this->current_timestep,
                         // respawning: ship_state.is_respawning AND ship_state.lives_remaining not in lives_remaining_that_we_did_respawn_maneuver_for
-                        ship_state.is_respawning && !lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
+                        ship_state.is_respawning,// && !lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
                         ship_state,
                         game_state,
                         0.0, // ship_respawn_timer
@@ -7756,7 +7765,7 @@ public:
                     this->game_state_to_base_planning = {
                         this->current_timestep,
                         // respawning
-                        ship_state.is_respawning && !lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
+                        ship_state.is_respawning,// && !lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
                         ship_state,
                         game_state,
                         // ship_respawn_timer: 0.0 if timestep == 0 else respawn_timer_history[cur_timestep]
@@ -7798,15 +7807,18 @@ public:
                         // fire_next_timestep_flag
                         fire_next_timestep_schedule.contains(this->current_timestep)
                     };
-                    if (game_state_to_base_planning->respawning)
+                    if (game_state_to_base_planning->respawning) {
                         this->lives_remaining_that_we_did_respawn_maneuver_for.insert(ship_state.lives_remaining);
+                    }
                     assert((bool)game_state_to_base_planning->ship_respawn_timer == game_state_to_base_planning->ship_state.is_respawning);
                 } else {
                     // Refresh the state anyway to the latest state:
+                    //std::cout << "ASSUME COMING IN HERE" << std::endl;
+                    assert(respawn_timer_history.contains(this->current_timestep));
                     this->game_state_to_base_planning = {
                         this->current_timestep,
                         // respawning
-                        ship_state.is_respawning && !this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
+                        ship_state.is_respawning,// && !this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
                         ship_state,
                         game_state,
                         // ship_respawn_timer: 0.0 if timestep == 0 else respawn_timer_history[cur_timestep]
@@ -7877,12 +7889,13 @@ public:
                 if (recovering_from_crash) {
                     std::cerr << "RECOVERING FROM A CRASH!!!\n";
                 }
-                debug_print("Asteroid scheds: " + std::to_string(asteroids_pending_death_schedule.size()) + "," +
+                debug_print("Asteroid schedules: " + std::to_string(asteroids_pending_death_schedule.size()) + "," +
                             std::to_string(forecasted_asteroid_splits_schedule.size()) + "," +
                             std::to_string(last_timestep_fired_schedule.size()) + "," +
                             std::to_string(last_timestep_mined_schedule.size()) + "," +
                             std::to_string(mine_positions_placed_schedule.size()));
-
+                
+                assert(respawn_timer_history.contains(this->current_timestep));
                 this->game_state_to_base_planning = {
                     this->current_timestep,
                     // respawning: just ship_state.is_respawning (no lives_remaining check in this version)

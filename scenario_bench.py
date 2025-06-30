@@ -19,8 +19,9 @@ from src.kesslergame.controller_gamepad import GamepadController
 #from src.neo_controller import NeoController
 from neo_controller import NeoController
 #from src.neo_controller_cont_working import NeoController 
-from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
+#from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
 from benchmark_controller import BenchmarkController
+from examples.test_controller import TestController
 
 BENCHMARK_TIME_LIMIT = 60.0
 #BENCHMARK_TIME_LIMIT = 3.0
@@ -30,7 +31,7 @@ color_text = True
 
 TRIALS = 1000000
 
-GRAPHICS = False
+GRAPHICS = True
 
 def color_print(text='', color='white', style='normal', same=False, previous=False) -> None:
     global color_text
@@ -286,7 +287,7 @@ color_print(f'\nUsing seed {randseed}', 'green')
 random.seed(randseed)
 
 benchmark_scenario = Scenario(name="Benchmark Scenario",
-                                num_asteroids=200,
+                                num_asteroids=3000,
                                 ship_states=[
                                     {'position': (width/2.0, height/2.0), 'angle': 0.0, 'lives': 1000000, 'team': 1, 'mines_remaining': 1000000},
                                 ],
@@ -304,14 +305,15 @@ for i in range(JUMP_IND, JUMP_IND + TRIALS):
     print(f"Trial {i}")
     print()
     benchmark_scenario = Scenario(name="Benchmark Scenario",
-                                    num_asteroids=60,
+                                    num_asteroids=200,
                                     ship_states=[
                                         {'position': (width/2.0, height/2.0), 'angle': 0.0, 'lives': 1000000, 'team': 1, 'mines_remaining': 1000000},
+                                        {'position': (width, height), 'angle': 0.0, 'lives': 1000000, 'team': 1, 'mines_remaining': 1000000}
                                     ],
                                     map_size=(width, height),
                                     seed=i,
                                     time_limit=BENCHMARK_TIME_LIMIT)
-    controllers_used = [NeoController()]
+    controllers_used = [NeoController(), TestController()]
     scenario_to_run = benchmark_scenario
     if scenario_to_run is not None:
         print(f"Evaluating scenario {scenario_to_run.name}")
