@@ -224,7 +224,7 @@ constexpr double inf = std::numeric_limits<double>::infinity();
 //constexpr double nan = std::numeric_limits<double>::quiet_NaN();
 
 // Build Info
-constexpr const char* BUILD_NUMBER = "2025-06-25 Neo, for Kessler v2.1.9";
+constexpr const char* BUILD_NUMBER = "2025-06-30 Neo, for Kessler v2.1.9";
 
 // Output Config
 constexpr bool DEBUG_MODE = false;
@@ -411,26 +411,26 @@ constexpr double GRAIN = 0.001;
 constexpr double EPS = 1e-10;
 constexpr int64_t INT_NEG_INF = -1000000;
 constexpr int64_t INT_INF = 1000000;
-constexpr double RAD_TO_DEG = 180.0/pi;
-constexpr double DEG_TO_RAD = pi/180.0;
-constexpr double TAU = 2.0*pi;
+constexpr double RAD_TO_DEG = 180.0 / pi;
+constexpr double DEG_TO_RAD = pi / 180.0;
+constexpr double TAU = 2.0 * pi;
 
 // Kessler game constants
 constexpr int64_t FIRE_COOLDOWN_TS = 3;
 constexpr int64_t MINE_COOLDOWN_TS = 30;
 constexpr double FPS = 30.0;
-constexpr double DELTA_TIME = 1.0/FPS;
-constexpr double SHIP_FIRE_TIME = 1.0/10.0; // seconds
+constexpr double DELTA_TIME = 1.0 / FPS;
+constexpr double SHIP_FIRE_TIME = 1.0 / 10.0; // seconds
 constexpr double BULLET_SPEED = 800.0;
 constexpr double BULLET_MASS = 1.0;
 constexpr double BULLET_LENGTH = 12.0;
-constexpr double BULLET_LENGTH_RECIPROCAL = 1.0/BULLET_LENGTH;
-constexpr double TWICE_BULLET_LENGTH_RECIPROCAL = 2.0/BULLET_LENGTH;
+constexpr double BULLET_LENGTH_RECIPROCAL = 1.0 / BULLET_LENGTH;
+constexpr double TWICE_BULLET_LENGTH_RECIPROCAL = 2.0 / BULLET_LENGTH;
 constexpr double SHIP_MAX_TURN_RATE = 180.0;
-constexpr double SHIP_MAX_TURN_RATE_RAD = DEG_TO_RAD*SHIP_MAX_TURN_RATE;
-constexpr double SHIP_MAX_TURN_RATE_RAD_RECIPROCAL = 1.0/SHIP_MAX_TURN_RATE_RAD;
-constexpr double SHIP_MAX_TURN_RATE_DEG_TS = DELTA_TIME*SHIP_MAX_TURN_RATE;
-constexpr double SHIP_MAX_TURN_RATE_RAD_TS = DEG_TO_RAD*SHIP_MAX_TURN_RATE_DEG_TS;
+constexpr double SHIP_MAX_TURN_RATE_RAD = DEG_TO_RAD * SHIP_MAX_TURN_RATE;
+constexpr double SHIP_MAX_TURN_RATE_RAD_RECIPROCAL = 1.0 / SHIP_MAX_TURN_RATE_RAD;
+constexpr double SHIP_MAX_TURN_RATE_DEG_TS = DELTA_TIME * SHIP_MAX_TURN_RATE;
+constexpr double SHIP_MAX_TURN_RATE_RAD_TS = DEG_TO_RAD * SHIP_MAX_TURN_RATE_DEG_TS;
 constexpr double SHIP_MAX_THRUST = 480.0;
 constexpr double SHIP_DRAG = 80.0;
 constexpr double SHIP_MAX_SPEED = 240.0;
@@ -463,7 +463,7 @@ constexpr std::array<double, 5> ASTEROID_MASS_LOOKUP = {
 
 constexpr double RESPAWN_INVINCIBILITY_TIME_S = 3.0;
 constexpr std::array<int64_t, 5> ASTEROID_COUNT_LOOKUP = {0, 1, 4, 13, 40};
-constexpr double DEGREES_BETWEEN_SHOTS = static_cast<double>(FIRE_COOLDOWN_TS)*SHIP_MAX_TURN_RATE*DELTA_TIME;
+constexpr double DEGREES_BETWEEN_SHOTS = static_cast<double>(FIRE_COOLDOWN_TS) * SHIP_MAX_TURN_RATE*DELTA_TIME;
 constexpr double DEGREES_TURNED_PER_TIMESTEP = SHIP_MAX_TURN_RATE*DELTA_TIME;
 constexpr double SHIP_RADIUS_PLUS_SIZE_4_ASTEROID_RADIUS = SHIP_RADIUS + ASTEROID_RADII_LOOKUP[4];
 constexpr double TIMESTEPS_IT_TAKES_SHIP_TO_COME_TO_DEAD_STOP_FROM_FULL_SPEED = SHIP_MAX_SPEED / (SHIP_MAX_THRUST + SHIP_DRAG) * FPS;
@@ -481,6 +481,9 @@ std::vector<double> overall_fitness_record;
 int64_t total_sim_timesteps = 0;
 int64_t unwrap_asteroid_call_count = 0;
 int64_t unwrap_asteroid_expensive_call_count = 0;
+
+int missed_shot = 0;
+int made_shot = 0;
 
 
 template <typename T>
@@ -878,6 +881,22 @@ inline std::ostream& operator<<(std::ostream& os, const Action& act) { return os
 inline std::ostream& operator<<(std::ostream& os, const SimState& ss) { return os << ss.str(); }
 inline std::ostream& operator<<(std::ostream& os, const Target& t) { return os << t.str(); }
 
+// ------ Angle & Math Utilities ------
+
+inline double degrees(double x) {
+    // Convert radians to degrees
+    return x * RAD_TO_DEG;
+}
+
+inline double radians(double x) {
+    // Convert degrees to radians
+    return x * DEG_TO_RAD;
+}
+
+inline double sign(double x) {
+    return (x >= 0.0) ? 1.0 : -1.0;
+}
+
 // ------------------------------- TYPEDDICT EQUIVALENTS -------------------------------
 
 Asteroid create_asteroid_from_dict(nb::dict d) {
@@ -937,7 +956,7 @@ Bullet create_bullet_from_dict(nb::dict d) {
     auto pos = nb::cast<std::pair<double, double>>(d["position"]);
     auto vel = nb::cast<std::pair<double, double>>(d["velocity"]);
     double heading = nb::cast<double>(d["heading"]);
-    double heading_rad = heading * DEG_TO_RAD;
+    double heading_rad = radians(heading);
     return Bullet(
         pos.first, pos.second,
         vel.first, vel.second,
@@ -1014,22 +1033,6 @@ inline double pymod(double x, double y)
     // if (result < 0) result += y;
     // return result;
     return x - y * std::floor(x / y);
-}
-
-// ------ Angle & Math Utilities ------
-
-inline double degrees(double x) {
-    // Convert radians to degrees
-    return x * RAD_TO_DEG;
-}
-
-inline double radians(double x) {
-    // Convert degrees to radians
-    return x * DEG_TO_RAD;
-}
-
-inline double sign(double x) {
-    return (x >= 0.0) ? 1.0 : -1.0;
 }
 
 // Custom RNG that passes PractRand with 32 TB of output, and is fairly fast!
@@ -2848,18 +2851,18 @@ inline std::tuple<
     double ship_heading_deg,
     const GameState& game_state,
     int64_t future_shooting_timesteps = 0
-)
-{
+) {
     // This is a simplified version of solve_interception(). This will, given the position of the ship and an asteroid, tell you which angle you need to fire at after future_shooting_timesteps to shoot the asteroid
     // The bullet's head originates from the edge of the ship's radius.
     // We want to set the position of the bullet to the center of the bullet, so we have to do some fanciness here so that at t=0, the bullet's center is where it should be
     
     //double t_0 = 0.0175;
-    constexpr double t_0 = (SHIP_RADIUS - BULLET_LENGTH/2.0)/BULLET_SPEED;
+    constexpr double t_0 = (SHIP_RADIUS - BULLET_LENGTH / 2.0) / BULLET_SPEED;
     // Positions are relative to the ship. We set the origin to the ship's position. Remember to translate back!
     double origin_x = ship_pos_x;
     double origin_y = ship_pos_y;
-    double avx = asteroid_vel_x, avy = asteroid_vel_y;
+    double avx = asteroid_vel_x;
+    double avy = asteroid_vel_y;
 
     // Project asteroid one timestep ahead.
     // We project the asteroid one timestep ahead, since by the time we shoot our bullet, the asteroid would have moved one more timestep!
@@ -2868,7 +2871,7 @@ inline std::tuple<
 
     double vb = BULLET_SPEED;
     double vb_sq = vb * vb;
-    double theta_0 = ship_heading_deg * DEG_TO_RAD;
+    double theta_0 = radians(ship_heading_deg);
 
     // Calculate constants for naive_desired_heading_calc
     // Quadratic coefficients for interception time
@@ -2904,10 +2907,11 @@ inline std::tuple<
         double asteroid_dist = std::sqrt(x * x + y * y);
         double shot_heading_tolerance_rad;
         if (asteroid_r < asteroid_dist) {
-            shot_heading_tolerance_rad = super_fast_asin((asteroid_r - ASTEROID_AIM_BUFFER_PIXELS) / asteroid_dist);
+            shot_heading_tolerance_rad = fast_asin((asteroid_r - ASTEROID_AIM_BUFFER_PIXELS) / asteroid_dist);
         } else {
             shot_heading_tolerance_rad = 0.5 * pi;
         }
+        assert(shot_heading_tolerance_rad >= 0.0);
         return std::make_tuple(feasible,
             angle_difference_rad(theta, theta_0),
             shot_heading_tolerance_rad,
@@ -2927,7 +2931,7 @@ inline std::array<Asteroid, 3>
 forecast_asteroid_bullet_splits_from_heading(const Asteroid& a, int64_t timesteps_until_appearance, double bullet_heading_deg, const GameState& game_state) {
     assert(a.size != 1);
     // Look at asteroid.py in the Kessler game's code
-    double bullet_heading_rad = bullet_heading_deg * DEG_TO_RAD;
+    double bullet_heading_rad = radians(bullet_heading_deg);
     double bullet_vel_x = std::cos(bullet_heading_rad) * BULLET_SPEED;
     double bullet_vel_y = std::sin(bullet_heading_rad) * BULLET_SPEED;
     double vfx = (1.0 / (BULLET_MASS + a.mass)) * (BULLET_MASS * bullet_vel_x + a.mass * a.vx);
@@ -3166,7 +3170,7 @@ inline std::tuple<
     // The bullet's head originates from the edge of the ship's radius.
     // We want to set the position of the bullet to the center of the bullet, so we have to do some fanciness here so that at t=0, the bullet's center is where it should be
     //double t_0 = 0.0175;
-    constexpr double t_0 = (SHIP_RADIUS - BULLET_LENGTH/2.0)/BULLET_SPEED;
+    constexpr double t_0 = (SHIP_RADIUS - BULLET_LENGTH / 2.0) / BULLET_SPEED;
     // Positions are relative to the ship. We set the origin to the ship's position. Remember to translate back!
     double ship_position_x = ship_state.x;
     double ship_position_y = ship_state.y;
@@ -3179,7 +3183,7 @@ inline std::tuple<
 
     double vb = BULLET_SPEED;
     double vb_sq = vb * vb;
-    double theta_0 = ship_state.heading * DEG_TO_RAD;
+    double theta_0 = radians(ship_state.heading);
 
     // Calculate constants for naive_desired_heading_calc
     double a = avx*avx + avy*avy - vb_sq;
@@ -3385,7 +3389,7 @@ inline std::tuple<
             // Tuple is: (feasible, shooting_angle_error_deg, aiming_timesteps_required, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception)
             return std::make_tuple(
                 true,
-                naive_angle * RAD_TO_DEG,
+                degrees(naive_angle),
                 timesteps_until_can_fire,
                 std::get<0>(naive_solution),
                 n_intercept_x,
@@ -3433,13 +3437,13 @@ inline std::tuple<
             );
             auto discrete_solution = naive_desired_heading_calc(t_rot_ts);
             if (!std::isnan(std::get<0>(discrete_solution))) {
-                if (!(std::abs(std::get<1>(discrete_solution) * RAD_TO_DEG) - EPS <= static_cast<double>(t_rot_ts) * SHIP_MAX_TURN_RATE_DEG_TS))
+                if (!(std::abs(degrees(std::get<1>(discrete_solution))) - EPS <= static_cast<double>(t_rot_ts) * SHIP_MAX_TURN_RATE_DEG_TS))
                     return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), -1, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
                 assert(t_rot_ts == std::get<2>(discrete_solution));
                 if (check_coordinate_bounds(game_state, std::get<3>(discrete_solution), std::get<4>(discrete_solution))) {
                     return std::make_tuple(
                         true,
-                        std::get<1>(discrete_solution) * RAD_TO_DEG,
+                        degrees(std::get<1>(discrete_solution)),
                         t_rot_ts,
                         std::get<0>(discrete_solution),
                         std::get<3>(discrete_solution),
@@ -3527,10 +3531,10 @@ bool check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_sho
                 if (std::abs(delta) <= 120) {
                     double movex = std::abs(delta) * DELTA_TIME * a.vx;
                     double movey = std::abs(delta) * DELTA_TIME * a.vy;
-                    bool periodic_x = is_close_to_zero(fmod(movex, game_state.map_size_x)) ||
-                        is_close(fmod(movex, game_state.map_size_x), game_state.map_size_x);
-                    bool periodic_y = is_close_to_zero(fmod(movey, game_state.map_size_y)) ||
-                        is_close(fmod(movey, game_state.map_size_y), game_state.map_size_y);
+                    bool periodic_x = is_close_to_zero(pymod(movex, game_state.map_size_x)) ||
+                        is_close(pymod(movex, game_state.map_size_x), game_state.map_size_x);
+                    bool periodic_y = is_close_to_zero(pymod(movey, game_state.map_size_y)) ||
+                        is_close(pymod(movey, game_state.map_size_y), game_state.map_size_y);
 
                     if (!(periodic_x && periodic_y)) {
                         throw std::runtime_error(
@@ -4297,7 +4301,7 @@ public:
                 return 1.0;
             }
             // Iterate over all asteroids and get their heading angle from the ship's final position/heading, and see whether it's within +-30 degrees
-            double ship_heading_rad = ship_state.heading * DEG_TO_RAD;
+            double ship_heading_rad = radians(ship_state.heading);
             int asts_within_cone = 0;
             // Chain together game_state.asteroids and forecasted_asteroid_splits
             for (const Asteroid& a : game_state.asteroids) {
@@ -5311,7 +5315,7 @@ public:
 
             // Create the initial bullet we fire, if we're locked in
             if (fire_first_timestep_of_bullet_sim && timesteps_until_bullet_hit_asteroid + (skip_half_of_first_cycle ? 0 : -1) == 0) {
-                rad_heading = initial_ship_state.heading * DEG_TO_RAD;
+                rad_heading = radians(initial_ship_state.heading);
                 cos_heading = std::cos(rad_heading);
                 sin_heading = std::sin(rad_heading);
                 new_bullet_x = initial_ship_state.x + SHIP_RADIUS * cos_heading;
@@ -5336,7 +5340,7 @@ public:
                     bullet_fired_from_ship_position_x = this->ship_state.x;
                     bullet_fired_from_ship_position_y = this->ship_state.y;
                 }
-                rad_heading = bullet_fired_from_ship_heading * DEG_TO_RAD;
+                rad_heading = radians(bullet_fired_from_ship_heading);
                 cos_heading = std::cos(rad_heading);
                 sin_heading = std::sin(rad_heading);
                 new_bullet_x = bullet_fired_from_ship_position_x + SHIP_RADIUS * cos_heading;
@@ -5385,7 +5389,7 @@ public:
                     // Keep the angle within (0, 360)
                     bullet_sim_ship_state->heading = pymod(bullet_sim_ship_state->heading, 360.0);
                     // Use speed magnitude to get velocity vector
-                    rad_heading = bullet_sim_ship_state->heading * DEG_TO_RAD;
+                    rad_heading = radians(bullet_sim_ship_state->heading);
                     bullet_sim_ship_state->vx = std::cos(rad_heading) * bullet_sim_ship_state->speed;
                     bullet_sim_ship_state->vy = std::sin(rad_heading) * bullet_sim_ship_state->speed;
                     // Update the position based off the velocities
@@ -5770,8 +5774,8 @@ public:
                         std::tie(actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, ship_was_safe) = bullet_sim(
                             std::nullopt, false, 0, true, future_timesteps, whole_move_sequence, INT_INF, std::nullopt
                         );
-                        // Originally I wrongly asserted that if there is no other ship, then my shot will land
-                        // I think this assertion doesn't work right after a ship dies, because their bullet can still be travelling in the air
+                        // Originally I wrongly asserted that if there is no other ship, then my shot will land.
+                        // I think this assertion doesn't work right after a ship dies, because their bullet can still be travelling in the air.
                         // There's also the bullet skipping issue...
                         if (!actual_asteroid_hit.has_value()) {
                             fire_this_timestep = false;
@@ -5787,15 +5791,19 @@ public:
                     // We're able to decide whether we want to fire any convenient shots we can get
                     int64_t timesteps_until_can_fire = std::max<int64_t>(0, FIRE_COOLDOWN_TS - (initial_timestep + future_timesteps - last_timestep_fired));
                     fire_this_timestep = false;
-                    double ship_heading_rad = ship_state.heading * DEG_TO_RAD;
+                    double ship_heading_rad = radians(ship_state.heading);
                     bool feasible_targets_exist = false;
                     
                     std::vector<Asteroid> culled_targets_for_simulation;
                     std::vector<int64_t> culled_target_idxs_for_simulation;
-                    double max_interception_time = 0.0;
+                    double max_interception_time_s = 0.0;
 
-                    double min_positive_shot_heading_error_rad = INFINITY, second_min_positive_shot_heading_error_rad = INFINITY;
-                    double min_negative_shot_heading_error_rad = -INFINITY, second_min_negative_shot_heading_error_rad = -INFINITY, min_shot_heading_error_rad = std::numeric_limits<double>::quiet_NaN(), second_min_shot_heading_error_rad = std::numeric_limits<double>::quiet_NaN();
+                    double min_positive_shot_heading_error_rad = inf;
+                    double second_min_positive_shot_heading_error_rad = inf;
+                    double min_negative_shot_heading_error_rad = -inf;
+                    double second_min_negative_shot_heading_error_rad = -inf;
+                    double min_shot_heading_error_rad = std::numeric_limits<double>::quiet_NaN();
+                    double second_min_shot_heading_error_rad = std::numeric_limits<double>::quiet_NaN();
                     size_t len_asteroids = game_state.asteroids.size();
                     bool avoid_targeting_this_asteroid = false;
                     //bool move_on_to_next_asteroid = false;
@@ -5870,7 +5878,7 @@ public:
                                             continue;
                                         }
 
-                                        // Now, do interception math
+                                        // Do interception math
                                         bool feasible;
                                         double shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist_during_interception;
                                         std::tie(feasible, shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist_during_interception) =
@@ -5892,7 +5900,7 @@ public:
                                                     min_negative_shot_heading_error_rad = shot_heading_error_rad;
                                                 }
                                             }
-                                            //std::cout << "Tolerance DEG: " << degrees(shot_heading_tolerance_rad) << std::endl;
+                                            //std::cout << "Tolerance DEG: " << degrees(shot_heading_tolerance_rad) << ", distance from ast: " << asteroid_dist_during_interception << ", ast radius: " << a.radius << ", ast speed" << std::sqrt(a.vx * a.vx + a.vy * a.vy) << std::endl;
                                             if (std::abs(shot_heading_error_rad) <= shot_heading_tolerance_rad) {
                                                 // If we shoot at our current heading, this asteroid can be hit!
                                                 if (ast_idx < len_asteroids) {
@@ -5906,8 +5914,8 @@ public:
                                                     }
                                                 }
                                                 feasible_targets_exist = true;
-                                                if (interception_time > max_interception_time) {
-                                                    max_interception_time = interception_time;
+                                                if (interception_time > max_interception_time_s) {
+                                                    max_interception_time_s = interception_time;
                                                 }
                                                 //move_on_to_next_asteroid = true;
                                                 // Move onto the next asteroid. This one has no hope!
@@ -5928,7 +5936,7 @@ public:
                                         culled_targets_for_simulation.push_back(game_state.asteroids[idx]);
                                     }
                                 }
-                                int bullet_sim_timestep_limit = static_cast<int>(std::ceil(max_interception_time*FPS)) + 1;
+                                int bullet_sim_timestep_limit = static_cast<int>(std::ceil(max_interception_time_s * FPS)) + 1;
                                 std::optional<Asteroid> actual_asteroid_hit;
                                 int64_t timesteps_until_bullet_hit_asteroid;
                                 bool ship_was_safe;
@@ -5939,6 +5947,7 @@ public:
                                                     std::optional<std::vector<Asteroid>>(culled_targets_for_simulation) : std::nullopt);
                                 if (actual_asteroid_hit.has_value() && ship_was_safe) {
                                     // Confirmed that the shot will land
+                                    //++made_shot;
                                     assert(timesteps_until_bullet_hit_asteroid >= 0);
                                     Asteroid actual_asteroid_hit_at_fire_time = time_travel_asteroid(actual_asteroid_hit.value(), -timesteps_until_bullet_hit_asteroid, game_state);
                                     if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps + 1, game_state, actual_asteroid_hit_at_fire_time)) {
@@ -5963,9 +5972,19 @@ public:
                                         --asteroids_shot;
                                     }
                                 } else {
+                                    /*
                                     if (ship_was_safe) {
+                                        //++missed_shot;
                                         //std::cout << "Bullet sim missed in main maneuver update loop. Womp womp. Simid: " << this->sim_id << std::endl;
-                                    }
+                                        int total_shots = made_shot + missed_shot;
+                                        if (total_shots > 0) {
+                                            double percentage = static_cast<double>(made_shot) / total_shots * 100.0;
+                                            std::cout << std::fixed << std::setprecision(6);
+                                            std::cout << "Shot success rate: " << percentage << "%\n";
+                                        } else {
+                                            std::cout << "No shots taken.\n";
+                                        }
+                                    }*/
                                     // We just don't shoot. Yeah, it's not ideal. We spent all this time targeting an asteroid and now we're not shooting,
                                     // but the next timestep we can shoot again so we can just choose a new target and hope it works.
                                 }
@@ -6005,7 +6024,7 @@ public:
                                 }
                                 // The assumption is that the target that was hit wasn't the second smallest heading diff. THIS IS NOT TRUE IN GENERAL. This can be wrong! But whatever, it's not a big deal and probably not worth fixing/taking the extra compute to track this.
                                 if (!std::isnan(next_target_heading_error)) {
-                                    double min_shot_heading_error_deg = next_target_heading_error*RAD_TO_DEG;
+                                    double min_shot_heading_error_deg = degrees(next_target_heading_error);
                                     double altered_turn_command =
                                         (std::abs(min_shot_heading_error_deg) <= DEGREES_TURNED_PER_TIMESTEP)
                                         ? min_shot_heading_error_deg*FPS
@@ -6044,7 +6063,7 @@ public:
                         if (ship_pred_speed < -SHIP_MAX_SPEED) {
                             ship_pred_speed = -SHIP_MAX_SPEED;
                         }
-                        double rad_heading = ship_state.heading*DEG_TO_RAD;
+                        double rad_heading = radians(ship_state.heading);
                         double ship_speed_ts = DELTA_TIME*(double)timesteps_until_can_fire*ship_pred_speed;
                         double ship_predicted_pos_x = ship_state.x + ship_speed_ts*cos(rad_heading);
                         double ship_predicted_pos_y = ship_state.y + ship_speed_ts*sin(rad_heading);
@@ -6085,8 +6104,8 @@ public:
                                         (asteroids_shot >= RANDOM_WALK_SCHEDULE_LENGTH ||
                                         (random_walk_schedule[asteroids_shot] && shot_heading_error_rad >= 0.0) ||
                                         (!random_walk_schedule[asteroids_shot] && shot_heading_error_rad <= 0.0))) {
-                                        double shot_heading_error_deg = shot_heading_error_rad*RAD_TO_DEG;
-                                        double shot_heading_tolerance_deg = shot_heading_tolerance_rad*RAD_TO_DEG;
+                                        double shot_heading_error_deg = degrees(shot_heading_error_rad);
+                                        double shot_heading_tolerance_deg = degrees(shot_heading_tolerance_rad);
                                         if (std::abs(shot_heading_error_deg) - shot_heading_tolerance_deg < std::abs(asteroid_least_shot_heading_error_deg)) {
                                             asteroid_least_shot_heading_error_deg = shot_heading_error_deg;
                                             asteroid_least_shot_heading_tolerance_deg = shot_heading_tolerance_deg;
@@ -6151,7 +6170,7 @@ public:
                 ship_state.is_respawning = false;
                 respawn_timer = 0.0;
                 if (ship_state.bullets_remaining != -1) --ship_state.bullets_remaining;
-                double rad_heading = ship_state.heading * DEG_TO_RAD;
+                double rad_heading = radians(ship_state.heading);
                 double cos_head = cos(rad_heading), sin_head = sin(rad_heading);
                 double bullet_x = ship_state.x + SHIP_RADIUS * cos_head;
                 double bullet_y = ship_state.y + SHIP_RADIUS * sin_head;
@@ -6251,12 +6270,12 @@ public:
                 assert(-SHIP_MAX_TURN_RATE <= turn_rate && turn_rate <= SHIP_MAX_TURN_RATE);
             }
             ship_state.heading += turn_rate * DELTA_TIME;
-            ship_state.heading = fmod(ship_state.heading + 360.0, 360.0);
-            double rad_heading = ship_state.heading * DEG_TO_RAD;
+            ship_state.heading = pymod(ship_state.heading, 360.0);
+            double rad_heading = radians(ship_state.heading);
             ship_state.vx = cos(rad_heading) * ship_state.speed;
             ship_state.vy = sin(rad_heading) * ship_state.speed;
-            ship_state.x = fmod(ship_state.x + ship_state.vx * DELTA_TIME + game_state.map_size_x, game_state.map_size_x);
-            ship_state.y = fmod(ship_state.y + ship_state.vy * DELTA_TIME + game_state.map_size_y, game_state.map_size_y);
+            ship_state.x = pymod(ship_state.x + ship_state.vx * DELTA_TIME + game_state.map_size_x, game_state.map_size_x);
+            ship_state.y = pymod(ship_state.y + ship_state.vy * DELTA_TIME + game_state.map_size_y, game_state.map_size_y);
         }
 
         // --- Bullet/Asteroid collisions ---

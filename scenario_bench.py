@@ -29,7 +29,7 @@ JUMP_IND = 2000
 global color_text
 color_text = True
 
-TRIALS = 1000000
+TRIALS = 1
 
 GRAPHICS = True
 
@@ -307,8 +307,8 @@ for i in range(JUMP_IND, JUMP_IND + TRIALS):
     benchmark_scenario = Scenario(name="Benchmark Scenario",
                                     num_asteroids=200,
                                     ship_states=[
-                                        {'position': (width/2.0, height/2.0), 'angle': 0.0, 'lives': 1000000, 'team': 1, 'mines_remaining': 1000000},
-                                        {'position': (width, height), 'angle': 0.0, 'lives': 1000000, 'team': 1, 'mines_remaining': 1000000}
+                                        {'position': (width/2.0, height/2.0), 'angle': 0.0, 'lives': 1000000, 'team': 1, 'mines_remaining': 100000},
+                                        #{'position': (width, height), 'angle': 0.0, 'lives': 1000000, 'team': 1, 'mines_remaining': 1000000}
                                     ],
                                     map_size=(width, height),
                                     seed=i,
