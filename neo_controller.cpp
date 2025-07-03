@@ -6676,22 +6676,23 @@ public:
     // --- Public Variables (Python: made them all instance, here public/protected for simplicity) ---
 
     bool init_done = false;
+    // DO NOT OVERWRITE self.ship_id. That will cause the controller to break, since Kessler manages that itself. If we want to track our ship id, use a different variable name.
     int64_t ship_id_internal = -1;
     int64_t current_timestep = -1;
     std::deque<std::tuple<int64_t, double, double, bool, bool>> action_queue; // (timestep, thrust, turn_rate, fire, drop_mine)
     //std::optional<GameStatePlotter> game_state_plotter;
     std::unordered_set<int64_t> actioned_timesteps;
-    std::vector<CompletedSimulation> sims_this_planning_period; // The first is stationary targeting, rest are maneuvers
+    std::vector<CompletedSimulation> sims_this_planning_period; // The first sim in the list is stationary targeting, and the rest are maneuvers
     double best_fitness_this_planning_period = -inf;
     int64_t best_fitness_this_planning_period_index = INT_NEG_INF;
     double second_best_fitness_this_planning_period = -inf;
     int64_t second_best_fitness_this_planning_period_index = INT_NEG_INF;
     int64_t stationary_targetting_sim_index = INT_NEG_INF;
-    double current_sequence_fitness = -inf;
+    double current_sequence_fitness = -inf; // The fitness of the current sequence of actions we're performing
     std::unordered_map<int64_t, double> respawn_timer_history;
-    std::unordered_map<int64_t, int64_t> last_timestep_fired_schedule = {{0, INT_NEG_INF}};
+    std::unordered_map<int64_t, int64_t> last_timestep_fired_schedule = {{0, INT_NEG_INF}}; // Just pretend, to make the code simpler. If we decide to fire on frame N, it'll only show up in frame N + 1 that we fired on frame N!
     std::unordered_map<int64_t, int64_t> last_timestep_mined_schedule = {{0, INT_NEG_INF}};
-    std::unordered_set<int64_t> fire_next_timestep_schedule;
+    std::unordered_set<int64_t> fire_next_timestep_schedule; // If a timestep is in the set, the bool value is True. Otherwise, it's false.
     std::unordered_map<int64_t, std::unordered_map<int64_t, std::vector<Asteroid>>> asteroids_pending_death_schedule;
     std::unordered_map<int64_t, std::vector<Asteroid>> forecasted_asteroid_splits_schedule;
     std::unordered_map<int64_t, std::unordered_set<std::pair<double, double>, pair_hash>> mine_positions_placed_schedule;
@@ -6710,6 +6711,7 @@ public:
 
     // For performance controller
     std::vector<double> outside_controller_time_intervals;
+    // Stores recent iteration times for rolling average of PERFORMANCE_CONTROLLER_ROLLING_AVERAGE_FRAME_INTERVAL frames
     std::vector<double> inside_controller_iteration_time_intervals;
     double last_entrance_time = std::numeric_limits<double>::quiet_NaN();
     double last_exit_time = std::numeric_limits<double>::quiet_NaN();
@@ -6717,18 +6719,16 @@ public:
     double average_iteration_time = DELTA_TIME*0.1;
 
     // --- Ctor ---
-    NeoController(const std::optional<std::array<double, 9>> chromosome = std::nullopt)
-    {
+    NeoController(const std::optional<std::array<double, 9>> chromosome = std::nullopt) {
         std::cout << BUILD_NUMBER << std::endl;
         // Could add __FILE__ or __func__ here, but omitted.
         reset(chromosome);
     }
 
     // --- Reset function ---
-    void reset(const std::optional<std::array<double, 9>> chromosome = std::nullopt)
-    {
+    void reset(const std::optional<std::array<double, 9>> chromosome = std::nullopt) {
+        // DO NOT OVERWRITE self.ship_id. That will cause the controller to break, since Kessler manages that itself. If we want to track our ship id, use a different variable name.
         init_done = false;
-        // DO NOT overwrite _ship_id
         ship_id_internal = -1;
         current_timestep = -1;
         action_queue.clear();
@@ -6778,8 +6778,8 @@ public:
     }
 
     // --- Init helper ---
-    void finish_init(GameState& game_state, Ship& ship_state)
-    {
+    void finish_init(GameState& game_state, Ship& ship_state) {
+        // If we need the game state or ship state to finish init, we can use this function to do that
         if (ship_id_internal == -1)
             ship_id_internal = ship_state.id;
         // (Optional plotting etc.)
@@ -6795,12 +6795,13 @@ public:
     }
 
     // --- Queue actions ---
-    void enqueue_action(int64_t timestep, double thrust=0.0, double turn_rate=0.0, bool fire=false, bool drop_mine=false)
-    {
+    void enqueue_action(int64_t timestep, double thrust=0.0, double turn_rate=0.0, bool fire=false, bool drop_mine=false) {
         action_queue.push_back(std::make_tuple(timestep, thrust, turn_rate, fire, drop_mine));
     }
 
     bool decide_next_action_continuous(const GameState &game_state, const Ship &ship_state, bool force_decision) {
+        // We compare the best fitness this planning period (which is just for this frame) and only switch to it if it beats the fitness we have on file for the current maneuver
+
         // Extern global, as in Python
         if constexpr (ENABLE_UNWRAP_CACHE) {
             extern std::unordered_map<int64_t, std::vector<Asteroid>> unwrap_cache;
@@ -6831,6 +6832,7 @@ public:
         const CompletedSimulation &sim = sims_this_planning_period.at(best_fitness_this_planning_period_index);
         // --- Multi-pass respawn handling ---
         if (game_state_to_base_planning->respawning && sim.sim.get_respawn_maneuver_pass_number() == 1) {
+            // If we did a respawn maneuver, we still have to run a second pass of it so we can get more shots in at the end, and hopefully eek out a bit more fitness score
             // Make super sure this really is the second pass of a respawn maneuver! Just because we're currently invincible doesn't mean we're doing a respawn maneuver!!!!
             const Matrix &first_pass_sim = sim.sim;
             double first_pass_fitness = sims_this_planning_period.at(best_fitness_this_planning_period_index).fitness;
@@ -6865,6 +6867,7 @@ public:
 
             // If second pass was significantly worse for some reason, revert to first pass.
             if (first_pass_fitness > best_action_fitness + 0.015) {
+                // The additional shots didn't actually help our fitness. Reverting to just using the first pass sim which is totally valid still
                 best_action_sim = sims_this_planning_period.at(best_fitness_this_planning_period_index).sim;
                 best_action_fitness = first_pass_fitness;
                 best_action_fitness_breakdown = sims_this_planning_period.at(best_fitness_this_planning_period_index).fitness_breakdown;
@@ -6872,6 +6875,7 @@ public:
             }
         } else {
             // Exact one-pass regular maneuver
+            // Exact planning, and this isn't a respawn maneuver so we just do the one-pass simulation method and call it a day
             // Keep in mind we might still have respawn invincibility, but in this move we're going to remove it! Or it's just on the tail end about to run out.
             assert(sim.sim.get_respawn_maneuver_pass_number() == 0);
             best_action_sim = sim.sim;
@@ -6885,6 +6889,7 @@ public:
             // Only switch to this sequence if its fitness is better.
             if (best_action_fitness > current_sequence_fitness) {
                 // JUMP SHIP!!!!!!!!!
+                // Wipe the current move sequence and switch to the new better sequence!
                 debug_print("Wipe the current move sequence and switch to the new better sequence! Current action seq fitness is " + std::to_string(current_sequence_fitness) + " but we can do " + std::to_string(best_action_fitness) + " and the crash fitness is " + std::to_string(best_action_fitness_breakdown[5]));
                 action_queue.clear();
                 actioned_timesteps.clear();
@@ -6909,7 +6914,11 @@ public:
             assert(action_queue.empty());
         }
 
+        // Go through the list of planned maneuvers and pick the one with the best fitness function score
+        // Update the state to base planning off of, so Neo can get to work on planning the next set of moves while this current set of moves executes
+
         // LEARNING statistics (rolling averages for maneuver learning)
+        // Maintain the learning maneuver thingy
         if (best_action_maneuver_tuple.has_value() && !game_state_to_base_planning->respawning && best_action_fitness_breakdown.at(5) != 0.0) {
             abs_cruise_speeds.push_back(std::abs(std::get<1>(best_action_maneuver_tuple.value())));
             cruise_timesteps_global_history.push_back(std::get<3>(best_action_maneuver_tuple.value()));
@@ -6920,18 +6929,22 @@ public:
                 cruise_timesteps_global_history.erase(cruise_timesteps_global_history.begin(), cruise_timesteps_global_history.end() - MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD);
             }
         }
+        // Maintain a rolling average of the overall fitnesses, so we know how well we're doing
         overall_fitness_record.push_back(best_action_fitness);
-        if (overall_fitness_record.size() > OVERALL_FITNESS_ROLLING_AVERAGE_PERIOD)
+        if (overall_fitness_record.size() > OVERALL_FITNESS_ROLLING_AVERAGE_PERIOD) {
             overall_fitness_record.erase(overall_fitness_record.begin(), overall_fitness_record.end() - OVERALL_FITNESS_ROLLING_AVERAGE_PERIOD);
+        }
 
         // -- Explanations and status dump --
         if (PRINT_EXPLANATIONS) {
+            // Print out the explanation messages that were stored within the sim
             if (stationary_targetting_sim_index != INT_NEG_INF) {
                 auto stationary_safety_messages = sims_this_planning_period.at(stationary_targetting_sim_index).sim.get_safety_messages();
                 for (const auto& msg : stationary_safety_messages)
                     print_explanation(msg, current_timestep);
             }
             if (best_action_fitness_breakdown[5] == 0.0) {
+                // TODO: 0 fitness doesn't actually mean I'll die! I changed things quite a bit. It can even mean I'll live!
                 print_explanation("RIP, I'm gonna die", current_timestep);
             }
             if (game_state_to_base_planning->respawning) {
@@ -6943,6 +6956,7 @@ public:
                 if (stationary_targetting_sim_index != INT_NEG_INF) {
                     const auto& stationary_fitness_breakdown = sims_this_planning_period.at(stationary_targetting_sim_index).fitness_breakdown;
                     if (best_action_fitness_breakdown[1] == 1.0 && stationary_fitness_breakdown[1] == 1.0) {
+                        // No mines are threatening us whether we stay put or move
                         if (best_action_fitness_breakdown[0] > stationary_fitness_breakdown[0])
                             print_explanation("Doing a maneuver to dodge asteroids! This maneuver was the best one picked out of "
                                 + std::to_string(sims_this_planning_period.size()) + " randomly chosen maneuvers!", current_timestep);
@@ -6972,6 +6986,7 @@ public:
                 print_explanation(exp, current_timestep);
             }
             if (random_double() < 0.1) {
+                // Only periodically print this explanation, as I don't want it to spam the screen too much
                 print_explanation("I currently feel " + std::to_string(weighted_average(overall_fitness_record) * 100.0)
                     + "% safe, considering how long I can stay here without being hit by asteroids or mines, and my proximity to the other ship.",
                     current_timestep);
@@ -6983,13 +6998,13 @@ public:
 
         auto best_action_sim_last_state = best_action_sim_state_sequence.back();
         auto asteroids_pending_death = best_action_sim.get_asteroids_pending_death();
-
+        // Prune out the list of asteroids we shot at if the timestep (key) is in the past
         for (int64_t timestep = current_timestep; timestep < best_action_sim_last_state.timestep; ++timestep) {
             asteroids_pending_death.erase(timestep);
         }
 
-        auto forecasted_asteroid_splits = best_action_sim.get_forecasted_asteroid_splits();
-        auto next_base_game_state = best_action_sim.get_game_state();
+        //auto forecasted_asteroid_splits = best_action_sim.get_forecasted_asteroid_splits();
+        //auto next_base_game_state = best_action_sim.get_game_state();
 
         // Made this change, because if we're waiting out mines, that'll mess up the game state. But the state sequence still has the last actual game state, so we'll use that!
         // Pretty sure this is obsolete with continuous planning though!
@@ -7004,8 +7019,8 @@ public:
 
         if constexpr (ENABLE_SANITY_CHECKS) {
             if (!lives_remaining_that_we_did_respawn_maneuver_for.contains(new_ship_state.lives_remaining) && new_ship_state.is_respawning) {
-            // If our ship is hurt in our next next action and I haven't done a respawn maneuver yet,
-            // Then assert our next action is not a respawning action (REMOVED: Python's commented-out assertion).
+            // If our ship is hurt in our next next action and I haven't done a respawn maneuver yet (in this situation, the next next action is a respawn maneuver)
+            // Then I assert that our next action is not a respawning action, AND we're not firing at the start of the next next action
                 if (game_state_to_base_planning->respawning || new_fire_next_timestep_flag) {
                     std::cerr << "We haven't done a respawn maneuver for having " << new_ship_state.lives_remaining << " lives left\n";
                     std::cerr << "game_state_to_base_planning->respawning: " << game_state_to_base_planning->respawning << ", new_fire_next_timestep_flag: " << new_fire_next_timestep_flag << ", respawn_timer=" << best_action_sim.get_respawn_timer() << "\n";
@@ -7061,6 +7076,7 @@ public:
 
         assert(action_queue.empty());
         if (CONTINUOUS_LOOKAHEAD_PLANNING) {
+            // Keep track of this stuff
             if (best_move_sequence.front().timestep != game_state.sim_frame) {
                 std::cerr << "Assertion failed: best_move_sequence.front().timestep == game_state.sim_frame\n";
                 std::cerr << "best_move_sequence.front().timestep = " << best_move_sequence.front().timestep << "\n";
@@ -7099,9 +7115,11 @@ public:
             print_sorted_dict(last_timestep_fired_schedule);
             std::cout << last_timestep_fired << std::endl;
         }
-        if (CONTINUOUS_LOOKAHEAD_PLANNING)
+        if constexpr (CONTINUOUS_LOOKAHEAD_PLANNING) {
             assert(last_timestep_fired_schedule[best_move_sequence.back().timestep + 1] == last_timestep_fired);
+        }
 
+        // Record down the fitness of the sequence of actions we just decided on, so we know if we ever have a better fitness and can abandon this one!
         current_sequence_fitness = best_action_fitness;
 
         // Reset planning bookkeeping
@@ -7151,7 +7169,7 @@ public:
 
             // assert not game_state_to_base_planning['fire_next_timestep_flag']
             assert(!planning_state.fire_next_timestep_flag);
-
+            // Run a simulation and find a course of action to put me to safety
             while ( // TODO: Fix this lmao
                 (search_iterations_count < get_min_respawn_per_timestep_search_iterations(
                     planning_state.ship_state.lives_remaining,
@@ -7454,19 +7472,15 @@ public:
             // Let's just pretend the following is a fuzzy system lol
             // For performance and simplicity, I'll just use a bunch of if statements
             if (average_directional_speed > 80.0 && current_asteroids_count > 5 && total_asteroids_count >= 100) {
+                // This is probably a wall scenario! We have many asteroids all travelling in basically the same direction
                 print_explanation("Wall scenario detected! Preferring trying longer cruise lengths", this->current_timestep);
                 ship_cruise_speed_mode = SHIP_MAX_SPEED;
                 ship_cruise_timesteps_mode = MAX_CRUISE_TIMESTEPS;
                 max_pre_maneuver_turn_timesteps = 6.0;
-            } else if (std::any_of(
-                            planning_state.game_state.mines.begin(),
-                            planning_state.game_state.mines.end(),
-                            [this, &planning_state](const Mine& m) {
-                                return planning_state.mine_positions_placed.contains({m.x, m.y}); })
-                    )
-            {
-                print_explanation("We're probably within the radius of a mine we placed! Biasing faster/longer moves to be more likely to escape the mine.",
-                    this->current_timestep);
+            } else if (std::any_of(planning_state.game_state.mines.begin(), planning_state.game_state.mines.end(), [this, &planning_state](const Mine& m) {
+                                return planning_state.mine_positions_placed.contains({m.x, m.y}); })) {
+                // We're probably within the radius of a mine we placed
+                print_explanation("We're probably within the radius of a mine we placed! Biasing faster/longer moves to be more likely to escape the mine.", this->current_timestep);
                 ship_cruise_speed_mode = SHIP_MAX_SPEED;
                 ship_cruise_timesteps_mode = MAX_CRUISE_TIMESTEPS * 0.75;
                 max_pre_maneuver_turn_timesteps = 10.0;
@@ -7503,6 +7517,7 @@ public:
                     else if (fabs(thrust_direction) < GRAIN)
                         heuristic_maneuver = false;
                 }*/
+                // The reason this isn't an if-else statement is that even if we wanted to do a heuristic maneuver, the heuristic output could be bad and so we skip the heuristic maneuver altogether
                 if (!heuristic_maneuver || !USE_HEURISTIC_MANEUVER) {
                     if (ship_is_stationary) {
                         random_ship_heading_angle = rand_triangular(-DEGREES_TURNED_PER_TIMESTEP * max_pre_maneuver_turn_timesteps, DEGREES_TURNED_PER_TIMESTEP * max_pre_maneuver_turn_timesteps, 0);
@@ -7517,6 +7532,7 @@ public:
                         ship_cruise_speed = rand_triangular(0, SHIP_MAX_SPEED, ship_cruise_speed_mode) * (2.0 * static_cast<double>(rand() % 2) - 1.0);
                     }
                     ship_cruise_turn_rate = rand_triangular(0, SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE) * (2.0 * static_cast<double>(rand() % 2) - 1.0);
+                    // TODO: For denser asteroid fields, decrease the max cruise seconds to encourage shorter maneuvers!
                     if (std::isnan(ship_cruise_timesteps_mode)) {
                         ship_cruise_timesteps = randint(0, int64_t(round(MAX_CRUISE_TIMESTEPS)));
                     } else {
@@ -7524,6 +7540,7 @@ public:
                     }
                 }
 
+                // First do a dummy simulation just to go through the motion, so we have the list of moves
                 auto preview_move_sequence = get_ship_maneuver_move_sequence(
                     random_ship_heading_angle, ship_cruise_speed, ship_accel_turn_rate,
                     ship_cruise_timesteps, ship_cruise_turn_rate, planning_state.ship_state.speed
@@ -7547,7 +7564,7 @@ public:
                     0 // Respawn maneuver pass 0, AKA not doing a respawn maneuver!
                     //this->game_state_plotter
                 );
-
+                // While evaluating, the simulation is advancing, and if it crashes, then it'll evaluate to false and stop the sim.
                 maneuver_sim.simulate_maneuver(preview_move_sequence, true, true);
 
                 double maneuver_fitness = maneuver_sim.get_fitness();
@@ -7555,6 +7572,7 @@ public:
 
                 if ((int)this->sims_this_planning_period.size() == 0) {
                     if (maneuver_sim.get_cancel_firing_first_timestep()) {
+                        // The plan was to fire at the first timestep this planning period. However, due to non-determinism caused by the existence of another ship, this shot would actually miss. We checked and caught this, so we're going to just nix the idea of shooting on the first timestep.
                         assert(planning_state.fire_next_timestep_flag);
                         planning_state.fire_next_timestep_flag = false;
                     }
@@ -7583,8 +7601,10 @@ public:
                     this->best_fitness_this_planning_period_index = (int)this->sims_this_planning_period.size() - 1;
                 }
 
-                if (heuristic_maneuver)
+                if (heuristic_maneuver) {
+                    // Make sure we don't do any more than one heuristic maneuver!
                     heuristic_maneuver = false;
+                }
             }
         }
     }
@@ -7592,8 +7612,8 @@ public:
     std::tuple<double, double, bool, bool>
     actions(const nb::dict& ship_state_dict, const nb::dict& game_state_dict)
     {
-        //std::cout << AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE << std::endl;
-        //while (true) {}
+        // Method processed each time step by this controller.
+
         // Optionally reseed RNG if flag enabled
         if (RESEED_RNG) {
             std::srand(static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count()));
@@ -7612,11 +7632,11 @@ public:
         // Check for simulator/controller desync and perform state recovery/reset as in Python
         if constexpr (CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS || STATE_CONSISTENCY_CHECK_AND_RECOVERY) {
             bool timestep_mismatch = !(game_state.sim_frame == this->current_timestep);
+            // Amid running the scenario, the action queue is desynced with our timestep. This may be caused by an exception that was raised in Neo which was caught by Kessler, so the actions for this timestep were never consumed.
             bool action_queue_desync = !action_queue.empty() && std::get<0>(action_queue.front()) != this->current_timestep;
             bool planning_base_state_outdated = (game_state_to_base_planning.has_value() && game_state_to_base_planning->timestep < this->current_timestep);
 
-            if (timestep_mismatch || (STATE_CONSISTENCY_CHECK_AND_RECOVERY &&
-                (action_queue_desync || (planning_base_state_outdated && !CONTINUOUS_LOOKAHEAD_PLANNING))))
+            if (timestep_mismatch || (STATE_CONSISTENCY_CHECK_AND_RECOVERY && (action_queue_desync || (planning_base_state_outdated && !CONTINUOUS_LOOKAHEAD_PLANNING))))
             {
                 if (timestep_mismatch && !(action_queue_desync || (planning_base_state_outdated && !CONTINUOUS_LOOKAHEAD_PLANNING))) {
                     debug_print("This was not a fresh run of the controller! I'll try cleaning up the previous run and reset the state.");
@@ -7630,12 +7650,14 @@ public:
                     debug_print("Neo probably crashed or something because the internal state is all messed up. Welp, let's try this again.");
                     recovering_from_crash = true;
                 }
-                if (timestep_mismatch)
+                if (timestep_mismatch) {
                     this->current_timestep = game_state.sim_frame;
+                }
             }
         }
 
         if (this->current_timestep == 0) {
+            // Only do these on the first timestep
             inspect_scenario(game_state, ship_state);
         }
 
