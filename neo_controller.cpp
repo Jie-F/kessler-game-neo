@@ -4698,11 +4698,11 @@ public:
             if (fire_first_timestep) {
                 timesteps_until_can_fire = std::max(int64_t(0), int64_t(FIRE_COOLDOWN_TS) - int64_t(aiming_move_sequence.size()));
             } else {
-                timesteps_until_can_fire = std::max(int64_t(0), int64_t(FIRE_COOLDOWN_TS) -
-                    (int64_t(initial_timestep) + int64_t(future_timesteps) + int64_t(aiming_move_sequence.size()) - int64_t(last_timestep_fired)));
+                timesteps_until_can_fire = std::max(int64_t(0), int64_t(FIRE_COOLDOWN_TS) - (int64_t(initial_timestep) + int64_t(future_timesteps) + int64_t(aiming_move_sequence.size()) - int64_t(last_timestep_fired)));
             }
-            for (int64_t i = 0; i < timesteps_until_can_fire; ++i)
+            for (int64_t i = 0; i < timesteps_until_can_fire; ++i) {
                 aiming_move_sequence.push_back(Action{0.0, 0.0, false, false, 0});
+            }
 
             int64_t asteroid_advance_timesteps = int64_t(aiming_move_sequence.size());
             if constexpr (ENABLE_SANITY_CHECKS) {
@@ -4827,10 +4827,7 @@ public:
                         double imminent_collision_time_s = inf;
                         assert(is_close_to_zero(ship_state.vx) && is_close_to_zero(ship_state.vy));
                         for (const Asteroid& a : unwrapped_asteroids) {
-                            imminent_collision_time_s = std::min(imminent_collision_time_s,
-                                predict_next_imminent_collision_time_with_asteroid(
-                                    ship_state.x, ship_state.y, ship_state.vx, ship_state.vy, SHIP_RADIUS,
-                                    a.x, a.y, a.vx, a.vy, a.radius, game_state));
+                            imminent_collision_time_s = std::min(imminent_collision_time_s, predict_next_imminent_collision_time_with_asteroid(ship_state.x, ship_state.y, ship_state.vx, ship_state.vy, SHIP_RADIUS, a.x, a.y, a.vx, a.vy, a.radius, game_state));
                         }
                         // Record the canonical asteroid even if we're shooting at an unwrapped one
                         // The feasible bool will be true
@@ -4840,8 +4837,9 @@ public:
                                 interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception,
                                 imminent_collision_time_s, asteroid_will_get_hit_by_my_mine, asteroid_will_get_hit_by_their_mine
                             });
-                        if (imminent_collision_time_s < inf)
+                        if (imminent_collision_time_s < inf) {
                             most_imminent_asteroid_exists = true;
+                        }
                     }
                 }
             }
@@ -5142,7 +5140,7 @@ public:
                     actual_asteroid_hit_when_firing
                 ));
             }
-
+            // This back-extrapolates the asteroid to when we're firing our bullet
             actual_asteroid_hit_at_present_time = time_travel_asteroid(
                 actual_asteroid_hit.value(), 
                 -timesteps_until_bullet_hit_asteroid.value(), 
@@ -5164,9 +5162,13 @@ public:
                     std::vector<Asteroid>{a}, nullptr, nullptr, nullptr,
                     false, NEW_TARGET_PLOT_PAUSE_TIME_S, "FEASIBLE TARGETS");
             }*/
-
-            int64_t future_ts_backup = future_timesteps;
-
+            
+            // TODO: Currently Neo can't fire on timestep 1! Fix this! Although it's only a minor issue.
+            int64_t future_ts_backup;
+            if constexpr (ENABLE_SANITY_CHECKS) {
+                future_ts_backup = future_timesteps;
+            }
+            // Forecasted splits get progressed while doing the move sequence which includes rotation, so we need to start the forecast before the rotation even starts
             if (actual_asteroid_hit_at_present_time.size != 1) {
                 // Forecast asteroid splits from heading
                 auto splits = forecast_asteroid_bullet_splits_from_heading(
@@ -5181,6 +5183,7 @@ public:
             // Apply move sequence and shoot if safe
             bool sim_complete_without_crash = apply_move_sequence(aiming_move_sequence);
             if (sim_complete_without_crash) {
+                // We only do, and track the shot if the sim completed without death
                 asteroids_shot += 1;
                 fire_next_timestep_flag = true;
                 assert(future_ts_backup + int64_t(aiming_move_sequence.size()) == future_timesteps);
@@ -5196,7 +5199,7 @@ public:
                     actual_asteroid_hit_when_firing
                 );
             } else {
-                // If we died, don't fire so we retain invincibility
+                // If we died, we're gonna do a respawn maneuver and we won't shoot because that will remove our 3 second respawn invincibility immediately
                 fire_next_timestep_flag = false;
             }
 
