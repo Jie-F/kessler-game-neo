@@ -5223,8 +5223,21 @@ public:
         ) const
     {
         // This simulates shooting at an asteroid to tell us whether we'll hit it, when we hit it, and which asteroid we hit
+        // (since we might hit an asteroid between us and our intended target)
+        //
+        // I know there's lots of code duplication between this and update(), but there really are many differences
+        // in the way the update cycle is handled and it's very interleaved with the duplicated simulation code,
+        // so I ain't touching this lol
+        //
+        // Assume we shoot on the next timestep, so we'll create a bullet and then track it and simulate
+        // it to see what it hits, if anything
+        //
+        // This sim doesn't modify the state of the simulation class. Everything here is discarded after the sim is over,
+        // and this is just to see what my bullet hits, if anything.
 
-        // Copy/shallow copy
+        // Do the shallowest copies that we can get away with.
+        // Deepcopies are super slow so we avoid them.
+
         // TODO: See whether this copy and alive checks are necessary!
         std::vector<Asteroid> asteroids;
         if (asteroids_to_check.has_value()) {
@@ -5259,7 +5272,8 @@ public:
         std::optional<Bullet> my_bullet = std::nullopt;
         bool ship_not_collided_with_asteroid = true;
         int64_t timesteps_until_bullet_hit_asteroid = skip_half_of_first_cycle ? int64_t(-1) : int64_t(0);
-        //std::unordered_set<int64_t> asteroid_remove_idxs;
+        // Keep iterating until our bullet flies off the edge of the screen, or it hits an asteroid
+
         double new_bullet_x, new_bullet_y;
         double rad_heading, cos_heading, sin_heading;
         double thrust, turn_rate, drag_amount;
@@ -5277,13 +5291,14 @@ public:
 
             // (plotting code skipped for clarity but you can add it here)
 
-            // Advance bullets
+            // Simulate bullets
             if (!(skip_half_of_first_cycle && timesteps_until_bullet_hit_asteroid == 0)) {
+                // Advance all bullets
                 for (Bullet& b : bullets) {
                     if (b.alive) {
                         new_bullet_x = b.x + b.vx * DELTA_TIME;
                         new_bullet_y = b.y + b.vy * DELTA_TIME;
-                        //if check_coordinate_bounds(self.game_state, new_bullet_x, new_bullet_y):
+                        // if check_coordinate_bounds(self.game_state, new_bullet_x, new_bullet_y):
                         if (0.0 <= new_bullet_x && new_bullet_x <= game_state.map_size_x && 0.0 <= new_bullet_y && new_bullet_y <= game_state.map_size_y) {
                             b.x = new_bullet_x;
                             b.y = new_bullet_y;
@@ -5295,6 +5310,7 @@ public:
                 if (my_bullet.has_value()) {
                     new_bullet_x = my_bullet->x + my_bullet->vx * DELTA_TIME;
                     new_bullet_y = my_bullet->y + my_bullet->vy * DELTA_TIME;
+                    // if check_coordinate_bounds(self.game_state, my_new_bullet_x, my_new_bullet_y):
                     if (0.0 <= new_bullet_x && new_bullet_x <= game_state.map_size_x && 0.0 <= new_bullet_y && new_bullet_y <= game_state.map_size_y) {
                         my_bullet->x = new_bullet_x;
                         my_bullet->y = new_bullet_y;
@@ -5307,8 +5323,11 @@ public:
                 for (Mine& m : mines)
                     if (m.alive)
                         m.remaining_time -= DELTA_TIME;
-                
+
                 for (Asteroid& a : asteroids) {
+                    // Idea: I can advance the asteroid REGARDLESS of whether they're alive or not, and just have
+                    // ghost asteroids that don't do anything
+                    // Might be faster, probably slower, idk, just an idea!
                     if (a.alive) {
                         a.x = pymod(a.x + a.vx * DELTA_TIME, game_state.map_size_x);
                         a.y = pymod(a.y + a.vy * DELTA_TIME, game_state.map_size_y);
@@ -5324,6 +5343,7 @@ public:
                 new_bullet_x = initial_ship_state.x + SHIP_RADIUS * cos_heading;
                 new_bullet_y = initial_ship_state.y + SHIP_RADIUS * sin_heading;
                 // Make sure the bullet isn't being fired out into the void
+                // if check_coordinate_bounds(self.game_state, bullet_x, bullet_y):
                 if (0.0 <= new_bullet_x && new_bullet_x <= game_state.map_size_x && 0.0 <= new_bullet_y && new_bullet_y <= game_state.map_size_y) {
                     Bullet initial_timestep_fire_bullet(
                         new_bullet_x, new_bullet_y, BULLET_SPEED*cos_heading, BULLET_SPEED*sin_heading,
@@ -5349,6 +5369,7 @@ public:
                 new_bullet_x = bullet_fired_from_ship_position_x + SHIP_RADIUS * cos_heading;
                 new_bullet_y = bullet_fired_from_ship_position_y + SHIP_RADIUS * sin_heading;
                 // Make sure my bullet isn't being fired out into the void
+                // if not check_coordinate_bounds(self.game_state, bullet_x, bullet_y):
                 if (!(0.0 <= new_bullet_x && new_bullet_x <= game_state.map_size_x && 0.0 <= new_bullet_y && new_bullet_y <= game_state.map_size_y)) {
                     // My bullet got shot into the void without hitting anything :(
                     return std::make_tuple(std::nullopt, int64_t(-1), ship_not_collided_with_asteroid);
@@ -5467,9 +5488,15 @@ public:
             new_asteroids.clear();
             for (Mine& mine : mines) {
                 if (mine.alive && mine.remaining_time < EPS) {
+                    // Mine is detonating
                     mine.alive = false;
                     for (Asteroid& asteroid : asteroids) {
                         if (asteroid.alive) {
+                            // if check_collision(asteroid.x, asteroid.y, asteroid.radius, mine.x, mine.y, MINE_BLAST_RADIUS):
+                            // delta_x = asteroid.x - mine.x
+                            // delta_y = asteroid.y - mine.y
+                            // separation = asteroid.radius + MINE_BLAST_RADIUS
+                            // if abs(delta_x) <= separation && abs(delta_y) <= separation && delta_x*delta_x + delta_y*delta_y <= separation*separation:
                             if (check_collision(asteroid.x, asteroid.y, asteroid.radius, mine.x, mine.y, MINE_BLAST_RADIUS)) {
                                 if (asteroid.size != 1) {
                                     for (const Asteroid& new_ast : forecast_asteroid_mine_instantaneous_splits(asteroid, mine, game_state)) {
@@ -5499,6 +5526,9 @@ public:
                 new_asteroids.clear();
                 for (Asteroid& asteroid : asteroids) {
                     if (asteroid.alive) {
+                        // Note that we assume the ship is stationary.
+                        // In reality, we don't know how the ship will move during the bullet sim.
+                        // Therefore, these forecasted asteroids may not be accurate if the ship moves.
                         if (check_collision(ship_position_x, ship_position_y, SHIP_RADIUS, asteroid.x, asteroid.y, asteroid.radius)) {
                             if (asteroid.size != 1) {
                                 for (const Asteroid& new_ast : forecast_asteroid_ship_splits(asteroid, 0, 0.0, 0.0, game_state)) {
@@ -5593,7 +5623,7 @@ public:
         Returns:
             bool: True if all moves were simulated safely, else False.
         */
-        intended_move_sequence = move_sequence; // Record intended move sequence in case maneuvers are interrupted
+        intended_move_sequence = move_sequence; // Record down the intended move sequence, so if I crash and the recorded move sequence gets cut short, we still have the intended move sequence!
 
         //flag = false;
         //if (!is_close_to_zero(ship_state.speed) && sim_id == 333) {
@@ -6177,6 +6207,7 @@ public:
                 double cos_head = cos(rad_heading), sin_head = sin(rad_heading);
                 double bullet_x = ship_state.x + SHIP_RADIUS * cos_head;
                 double bullet_y = ship_state.y + SHIP_RADIUS * sin_head;
+                // Make sure the bullet isn't being fired out into the void
                 if (0.0 <= bullet_x && bullet_x <= game_state.map_size_x && 0.0 <= bullet_y && bullet_y <= game_state.map_size_y) {
                     Bullet new_bullet(
                         bullet_x, bullet_y, BULLET_SPEED*cos_head, BULLET_SPEED*sin_head,
@@ -6318,8 +6349,9 @@ public:
         );
 
         // Ship action record
-        if (!wait_out_mines)
+        if (!wait_out_mines) {
             ship_move_sequence.push_back(Action(thrust, turn_rate, fire_this_timestep, drop_mine_this_timestep, initial_timestep + future_timesteps));
+        }
 
         // --- Mine/Asteroid and Mine/Ship collisions ---
         
@@ -6342,6 +6374,8 @@ public:
                     }
                 }
                 if (!wait_out_mines) {
+                    // This DOES NOT account for the other ship! Since we can't predict their behavior,
+                    // I'll just assume the other ship doesn't exist instead of wrongly predicting collisions that don't end up happening.
                     if (!ship_state.is_respawning) {
                         if (check_collision(ship_state.x, ship_state.y, SHIP_RADIUS, mine.x, mine.y, MINE_BLAST_RADIUS)) {
                             return_value = false;
