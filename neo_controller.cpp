@@ -1494,6 +1494,7 @@ inline int64_t count_asteroids_in_mine_blast_radius_with_other_mines(const GameS
         std::vector<Asteroid> new_asteroids;
         new_asteroids.reserve(3);
         for (const Mine& mine: copy_of_mines) {
+            new_asteroids.clear();
             double timesteps_until_explosion = std::round(mine.remaining_time * FPS);
             assert(timesteps_until_explosion >= fast_simulated_timesteps);
             // Jump all asteroids forward by this much, and then perform the detonation step
@@ -2472,6 +2473,7 @@ inline std::pair<double, double> collision_prediction(
     // Super fast geometric way to do this using trig
     // The derivation's a bit wacky but just trust me on this one that this is equivalent
     // This is about 1.4X the speed of the older version of this function that requires solving a quadratic without simplifying or early exiting, benchmarked on a mix of no collisions and collisions test cases
+    // This is mathematically equivalent to solving the quadratic, and simplifying the terms after subbing stuff into the quadratic equation
     double separation = ra + rb;
 
     double dx = ax - bx;
