@@ -14,7 +14,7 @@ from immutabledict import immutabledict
 from .scenario import Scenario
 from .score import Score
 from .controller import KesslerController
-from .collisions import circle_line_collision, circle_line_collision_continuous_complex, circle_line_collision_continuous_chatgpt, circle_line_collision_continuous
+from .collisions import circle_line_collision_continuous
 from .graphics import GraphicsType, GraphicsHandler
 from .mines import Mine
 from .asteroid import Asteroid
@@ -147,7 +147,7 @@ class KesslerGame:
                     # Evaluate each controller letting control be applied
                     if controllers[idx].ship_id != ship.id:
                         raise RuntimeError("Controller and ship ID do not match")
-                    ship.thrust, ship.turn_rate, ship.fire, ship.drop_mine = controllers[idx].actions(ship.ownstate, dict(game_state))
+                    ship.thrust, ship.turn_rate, ship.fire, ship.drop_mine = controllers[idx].actions(ship.ownstate, game_state)
 
                 # Update controller evaluation time if performance tracking
                 if self.perf_tracker:
@@ -204,12 +204,7 @@ class KesslerGame:
                     if idx_ast in asteroid_remove_idxs:
                         continue
                     # If collision occurs
-                    #if circle_line_collision(bullet.position, bullet.tail, asteroid.position, asteroid.radius):
-                    #chatgpt_collision = circle_line_collision_continuous_chatgpt(bullet.position, bullet.tail, bullet.velocity, asteroid.position, asteroid.velocity, asteroid.radius, self.time_step)
-                    collision = circle_line_collision_continuous(bullet.position, bullet.tail, bullet.velocity, asteroid.position, asteroid.velocity, asteroid.radius, self.time_step)
-                    complex_collision = circle_line_collision_continuous_complex(bullet.position, bullet.tail, bullet.velocity, asteroid.position, asteroid.velocity, asteroid.radius, self.time_step, False, asteroid.radius * 1.5)
-                    assert(collision == complex_collision)
-                    if collision:
+                    if circle_line_collision_continuous(bullet.position, bullet.tail, bullet.velocity, asteroid.position, asteroid.velocity, asteroid.radius, self.time_step):
                         # Increment hit values on ship that fired bullet then destruct bullet and mark for removal
                         bullet.owner.asteroids_hit += 1
                         bullet.owner.bullets_hit += 1

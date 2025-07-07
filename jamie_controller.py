@@ -357,7 +357,7 @@ class JamieController(KesslerController):
                 ast_x, ast_y = asteroid['position']
                 ast_vx, ast_vy = asteroid['velocity']
                 t = 0
-                for _ in range(5):
+                for _ in range(50):
                     # iterateive search to home in on solution (but never actually get there)
                     future_x = ast_x + ast_vx * t
                     future_y = ast_y + ast_vy * t
@@ -405,7 +405,7 @@ class JamieController(KesslerController):
                 self.asteroids_targeted[canon_key] = current_time + intercept_time # secs
             elif abs(angle_diff_deg) < 18: # 18 is deg ship turns in one shot cooldown cycle
                 dont_spray = True
-
+        dont_spray = True
         # RAM mode
         #ram_mode= True 
         if ram_mode:
@@ -476,11 +476,6 @@ class JamieController(KesslerController):
                 fire = True
             else:
                 fire = False
-        if self.first_scen_count == 0 and True:
-            if game_state['sim_frame'] <= 22:
-                thrust = 240
-            elif game_state['sim_frame'] <= 30:
-                thrust = -240
         return thrust, turn, fire, drop_mine
 
     @property

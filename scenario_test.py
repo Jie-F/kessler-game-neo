@@ -22,6 +22,7 @@ from neo_controller import NeoController
 #from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
 from nova_controller import NovaController
 from jamie_controller import JamieController
+from mohneesh_controller import TestController as MohneeshController
 
 parser = argparse.ArgumentParser(description='Run Kessler Game with optional CLI flags.')
 parser.add_argument('-invisible', action='store_true', help='Use NoGraphics for the game visualization.')
@@ -363,8 +364,8 @@ random.seed()
 while True:
     for scenario in selected_portfolio[0 if not args.index else args.index:]:
         #random.seed()
-        #debseed = random.randint(1, 1000000000)
-        debseed = 1
+        debseed = random.randint(1, 1000000000)
+        #debseed = 1
         print(f"Debseed is {debseed}")
         random.seed(debseed)
         debug_scenario = Scenario(name="Debug scenario",
@@ -391,12 +392,12 @@ while True:
         #controllers_used = [NeoController(), BabyNeoController()]
 
         asteroids_random = generate_asteroids(
-                                        num_asteroids=random.randint(3, 3),
+                                        num_asteroids=random.randint(1, 15),
                                         position_range_x=(0, width),
                                         position_range_y=(0, height),
-                                        speed_range=(-300, 2000, 0),
+                                        speed_range=(600, 800, 0),
                                         angle_range=(-1, 361),
-                                        size_range=(1, 4)
+                                        size_range=(1, 1)
                                     )*random.choice([1])
 
         # Define game scenario
@@ -407,11 +408,11 @@ while True:
                                     #                {'position': (width*2//3, height*40//100), 'speed': 100, 'angle': -91, 'size': 4},
                                     #                 {'position': (width*1//3, height*40//100), 'speed': 100, 'angle': -91, 'size': 4}],
                                     ship_states=[
-                                        {'position': (width//3, height//2), 'angle': 0, 'lives': 3, 'team': 1, "mines_remaining": 3},
-                                        {'position': (width*2//3, height//2), 'angle': 90, 'lives': 3, 'team': 2, "mines_remaining": 3},
+                                        {'position': (width//300000, height//200000), 'angle': 0, 'lives': 3, 'team': 1, "mines_remaining": 0},
+                                        #{'position': (width*2//3, height//2), 'angle': 90, 'lives': 3, 'team': 2, "mines_remaining": 3},
                                     ],
                                     map_size=(width, height),
-                                    time_limit=10.0,
+                                    time_limit=500.0,
                                     ammo_limit_multiplier=random.choice([0]),
                                     stop_if_no_ammo=False)
         random.seed(randseed)
@@ -438,7 +439,7 @@ while True:
             # [ReplayController0(), ReplayController1()] GamepadController()])#, NeoController()])#, TestController()])GamepadController NeoController Neo
         random.seed(randseed)
         from neo_controller import NeoController
-        controllers_used = [NeoController(), JamieController()]
+        controllers_used = [JamieController(), JamieController()]
         #random.setstate(state)
         #print(f"RNG State: {random.getstate()}")
         #score, perf_data = game.run(scenario=ex_adv_four_corners_pt1, controllers=controllers_used)
@@ -514,9 +515,9 @@ while True:
 
 
 
-    if missed and len(team_deaths) == 1:
-        color_print(f"Ran {iterations} simulations to get one where Neo missed!", 'green')
-        break
+    #if missed and len(team_deaths) == 1:
+    #    color_print(f"Ran {iterations} simulations to get one where Neo missed!", 'green')
+    #    break
 
     if args.once:
         break
