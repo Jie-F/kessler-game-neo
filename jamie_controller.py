@@ -405,7 +405,7 @@ class JamieController(KesslerController):
                 self.asteroids_targeted[canon_key] = current_time + intercept_time # secs
             elif abs(angle_diff_deg) < 18: # 18 is deg ship turns in one shot cooldown cycle
                 dont_spray = True
-        dont_spray = True
+        #dont_spray = True
         # RAM mode
         #ram_mode= True 
         if ram_mode:

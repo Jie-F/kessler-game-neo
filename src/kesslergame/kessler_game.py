@@ -147,7 +147,7 @@ class KesslerGame:
                     # Evaluate each controller letting control be applied
                     if controllers[idx].ship_id != ship.id:
                         raise RuntimeError("Controller and ship ID do not match")
-                    ship.thrust, ship.turn_rate, ship.fire, ship.drop_mine = controllers[idx].actions(ship.ownstate, game_state)
+                    ship.thrust, ship.turn_rate, ship.fire, ship.drop_mine = controllers[idx].actions(ship.ownstate, dict(game_state))
 
                 # Update controller evaluation time if performance tracking
                 if self.perf_tracker:
@@ -181,7 +181,9 @@ class KesslerGame:
                        for bullet
                        in bullets
                        if 0.0 <= bullet.position[0] <= scenario.map_size[0]
-                       and 0.0 <= bullet.position[1] <= scenario.map_size[1]]
+                       and 0.0 <= bullet.position[1] <= scenario.map_size[1]
+                       or 0.0 <= bullet.tail[0] <= scenario.map_size[0]
+                       and 0.0 <= bullet.tail[1] <= scenario.map_size[1]]
 
             # Wrap ships and asteroids to other side of map
             for ship in liveships:

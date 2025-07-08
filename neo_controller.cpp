@@ -101,6 +101,9 @@
 #include <functional>
 #include <cstdint>
 #include <bit>
+#include <fstream>
+#include <cstring>
+#include <filesystem>
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/array.h>
@@ -224,7 +227,7 @@ constexpr double inf = std::numeric_limits<double>::infinity();
 //constexpr double nan = std::numeric_limits<double>::quiet_NaN();
 
 // Build Info
-constexpr const char* BUILD_NUMBER = "2025-06-30 Neo, for Kessler v2.1.9";
+constexpr const char* BUILD_NUMBER = "2025-07-08 Neo, for Kessler v2's latest version TBD";
 
 // Output Config
 constexpr bool DEBUG_MODE = false;
@@ -484,7 +487,6 @@ int64_t unwrap_asteroid_expensive_call_count = 0;
 
 int missed_shot = 0;
 int made_shot = 0;
-
 
 template <typename T>
 void print_vector(const std::vector<T>& vec) {
@@ -880,6 +882,287 @@ inline std::ostream& operator<<(std::ostream& os, const GameState& gs) { return 
 inline std::ostream& operator<<(std::ostream& os, const Action& act) { return os << act.str(); }
 inline std::ostream& operator<<(std::ostream& os, const SimState& ss) { return os << ss.str(); }
 inline std::ostream& operator<<(std::ostream& os, const Target& t) { return os << t.str(); }
+
+// Debug plotting
+
+struct Color {
+    uint8_t r,g,b;
+    Color(uint8_t r=0, uint8_t g=0, uint8_t b=0): r(r), g(g), b(b) {}
+    uint8_t operator[](int i) const { return (i==0)?b:((i==1)?g:r); } // for bmp b,g,r order
+};
+
+class NeoPlot {
+public:
+    int width, height;
+    std::vector<Color> pix;
+
+    Color bg = Color(0,0,0); // Background
+
+    NeoPlot(int w, int h): width(w), height(h), pix(w*h, bg) {}
+
+    void clear() { std::fill(pix.begin(), pix.end(), bg); }
+
+    // (0,0) is lower-left unless you swap y
+    void set_pixel(int x, int y, Color c) {
+        if(x>=0 && x<width && y>=0 && y<height)
+            pix[y*width + x] = c;
+    }
+
+    void draw_circle(double cx, double cy, double r, Color c, bool fill=true, int n_seg=64) {
+        // Midpoint circle drawing for outline and scanline for fill
+        if(!fill) {
+            for(int i=0;i<n_seg;++i){
+                double t0 = (i)*2*pi/n_seg, t1 = (i+1)*2*pi/n_seg;
+                int x0 = int(cx + cos(t0)*r + 0.5f), y0 = int(cy + sin(t0)*r + 0.5f);
+                int x1 = int(cx + cos(t1)*r + 0.5f), y1 = int(cy + sin(t1)*r + 0.5f);
+                draw_line(x0,y0,x1,y1,c);
+            }
+        } else {
+            int ir = std::ceil(r);
+            for(int dy=-ir;dy<=ir;++dy){
+                int y = int(cy+dy);
+                int dxr = int(std::sqrt(r*r - dy*dy));
+                for(int dx=-dxr;dx<=dxr;++dx) {
+                    int x=int(cx+dx);
+                    set_pixel(x,y,c);
+                }
+            }
+        }
+    }
+
+    void draw_line(int x0,int y0,int x1,int y1, Color c) {
+        // Bresenham's
+        int dx = std::abs(x1-x0), dy = std::abs(y1-y0), sx = x0<x1?1:-1, sy = y0<y1?1:-1, err = (dx>dy?dx:-dy)/2, e2;
+        for(;;) {
+            set_pixel(x0,y0,c);
+            if(x0==x1 && y0==y1) break;
+            e2 = err;
+            if(e2 > -dx) { err -= dy; x0 += sx; }
+            if(e2 < dy) { err += dx; y0 += sy; }
+        }
+    }
+
+    void draw_arrow(double x0, double y0, double x1, double y1, Color c) {
+        // Draw the line shaft
+        draw_line(int(x0+0.5), int(y0+0.5), int(x1+0.5), int(y1+0.5), c);
+
+        // Compute direction
+        double dx = x1-x0, dy = y1-y0, len = std::sqrt(dx*dx+dy*dy);
+        if(len == 0) return;
+
+        double nx = dx/len, ny = dy/len;
+        // Arrowhead length and half-width -- tweak these as you like
+        const double arrow_len = 7.0;
+        const double arrow_wid = 3.5;
+
+        // Tip is at (x1, y1)
+        // Base center of arrowhead
+        double bx = x1 - nx * arrow_len;
+        double by = y1 - ny * arrow_len;
+        // Two base corners of the triangle
+        double perp_x = -ny, perp_y = nx;
+        double b1x = bx + perp_x * arrow_wid;
+        double b1y = by + perp_y * arrow_wid;
+        double b2x = bx - perp_x * arrow_wid;
+        double b2y = by - perp_y * arrow_wid;
+
+        // Draw solid triangle arrowhead
+        std::vector<std::pair<double,double>> verts = {
+            {x1, y1},
+            {b1x, b1y},
+            {b2x, b2y}
+        };
+        draw_filled_triangle(verts, c);  // You'll define this below!
+    }
+
+    // Helper for solid filled triangle (not super optimized)
+    void draw_filled_triangle(const std::vector<std::pair<double,double>>& pts, Color c) {
+        // Sort points by y
+        struct V { double x, y; };
+        V v[3] = {
+            {pts[0].first, pts[0].second},
+            {pts[1].first, pts[1].second},
+            {pts[2].first, pts[2].second}
+        };
+        // Sort vertices by y
+        if(v[0].y > v[1].y) std::swap(v[0], v[1]);
+        if(v[0].y > v[2].y) std::swap(v[0], v[2]);
+        if(v[1].y > v[2].y) std::swap(v[1], v[2]);
+        // v[0] <= v[1] <= v[2] by y
+
+        auto edge_interpolate = [](double y, V a, V b) -> double {
+            if(a.y == b.y) return a.x;
+            return a.x + (b.x - a.x) * ((y - a.y) / (b.y - a.y));
+        };
+
+        int y0 = std::ceil(v[0].y), y2 = std::floor(v[2].y);
+        for(int y = y0; y <= y2; ++y) {
+            if(y < std::ceil(v[1].y)) {
+                // lower part
+                double xa = edge_interpolate(y, v[0], v[1]);
+                double xb = edge_interpolate(y, v[0], v[2]);
+                int x0 = std::ceil(std::min(xa, xb)), x1 = std::floor(std::max(xa, xb));
+                for(int x = x0; x <= x1; ++x) set_pixel(x, y, c);
+            } else {
+                // upper part
+                double xa = edge_interpolate(y, v[1], v[2]);
+                double xb = edge_interpolate(y, v[0], v[2]);
+                int x0 = std::ceil(std::min(xa, xb)), x1 = std::floor(std::max(xa, xb));
+                for(int x = x0; x <= x1; ++x) set_pixel(x, y, c);
+            }
+        }
+    }
+
+    void draw_polygon(const std::vector<std::pair<double,double>>& pts, Color c) {
+        int n = pts.size();
+        if(n < 2) return;
+        for(int i = 0; i < n; ++i) {
+            auto [x0, y0] = pts[i];
+            auto [x1, y1] = pts[(i+1)%n];
+            draw_line(int(x0+0.5f), int(y0+0.5f), int(x1+0.5f), int(y1+0.5f), c);
+        }
+    }
+
+    void write_bmp(const char* fname) {
+        // Minimal BMP: 24 bit, no compression
+        int row_padded = (width*3+3)&(~3);
+        int filesize = 54 + row_padded*height;
+        uint8_t bmpfileheader[14] = {'B','M',filesize,filesize>>8,filesize>>16,filesize>>24,
+             0,0,0,0,54,0,0,0};
+        uint8_t bmpinfoheader[40] = {40,0,0,0,
+            width, width>>8, width>>16, width>>24,
+            height,height>>8,height>>16,height>>24,
+            1,0,24,0};
+
+        std::ofstream f(fname,std::ios::binary);
+        f.write((char*)bmpfileheader,14);
+        f.write((char*)bmpinfoheader,40);
+
+        std::vector<uint8_t> row(row_padded,0);
+        for(int y=0;y<height;++y) {
+            for(int x=0;x<width;++x) {
+                Color &p = pix[(height-1-y)*width + x];
+                row[x*3+0] = p.b;
+                row[x*3+1] = p.g;
+                row[x*3+2] = p.r;
+            }
+            f.write((char*)row.data(),row_padded);
+        }
+        f.close();
+    }
+};
+
+// ---- Hardcoded directory for images ----
+const std::string DEBUG_BMP_DIR = "V:/neo_debug_imgs/";
+
+// ---- Utility: Color interpolation for mine fuse ----
+Color fuse_time_to_color(double remaining_time, double max_time) {
+    // green -> yellow -> red
+    if (remaining_time >= max_time) return Color(0, 255, 0);          // green
+    if (remaining_time <= 0.0)    return Color(255, 0, 0);            // red
+
+    if (remaining_time > max_time / 2.0) {
+        double t = (remaining_time - max_time / 2.0) / (max_time / 2.0); // 1..0
+        int red = int(255 * (1.0 - t));
+        return Color(red, 255, 0);     // green -> yellow
+    } else {
+        double t = remaining_time / (max_time / 2.0);  // 1..0
+        int green = int(255 * t);
+        return Color(255, green, 0);   // yellow -> red
+    }
+}
+
+void plot_game_state_to_bmp(
+        const GameState& game_state,
+        const std::vector<Asteroid>& asteroids,
+        const Ship* ship_state,
+        const std::vector<Bullet>& bullets,
+        const std::vector<Bullet>& special_bullets,
+        const std::vector<Asteroid>& circled_asteroids,
+        const std::vector<Asteroid>& ghost_asteroids,
+        const std::vector<Asteroid>& forecasted_asteroids,
+        const std::vector<Mine>& mines,
+        const std::string& filename,
+        const std::string& debug_plot_title = ""
+    )
+{
+    // Make sure directory exists (C++17 or just manually create it out-of-band)
+    std::filesystem::create_directories(DEBUG_BMP_DIR);
+
+    NeoPlot plotter(game_state.map_size_x, game_state.map_size_y);
+    plotter.bg = Color(0,0,0);
+    plotter.clear();
+
+    // --- Asteroids
+    for(const auto& a : asteroids) {
+        if (a.alive) {
+            plotter.draw_circle(a.x, a.y, a.radius, Color(128,128,128), true);
+            // Velocity arrow; scale DELTA_TIME if you want, or just use vx,vy
+            plotter.draw_arrow(a.x, a.y, a.x + a.vx, a.y + a.vy, Color(255,255,255));
+        }
+    }
+    for(const auto& a : ghost_asteroids) {
+        if (a.alive) {
+            plotter.draw_circle(a.x, a.y, a.radius, Color(51,51,51), true); // darker gray
+        }
+    }
+    for(const auto& a : forecasted_asteroids) {
+        if (a.alive) {
+            plotter.draw_circle(a.x, a.y, a.radius, Color(68,0,0), true);
+        }
+    }
+    for(const auto& a : circled_asteroids) {
+        if (a.alive) {
+            plotter.draw_circle(a.x, a.y, a.radius+5, Color(255,165,0), false);  // orange
+        }
+    }
+    for(const auto& m : mines) {
+        if (m.alive) {
+            plotter.draw_circle(m.x, m.y, MINE_BLAST_RADIUS, fuse_time_to_color(m.remaining_time, MINE_FUSE_TIME), false);
+        }
+    }
+
+    // --- Ship
+    if(ship_state) {
+        double angle_rad = ship_state->heading * DEG_TO_RAD;
+        double sx = ship_state->x, sy = ship_state->y;
+        double ship_base = SHIP_RADIUS;
+        double ship_tip  = SHIP_RADIUS;
+        std::vector<std::pair<double,double>> verts = {
+            { sx + ship_tip * std::cos(angle_rad), sy + ship_tip * std::sin(angle_rad) },
+            { sx + ship_base * std::cos(angle_rad + 3.0 * pi / 4.0), sy + ship_base * std::sin(angle_rad + 3.0 * pi / 4.0) },
+            { sx + ship_base * std::cos(angle_rad - 3.0 * pi / 4.0), sy + ship_base * std::sin(angle_rad - 3.0 * pi / 4.0) },
+        };
+        plotter.draw_polygon(verts, Color(0, 255, 0));
+        plotter.draw_circle(sx, sy, SHIP_RADIUS, Color(0, 0, 255), false);
+    }
+
+    // --- Bullets
+    for(const auto& b : bullets) {
+        if (b.alive) {
+            double rad = b.heading * DEG_TO_RAD;
+            double tail_x = b.x - BULLET_LENGTH * std::cos(rad);
+            double tail_y = b.y - BULLET_LENGTH * std::sin(rad);
+            // Regular bullets are red
+            plotter.draw_arrow(tail_x, tail_y, b.x, b.y, Color(255, 0, 0));
+        }
+    }
+    for(const auto& b : special_bullets) {
+        if (b.alive) {
+            double rad = b.heading * DEG_TO_RAD;
+            double tail_x = b.x - BULLET_LENGTH * std::cos(rad);
+            double tail_y = b.y - BULLET_LENGTH * std::sin(rad);
+            // Special bullets are green
+            plotter.draw_arrow(tail_x, tail_y, b.x, b.y, Color(0, 255, 0));
+        }
+    }
+
+    // plotter.draw_circle(1017.35, 423.2, 25, Color(255,0,0), false);  // hardcoded debug
+
+    std::string full_path = DEBUG_BMP_DIR + filename;
+    plotter.write_bmp(full_path.c_str());
+}
+
 
 // ------ Angle & Math Utilities ------
 
@@ -3055,7 +3338,7 @@ inline int64_t calculate_timesteps_until_bullet_hits_asteroid(double time_until_
     return 1ULL + static_cast<int64_t>(std::ceil(timesteps));
 }
 
-inline bool asteroid_bullet_collision_kessler(
+inline bool asteroid_bullet_collision_kessler_old_wrong(
     double bullet_head_x, double bullet_head_y,
     double bullet_tail_x, double bullet_tail_y,
     double asteroid_x, double asteroid_y,
@@ -3109,7 +3392,7 @@ inline bool asteroid_bullet_collision_kessler(
     return triangle_height < asteroid_radius;
 }
 
-inline bool asteroid_bullet_collision(
+inline bool asteroid_bullet_collision_discrete_wrong(
     double bullet_head_x, double bullet_head_y,
     double bullet_tail_x, double bullet_tail_y,
     double asteroid_x, double asteroid_y,
@@ -3157,6 +3440,146 @@ inline bool asteroid_bullet_collision(
     double triangle_height = twice_area * BULLET_LENGTH_RECIPROCAL;
 
     return triangle_height < asteroid_radius;
+}
+
+inline bool circle_line_collision_continuous(
+    double line_x1, double line_y1,
+    double line_x2, double line_y2,  
+    double line_vx, double line_vy,
+    double circle_x, double circle_y,  
+    double circle_vx, double circle_vy,
+    double circle_r, double delta_time)
+{
+    // First, do a quick bounding box rejection check
+    // Find the min/max x/y values that the bullet can take on, and then expand by the radius of the asteroid
+    double bullet_rel_vx = line_vx - circle_vx;
+    double bullet_rel_vy = line_vy - circle_vy;
+
+    double bullet_dx = bullet_rel_vx * delta_time;
+    double bullet_dy = bullet_rel_vy * delta_time;
+
+    double x_values[4] = {
+        line_x1,
+        line_x1 - bullet_dx,
+        line_x2,
+        line_x2 - bullet_dx
+    };
+
+    double y_values[4] = {
+        line_y1,
+        line_y1 - bullet_dy,
+        line_y2,
+        line_y2 - bullet_dy
+    };
+
+    double min_x = x_values[0], max_x = x_values[0];
+    double min_y = y_values[0], max_y = y_values[0];
+    for (int i = 1; i < 4; ++i) {
+        if (x_values[i] < min_x) min_x = x_values[i];
+        if (x_values[i] > max_x) max_x = x_values[i];
+        if (y_values[i] < min_y) min_y = y_values[i];
+        if (y_values[i] > max_y) max_y = y_values[i];
+    }
+
+    if (circle_x + circle_r < min_x || circle_x - circle_r > max_x ||
+        circle_y + circle_r < min_y || circle_y - circle_r > max_y) {
+        return false;
+    }
+
+    // The key insight is that, from the frame of reference of the asteroid, the bullet's path over the previous frame covers the shape of a parallelogram
+    // So we can simplify this problem down to a stationary collision check between a circle centered at the origin, and a parallelogram
+    // Fix frame of reference to circle
+    // a and b are the head and tail of the bullet
+    double ax = line_x1 - circle_x;
+    double ay = line_y1 - circle_y;
+    double bx = line_x2 - circle_x;
+    double by = line_y2 - circle_y;
+    double vx = bullet_rel_vx * delta_time; // Per frame velocities
+    double vy = bullet_rel_vy * delta_time;
+    // c and d are the head and tails of the bullet, delta_time in the past, forming the other two points of the parallelogram
+    double cx = ax - vx;
+    double cy = ay - vy;
+    double dx = bx - vx;
+    double dy = by - vy;
+    double rad_sq = circle_r * circle_r;
+    // Check whether any of the vertices of the parallelogram are within the circle
+    // Actually this is redundant, since if we project and clamp and just check those, it will cover the cases where the corner is the closest
+    // This might be a fast enough rejection check for it to be worth doing anyway
+    //if ax*ax + ay*ay <= rad_sq || bx*bx + by*by <= rad_sq || cx*cx + cy*cy <= rad_sq || dx*dx + dy*dy <= rad_sq:
+    //    return True
+
+    // Project the point (0, 0), the center of the circle, onto each of the edges of the parallelogram
+    auto project_origin_onto_segment_dist_sq = [](double x1, double y1, double x2, double y2) -> double {
+        // Given a segment from (x1, y1) to (x2, y2), project the origin (0, 0)
+        // onto this segment and return the squared distance from the origin
+        // to the closest point on the segment.
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        double len_sq = dx*dx + dy*dy;
+        // If the endpoints are basically the same point,
+        // just return squared dist to the (degenerate) endpoint.
+        if (len_sq < 1e-12) {
+            return x1*x1 + y1*y1;
+        }
+        // Compute the projection parameter t of the origin onto the segment,
+        // where t=0 yields (x1, y1) and t=1 yields (x2, y2).
+        // Clamp t to [0, 1] to stay on the segment.
+        double t = -(x1*dx + y1*dy)/len_sq;
+        if (t < 0.0) t = 0.0;
+        if (t > 1.0) t = 1.0;
+        // Compute the closest point's coordinates.
+        double px = x1 + t*dx;
+        double py = y1 + t*dy;
+        // Return the squared distance from the origin to this closest point.
+        return px*px + py*py;
+    };
+
+    // Check whether any of these projected points with clamping are within the circle. If yes, there's a collision.
+    if (
+        project_origin_onto_segment_dist_sq(ax, ay, bx, by) <= rad_sq || // A - B
+        project_origin_onto_segment_dist_sq(cx, cy, dx, dy) <= rad_sq || // C - D
+        project_origin_onto_segment_dist_sq(ax, ay, cx, cy) <= rad_sq || // A - C
+        project_origin_onto_segment_dist_sq(bx, by, dx, dy) <= rad_sq    // B - D
+    ) {
+        return true;
+    }
+
+    // If still no collision, then the only way this can still be a collision is if the circle is completely contained within the parallelogram,
+    // which is impossible in this case because the bullet is too short for an asteroid to fit between its ends.
+    // But for completeness, for the general solution, you can uncomment the following code which checks whether the origin is within the parallelogram using a cross product orientation checker
+    /*
+    auto is_origin_in_parallelogram = [](double ax, double ay, double bx, double by, double cx, double cy, double dx, double dy) -> bool {
+        auto cross = [](double xa, double ya, double xb, double yb) -> double {
+            return xa*yb - ya*xb;
+        };
+        double corners[4][2] = { {ax, ay}, {bx, by}, {dx, dy}, {cx, cy} };
+        double sign = 0;
+        for (int i = 0; i < 4; ++i) {
+            double x0 = corners[i][0], y0 = corners[i][1];
+            double x1 = corners[(i + 1) % 4][0], y1 = corners[(i + 1) % 4][1];
+            // Edge from (x0, y0) to (x1, y1)
+            double edge_x = x1 - x0;
+            double edge_y = y1 - y0;
+            // Vector from (x0, y0) to origin (0, 0) is (-x0, -y0)
+            double cp = cross(edge_x, edge_y, -x0, -y0);
+            if (cp == 0.0) {
+                continue;  // Origin is on the edge, consider inside
+            }
+            if (sign == 0) {
+                sign = (cp > 0.0) ? 1.0 : -1.0;
+            } else {
+                if ((cp > 0.0) != (sign > 0.0)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+    if (is_origin_in_parallelogram(ax, ay, bx, by, cx, cy, dx, dy)) {
+        return true;
+    }
+    */
+    return false;
 }
 
 inline std::tuple<
@@ -3521,7 +3944,8 @@ bool check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_sho
 ) {
     //This assumes all asteroids are wrapped/within the game bounds!
     // Check whether the asteroid has already been shot at, or if we can shoot at it again
-
+    //std::cout << "Checking whether we shot at this ast: " << asteroid << std::endl;
+    //print_asteroids_pending_death(asteroids_pending_death);
     // Helper lambda for checks:
     auto verify_asteroid_does_not_appear_in_wrong_timestep = [&](const Asteroid& a) -> bool {
         for (const auto& kv : asteroids_pending_death) {
@@ -3593,7 +4017,7 @@ void track_asteroid_we_shot_at(
     original_asteroid: This is the asteroid we're tracking, at the time of the bullet fire, at present time
     */
     //debug_print("Tracking asteroid we shot at. Asts pending death: ", ", current_timestep=", current_timestep, ", bullet_travel_timesteps=", bullet_travel_timesteps, ", original_asteroid=", original_asteroid.str());
-
+    //std::cout << "Tracking asteroid we shot at: " << original_asteroid << std::endl;
     // This modifies asteroids_pending_death in place instead of returning it
 
     if constexpr (ENABLE_SANITY_CHECKS) {
@@ -3638,6 +4062,7 @@ void track_asteroid_we_shot_at(
             asteroid.y = pymod(asteroid.y + asteroid.vy * DELTA_TIME, game_state.map_size_y);
         }
     }
+    //std::cout << "After tracking asteroid we shot at, the asts pending death:" << std::endl;
     //print_asteroids_pending_death(asteroids_pending_death);
 }
 
@@ -3964,22 +4389,21 @@ public:
     }
 
     std::unordered_map<int64_t, std::unordered_map<int64_t, std::vector<Asteroid>>> get_asteroids_pending_death_history() const {
-        // This is a doozy. First of all, if we never shot any asteroids during this sim, then this history dict will be empty!
-        // But each time we shoot an asteroid, we add to this dict the timestep the thing was updated, but we plop down the PREVIOUS version!
-        // For example we have versions A and B. 0:A, 1:A, 2:A, 3:B, 4:B is how the thing changes. So the dict would say: {3: A}. And then B is held in the variable.
-        std::unordered_map<int64_t, std::unordered_map<int64_t, std::vector<Asteroid>>> asteroids_pending_death_history_dict;
+        // This is a doozy. First of all, if we never shot any asteroids during this sim, then this history map will be empty!
+        // But each time we shoot an asteroid, we add to this map the timestep the thing was updated, but we plop down the PREVIOUS version!
+        // For example we have versions A and B. 0:A, 1:A, 2:A, 3:B, 4:B is how the thing changes. So the map would say: {3: A}. And then B is held in the current variable.
+        std::unordered_map<int64_t, std::unordered_map<int64_t, std::vector<Asteroid>>> asteroids_pending_death_history_map;
         // Use a pointer to avoid copying large map repeatedly
         const std::unordered_map<int64_t, std::vector<Asteroid>>* latest_version = &asteroids_pending_death;
-        // TODO: Make sure there's no off-by-one error in these bounds and indices!
         for (int64_t t = initial_timestep + future_timesteps; t > initial_timestep; --t) {
-            // We add one because it's the frame after this one that we're updating the state to be, and that we read this variable from
-            asteroids_pending_death_history_dict[t + 1] = *latest_version;  // Dereference to copy into result
+            // Iterate future_timesteps times
+            asteroids_pending_death_history_map[t] = *latest_version;  // Dereference to copy into result
             auto it = asteroids_pending_death_history.find(t);
             if (it != asteroids_pending_death_history.end()) {
                 latest_version = &it->second;
             }
         }
-        return asteroids_pending_death_history_dict;
+        return asteroids_pending_death_history_map;
     }
 
 
@@ -4004,10 +4428,9 @@ public:
         std::unordered_map<int64_t, std::unordered_set<std::pair<double, double>, pair_hash>> mine_positions_placed_history_dict;
         // Use pointer to avoid unnecessary copying of the set
         const std::unordered_set<std::pair<double, double>, pair_hash>* latest_version = &mine_positions_placed;
-        // TODO: Make sure there's no off-by-one error in these bounds and indices!
         for (int64_t t = initial_timestep + future_timesteps; t > initial_timestep; --t) {
-            // We add one because it's the frame after this one that we're updating the state to be, and that we read this variable from
-            mine_positions_placed_history_dict[t + 1] = *latest_version;  // Copy the current version into the result
+            // Iterate future_timesteps times
+            mine_positions_placed_history_dict[t] = *latest_version;  // Copy the current version into the result
             auto it = mine_positions_placed_history.find(t);
             if (it != mine_positions_placed_history.end()) {
                 latest_version = &it->second;
@@ -4724,6 +5147,7 @@ public:
             //std::optional<Asteroid> actual_asteroid_hit;
             //std::optional<int64_t> timesteps_until_bullet_hit_asteroid;
             //bool ignored_bool;
+            std::cout << "Calling bullet sim from simulate_shooting_at_target" << std::endl;
             auto [actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, ignored_bool] = bullet_sim(ship_state_after_aiming, fire_first_timestep, aiming_move_sequence.size());
             return std::make_tuple(
                 actual_asteroid_hit,
@@ -5254,11 +5678,13 @@ public:
                 }
         }
         std::vector<Mine> mines;
-        for (const auto& m : game_state.mines)
+        for (const auto& m : game_state.mines) {
             if (m.alive) mines.push_back(m);
+        }
         std::vector<Bullet> bullets;
-        for (const auto& b : game_state.bullets)
+        for (const auto& b : game_state.bullets) {
             if (b.alive) bullets.push_back(b);
+        }
 
         Ship initial_ship_state = get_ship_state();
         if constexpr (ENABLE_SANITY_CHECKS) {
@@ -5268,8 +5694,9 @@ public:
         }
 
         std::optional<Ship> bullet_sim_ship_state = std::nullopt;
-        if (whole_move_sequence.has_value())
+        if (whole_move_sequence.has_value()) {
             bullet_sim_ship_state = get_ship_state();
+        }
 
         std::optional<Bullet> my_bullet = std::nullopt;
         bool ship_not_collided_with_asteroid = true;
@@ -5288,10 +5715,59 @@ public:
             // Step the simulation.
             timesteps_until_bullet_hit_asteroid += 1;
             if (timesteps_until_bullet_hit_asteroid > timestep_limit) {
+                std::cout << "Bullet sim: ran out of time in id: " << sim_id << std::endl;
                 return std::make_tuple(std::nullopt, int64_t(-1), ship_not_collided_with_asteroid);
             }
 
-            // (plotting code skipped for clarity but you can add it here)
+            if (!(skip_half_of_first_cycle && timesteps_until_bullet_hit_asteroid == 0)) {
+                // 1. Prepare the ship pointer for plotting (null or set):
+                const Ship* ship_plot_state = nullptr;
+                if (whole_move_sequence.has_value()) {
+                    if (bullet_sim_ship_state.has_value()) {
+                        ship_plot_state = &bullet_sim_ship_state.value();
+                    }
+                    // else, leave as nullptr
+                }
+
+                // 2. Prepare a vector for my_bullet (if any):
+                std::vector<Bullet> my_bullet_vec;
+                if (my_bullet.has_value()) {
+                    my_bullet_vec.push_back(my_bullet.value());
+                }
+
+                // 3. flattened_asteroids_pending_death - fill this in as appropriate for your logic.
+                // If you have asteroids_pending_death as a map<something, vector<Asteroid>>, flatten it:
+                std::vector<Asteroid> flattened_asteroids_pending_death;
+                for (const auto& pair : asteroids_pending_death) {
+                    flattened_asteroids_pending_death.insert(flattened_asteroids_pending_death.end(),
+                        pair.second.begin(), pair.second.end());
+                }
+
+                // 4. The forecasted_asteroid_splits vector (use as is, or substitute as necessary):
+                // e.g. std::vector<Asteroid> forecasted_asteroids;
+
+                std::string filename = "sim_" + std::to_string(sim_id) +
+                    "_t" + std::to_string(initial_timestep + timesteps_until_bullet_hit_asteroid) + ".bmp";
+
+                std::string plot_title = "SIM ID " + std::to_string(sim_id) +
+                    " Ast count: " + std::to_string(asteroids.size()) +
+                    " BULLET SIMULATION TIMESTEP " + std::to_string(initial_timestep + timesteps_until_bullet_hit_asteroid);
+
+                // 5. Finally, call the function:
+                plot_game_state_to_bmp(
+                    game_state,
+                    asteroids,
+                    ship_plot_state,
+                    bullets,
+                    my_bullet_vec,
+                    flattened_asteroids_pending_death,
+                    {},
+                    forecasted_asteroid_splits,
+                    mines,
+                    filename,
+                    plot_title
+                );
+            }
 
             // Simulate bullets
             if (!(skip_half_of_first_cycle && timesteps_until_bullet_hit_asteroid == 0)) {
@@ -5318,6 +5794,7 @@ public:
                         my_bullet->y = new_bullet_y;
                     } else {
                         // The bullet got shot into the void without hitting anything :(
+                        std::cout << "Bullet sim: The bullet got shot into the void without hitting anything :( id: " << sim_id << std::endl;
                         return std::make_tuple(std::nullopt, int64_t(-1), ship_not_collided_with_asteroid);
                     }
                 }
@@ -5374,6 +5851,7 @@ public:
                 // if not check_coordinate_bounds(self.game_state, bullet_x, bullet_y):
                 if (!(0.0 <= new_bullet_x && new_bullet_x <= game_state.map_size_x && 0.0 <= new_bullet_y && new_bullet_y <= game_state.map_size_y)) {
                     // My bullet got shot into the void without hitting anything :(
+                    std::cout << "Bullet sim: The bullet got shot into the void without hitting anything (in place 2) :(" << std::endl;
                     return std::make_tuple(std::nullopt, int64_t(-1), ship_not_collided_with_asteroid);
                 }
                 my_bullet = Bullet(new_bullet_x,
@@ -5431,17 +5909,16 @@ public:
             // Helper lambda to process bullet/asteroid collision logic
             auto process_bullet = [&](Bullet& b, size_t b_idx){
                 if (b.alive) {
-                    double b_tail_x = b.x + b.tail_delta_x;
-                    double b_tail_y = b.y + b.tail_delta_y;
                     new_asteroids.clear();
                     for (auto& a : asteroids) {
                         if (a.alive) {
-                            if constexpr (ENABLE_SANITY_CHECKS) {
-                                assert(asteroid_bullet_collision(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius) == asteroid_bullet_collision_kessler(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius));
-                            }
-                            if (asteroid_bullet_collision(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius)) {
+                            //if constexpr (ENABLE_SANITY_CHECKS) {
+                            //    assert(asteroid_bullet_collision(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius) == asteroid_bullet_collision_kessler(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius));
+                            //}
+                            if (circle_line_collision_continuous(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, b.vx, b.vy, a.x, a.y, a.vx, a.vy, a.radius, game_state.delta_time)) {
                                 if (b_idx == len_bullets) {
                                     // This bullet is my bullet!
+                                    std::cout << "Bullet sim: Bullet landed! Sim number: " << sim_id << std::endl;
                                     return std::optional<std::tuple<std::optional<Asteroid>, int64_t, bool>>(
                                         std::make_tuple(std::optional<Asteroid>(a), timesteps_until_bullet_hit_asteroid, ship_not_collided_with_asteroid)
                                     );
@@ -5477,13 +5954,17 @@ public:
             // First, process main bullets
             for (size_t b_idx = 0; b_idx < bullets.size(); ++b_idx) {
                 auto result = process_bullet(bullets[b_idx], b_idx);
-                if (result) return *result;
+                if (result) {
+                    return *result;
+                }
             }
 
             // Then, process your bullet (if it exists)
             if (my_bullet.has_value()) {
                 auto result = process_bullet(my_bullet.value(), len_bullets);
-                if (result) return *result;
+                if (result) {
+                    return *result;
+                }
             }
 
             // Check mine/asteroid collisions
@@ -5673,10 +6154,6 @@ public:
         bool wait_out_mines = false) {
         //total_sim_timesteps += 1;
 
-        if (this->sim_id == 1235467) {
-            std::cout << this->game_state << std::endl;
-        }
-
         if constexpr (ENABLE_BAD_LUCK_EXCEPTION && random_double() < BAD_LUCK_EXCEPTION_PROBABILITY) {
             throw std::runtime_error("Bad luck exception!");
         }
@@ -5800,12 +6277,14 @@ public:
             // ================ HANDLE FIRING ================
             if (ship_state.bullets_remaining != 0) {
                 if (fire_first_timestep && future_timesteps == 0) {
+                    // The flag tells us to fire on the first timestep, and it's the first timestep.
                     assert(respawn_maneuver_pass_number == 0 || (respawn_maneuver_pass_number == 2 && initial_timestep + future_timesteps > last_timestep_colliding));
                     // In theory we should be able to hit the target, however if we're in multiagent mode, the other ship could muddle with things in this time making me miss my shot, so let's just confirm that it's going to land before we fire for real!
                     if (verify_first_shot) {
                         std::optional<Asteroid> actual_asteroid_hit;
                         int64_t timesteps_until_bullet_hit_asteroid;
                         bool ship_was_safe;
+                        std::cout << "Calling bullet sim from verify first shot in update()" << std::endl;
                         std::tie(actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, ship_was_safe) = bullet_sim(
                             std::nullopt, false, 0, true, future_timesteps, whole_move_sequence, INT_INF, std::nullopt
                         );
@@ -5888,7 +6367,7 @@ public:
                                 }
 
                                 //bool in_culling_cone = false;
-                                if (ast_idx < len_asteroids && heading_diff_within_threshold(ship_heading_rad, asteroid->x - ship_state.x, asteroid->y - ship_state.y, MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF_COSINE)) {
+                                if (ast_idx < len_asteroids) {// && heading_diff_within_threshold(ship_heading_rad, asteroid->x - ship_state.x, asteroid->y - ship_state.y, MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF_COSINE)) {
                                     //ast_angle = super_fast_atan2(asteroid.y - self.ship_state.y, asteroid.x - self.ship_state.x)
                                     //if abs(angle_difference_deg(degrees(ast_angle), self.ship_state.heading)) <= MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF:
                                     // We also want to add the surrounding asteroids into the bullet sim, just in case any of them aren't added later in the feasible shots
@@ -5913,11 +6392,11 @@ public:
                                             continue;
                                         }
 
-                                        // Do interception math
+                                        // Do interception prediction math
                                         bool feasible;
                                         double shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist_during_interception;
                                         std::tie(feasible, shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist_during_interception) =
-                                            calculate_interception(ship_state.x, ship_state.y, a.x, a.y, a.vx, a.vy, a.radius, ship_state.heading, game_state);
+                                            calculate_interception(ship_state.x, ship_state.y, a.x - a.vx * DELTA_TIME, a.y - a.vy * DELTA_TIME, a.vx, a.vy, a.radius, ship_state.heading, game_state);
 
                                         if (feasible) {
                                             // Regardless of whether our heading is close enough to shooting this asteroid, keep track of this, just in case no asteroids are within shooting range this timestep, but we can begin to turn toward it next timestep!
@@ -5975,6 +6454,8 @@ public:
                                 std::optional<Asteroid> actual_asteroid_hit;
                                 int64_t timesteps_until_bullet_hit_asteroid;
                                 bool ship_was_safe;
+                                std::cout << "Calling bullet sim from convenient shots in update()" << std::endl;
+                                std::cout << "Number of bullets already onscreen is: " << game_state.bullets.size() << std::endl;
                                 std::tie(actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, ship_was_safe)
                                     = bullet_sim(std::nullopt, false, 0, true, future_timesteps, whole_move_sequence,
                                                 bullet_sim_timestep_limit,
@@ -5982,8 +6463,9 @@ public:
                                                     std::optional<std::vector<Asteroid>>(culled_targets_for_simulation) : std::nullopt);
                                 if (actual_asteroid_hit.has_value() && ship_was_safe) {
                                     // Confirmed that the shot will land
-                                    //++made_shot;
+                                    ++made_shot;
                                     assert(timesteps_until_bullet_hit_asteroid >= 0);
+                                    assert(!fire_this_timestep);
                                     Asteroid actual_asteroid_hit_at_fire_time = time_travel_asteroid(actual_asteroid_hit.value(), -timesteps_until_bullet_hit_asteroid, game_state);
                                     if (check_whether_this_is_a_new_asteroid_for_which_we_do_not_have_a_pending_shot(asteroids_pending_death, initial_timestep + future_timesteps + 1, game_state, actual_asteroid_hit_at_fire_time)) {
                                         fire_this_timestep = true;
@@ -6000,16 +6482,16 @@ public:
                                         //std::cout << "Tracking from sim number " << std::to_string(this->sim_id) << std::endl;
                                         track_asteroid_we_shot_at(asteroids_pending_death, initial_timestep + future_timesteps + 1, game_state, timesteps_until_bullet_hit_asteroid, actual_asteroid_hit_at_fire_time);
                                     }
-                                    if (fire_this_timestep && !std::isinf(game_state.time_limit) && initial_timestep + future_timesteps + timesteps_until_bullet_hit_asteroid + 1 > static_cast<int64_t>(std::floor(FPS*game_state.time_limit))) {
+                                    if (fire_this_timestep && !std::isinf(game_state.time_limit) && initial_timestep + future_timesteps + timesteps_until_bullet_hit_asteroid + 1 > static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
                                         //std::cout << FPS*game_state.time_limit << std::floor(FPS*game_state.time_limit) << std::endl;
                                         // Added one to the timesteps to prevent off by one :P
                                         fire_this_timestep = false;
                                         --asteroids_shot;
                                     }
                                 } else {
-                                    /*
+                                    
                                     if (ship_was_safe) {
-                                        //++missed_shot;
+                                        ++missed_shot;
                                         //std::cout << "Bullet sim missed in main maneuver update loop. Womp womp. Simid: " << this->sim_id << std::endl;
                                         int total_shots = made_shot + missed_shot;
                                         if (total_shots > 0) {
@@ -6019,7 +6501,7 @@ public:
                                         } else {
                                             std::cout << "No shots taken.\n";
                                         }
-                                    }*/
+                                    }
                                     // We just don't shoot. Yeah, it's not ideal. We spent all this time targeting an asteroid and now we're not shooting,
                                     // but the next timestep we can shoot again so we can just choose a new target and hope it works.
                                 }
@@ -6171,31 +6653,32 @@ public:
                             }
                         }
                     }
-                }
-                else {
+                } else {
                     // Prescribed fire (via input sequence)
                     if (verify_maneuver_shots && fire.value()) {
                         std::optional<Asteroid> actual_asteroid_hit;
                         int64_t timesteps_until_bullet_hit_asteroid;
                         bool ship_was_safe;
+                        std::cout << "Calling bullet sim from prescribed fire via input sequence in update()" << std::endl;
                         std::tie(actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, ship_was_safe) = bullet_sim(
                             std::nullopt, false, 0, true, future_timesteps, whole_move_sequence, INT_INF, std::nullopt
                         );
-                        if (!actual_asteroid_hit.has_value()) {
-                            debug_print("Didn't hit anything; not firing.");
-                            fire_this_timestep = false;
-                        } else {
+                        if (actual_asteroid_hit.has_value()) {
                             debug_print("VERIFIED THE SHOT WORKS");
                             fire_this_timestep = true;
                             asteroids_shot += 1;
+                        } else {
+                            debug_print("Didn't hit anything; not firing.");
+                            fire_this_timestep = false;
                         }
                     } else {
                         fire_this_timestep = fire.value();
-                        if (fire.value()) asteroids_shot += 1;
+                        if (fire.value()) {
+                            asteroids_shot += 1;
+                        }
                     }
                 }
-            }
-            else {
+            } else {
                 fire_this_timestep = false;
             }
 
@@ -6204,16 +6687,19 @@ public:
                 this->last_timestep_fired = initial_timestep + future_timesteps;
                 ship_state.is_respawning = false;
                 respawn_timer = 0.0;
-                if (ship_state.bullets_remaining != -1) --ship_state.bullets_remaining;
+                if (ship_state.bullets_remaining != -1) {
+                    --ship_state.bullets_remaining;
+                }
                 double rad_heading = radians(ship_state.heading);
-                double cos_head = cos(rad_heading), sin_head = sin(rad_heading);
+                double cos_head = cos(rad_heading);
+                double sin_head = sin(rad_heading);
                 double bullet_x = ship_state.x + SHIP_RADIUS * cos_head;
                 double bullet_y = ship_state.y + SHIP_RADIUS * sin_head;
                 // Make sure the bullet isn't being fired out into the void
                 if (0.0 <= bullet_x && bullet_x <= game_state.map_size_x && 0.0 <= bullet_y && bullet_y <= game_state.map_size_y) {
                     Bullet new_bullet(
-                        bullet_x, bullet_y, BULLET_SPEED*cos_head, BULLET_SPEED*sin_head,
-                        ship_state.heading, BULLET_MASS, -BULLET_LENGTH*cos_head, -BULLET_LENGTH*sin_head
+                        bullet_x, bullet_y, BULLET_SPEED * cos_head, BULLET_SPEED * sin_head,
+                        ship_state.heading, BULLET_MASS, -BULLET_LENGTH * cos_head, -BULLET_LENGTH * sin_head
                     );
                     game_state.bullets.push_back(new_bullet);
                 }
@@ -6320,22 +6806,16 @@ public:
         for (Bullet& b : game_state.bullets) {
             if (b.alive) {
                 for (Asteroid& a : game_state.asteroids) {
-                    if constexpr (ENABLE_SANITY_CHECKS) {
-                        assert(asteroid_bullet_collision(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, a.x, a.y, a.radius) == asteroid_bullet_collision_kessler(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, a.x, a.y, a.radius));
-                    }
-                    if (a.alive && asteroid_bullet_collision(
-                        b.x, b.y,
-                        b.x + b.tail_delta_x, b.y + b.tail_delta_y,
-                        a.x, a.y, a.radius)) {
-
+                    //if constexpr (ENABLE_SANITY_CHECKS) {
+                    //    assert(asteroid_bullet_collision(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, a.x, a.y, a.radius) == asteroid_bullet_collision_kessler(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, a.x, a.y, a.radius));
+                    //}
+                    if (a.alive && circle_line_collision_continuous(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, b.vx, b.vy, a.x, a.y, a.vx, a.vy, a.radius, game_state.delta_time)) {
                         b.alive = false;
-
                         if (a.size != 1) {
                             for (const Asteroid& new_ast: forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, game_state)) {
                                 new_asteroids.push_back(new_ast);
                             }
                         }
-
                         a.alive = false;
                         break;  // Only one asteroid per bullet
                     }
@@ -7976,6 +8456,27 @@ public:
                             std::to_string(mine_positions_placed_schedule.size()));
                 
                 assert(respawn_timer_history.contains(this->current_timestep));
+                assert(asteroids_pending_death_schedule.contains(this->current_timestep));
+                assert(forecasted_asteroid_splits_schedule.contains(this->current_timestep));
+                if constexpr (ENABLE_SANITY_CHECKS) {
+                    if (!asteroids_pending_death_schedule.contains(this->current_timestep)) {
+                        std::cout << "DEBUG: asteroids_pending_death_schedule does NOT contain timestep " 
+                                << this->current_timestep << "\n";
+                        std::cout << "Full contents of asteroids_pending_death_schedule:\n";
+
+                        for (const auto& [outer_time, inner_map] : asteroids_pending_death_schedule) {
+                            std::cout << "  Timestep " << outer_time << ":\n";
+                            for (const auto& [inner_key, asteroid_vec] : inner_map) {
+                                std::cout << "    Inner key " << inner_key << ": ";
+                                std::cout << asteroid_vec.size() << " asteroid(s)\n";
+                                for (const Asteroid& asteroid : asteroid_vec) {
+                                    std::cout << "      - " << asteroid << "\n"; // Assumes operator<< is defined
+                                }
+                            }
+                        }
+                    }
+                }
+
                 this->game_state_to_base_planning = {
                     this->current_timestep,
                     // respawning: just ship_state.is_respawning (no lives_remaining check in this version)
