@@ -6230,12 +6230,12 @@ public:
         // Bullets step (advance and out-of-bounds cull)
         for (Bullet& b : game_state.bullets) {
             if (b.alive) {
-                double nx = b.x + b.vx * DELTA_TIME;
-                double ny = b.y + b.vy * DELTA_TIME;
-                // if check_coordinate_bounds(self.game_state, new_bullet_x, new_bullet_y):
-                if (0.0 <= nx && nx <= game_state.map_size_x && 0.0 <= ny && ny <= game_state.map_size_y) {
-                    b.x = nx;
-                    b.y = ny;
+                double new_x = b.x + b.vx * DELTA_TIME;
+                double new_y = b.y + b.vy * DELTA_TIME;
+                if (check_coordinate_bounds(game_state, new_x, new_y)) {
+                //if (0.0 <= new_x && new_x <= game_state.map_size_x && 0.0 <= new_y && new_y <= game_state.map_size_y) {
+                    b.x = new_x;
+                    b.y = new_y;
                 } else {
                     b.alive = false;
                 }
