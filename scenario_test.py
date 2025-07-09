@@ -9,9 +9,6 @@ from scenarios.xfc_2023_replica_scenarios import *
 from scenarios.custom_scenarios import *
 import argparse
 
-from ctypes import windll
-windll.shcore.SetProcessDpiAwareness(1) # Fixes blurriness when a scale factor is used in Windows
-
 ASTEROID_COUNT_LOOKUP = (0, 1, 4, 13, 40)
 
 from src.kesslergame import Scenario, KesslerGame, GraphicsType
@@ -99,7 +96,10 @@ game_settings = {'perf_tracker': True,
                  'realtime_multiplier': 0,
                  'graphics_obj': None,
                  'frequency': 30.0,
-                 'UI_settings': 'all'}
+                 'random_ast_splits': False,
+                 'UI_settings': {'ships': True, 'lives_remaining': True, 'accuracy': True,
+                                'asteroids_hit': True, 'shots_fired': True, 'bullets_remaining': True,
+                                'controller_name': True, 'scale': 2.0}}
 
 game = KesslerGame(settings=game_settings)  # Use this to visualize the game scenario
 # game = TrainerEnvironment(settings=game_settings)  # Use this for max-speed, no-graphics simulation
