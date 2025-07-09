@@ -67,14 +67,13 @@
 // Otherwise if there's a short time limit, I shouldn't waste time killing the other ship because even if I do,
 // I don't have time to hit all the asteroids myself, and it's better to just shoot asteroids and trust that I'm gaining score quicker than the other team is able to gain score,
 // or at least I'm no worse than the other team
-
 // DONE: Investigate why Neo just stayed on top of the mine near the end of the scenario for the closing double rings scenario
-
 // DONE: Don't place a mine if it can't explode before the time runs out
-
 // DONE: Dump mines if it can hit stuff right before the end of the scenario
-
 // DONE: Check for time running out condition to handle stuff like that better
+
+// TODO: Take full advantage of continuous collision detection for bullet-asteroid collisions by shooting the extremities of the asteroids and make some insane shots
+// TODO: Monte Carlo search the endgame, to find the most optimal way to eliminate the final few asteroids
 
 // Standard Library
 #include <algorithm>
@@ -3472,8 +3471,10 @@ inline bool circle_line_collision_continuous(
         line_y2 - bullet_dy
     };
 
-    double min_x = x_values[0], max_x = x_values[0];
-    double min_y = y_values[0], max_y = y_values[0];
+    double min_x = x_values[0];
+    double max_x = x_values[0];
+    double min_y = y_values[0];
+    double max_y = y_values[0];
     for (int i = 1; i < 4; ++i) {
         if (x_values[i] < min_x) min_x = x_values[i];
         if (x_values[i] > max_x) max_x = x_values[i];
@@ -3481,8 +3482,7 @@ inline bool circle_line_collision_continuous(
         if (y_values[i] > max_y) max_y = y_values[i];
     }
 
-    if (circle_x + circle_r < min_x || circle_x - circle_r > max_x ||
-        circle_y + circle_r < min_y || circle_y - circle_r > max_y) {
+    if (circle_x + circle_r < min_x || circle_x - circle_r > max_x || circle_y + circle_r < min_y || circle_y - circle_r > max_y) {
         return false;
     }
 
