@@ -563,57 +563,94 @@ struct Asteroid {
 std::unordered_map<int64_t, std::vector<Asteroid>> unwrap_cache;
 
 struct Ship {
-    bool is_respawning = false;
-    double x = 0, y = 0, vx = 0, vy = 0;
-    double speed = 0, heading = 0, mass = 0, radius = 0;
+    double x = 0.0;
+    double y = 0.0;
+    double vx = 0.0;
+    double vy = 0.0;
+    double speed = 0.0;
+    double heading = 0.0;
+    double mass = 0.0;
+    double radius = 0.0;
     int64_t id = 0;
     int64_t team;
-    int64_t lives_remaining = 0, bullets_remaining = 0, mines_remaining = 0;
-    bool can_fire = true, can_deploy_mine = true;
-    double fire_rate = 0.0, mine_deploy_rate = 0.0;
+    bool is_respawning = false;
+    int64_t lives_remaining = 0;
+    int64_t deaths = 0;
+    int64_t bullets_remaining = 0;
+    int64_t mines_remaining = 0;
+    bool can_fire = true;
+    double fire_cooldown = 0.0;
+    double fire_rate = 0.0;
+    bool can_deploy_mine = true;
+    double mine_cooldown = 0.0;
+    double mine_deploy_rate = 0.0;
+    double respawn_time_left = 0.0;
+    double respawn_time = 0.0;
     std::pair<double, double> thrust_range = {-SHIP_MAX_THRUST, SHIP_MAX_THRUST};
     std::pair<double, double> turn_rate_range = {-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE};
-    double max_speed = SHIP_MAX_SPEED, drag = SHIP_DRAG;
+    double max_speed = 0.0;
+    double drag = 0.0;
 
     Ship() = default;
-    Ship(bool is_respawning, double x, double y, double vx, double vy, double speed, double heading, double mass, double radius,
-         int64_t id, int64_t team, int64_t lives_remaining, int64_t bullets_remaining, int64_t mines_remaining, bool can_fire, double fire_rate,
-         bool can_deploy_mine, double mine_deploy_rate, std::pair<double, double> thrust_range, std::pair<double, double> turn_rate_range,
+
+    Ship(double x, double y, double vx, double vy, double speed, double heading, double mass, double radius,
+         int64_t id, int64_t team, bool is_respawning, int64_t lives_remaining, int64_t deaths,
+         int64_t bullets_remaining, int64_t mines_remaining, bool can_fire, double fire_cooldown, double fire_rate,
+         bool can_deploy_mine, double mine_cooldown, double mine_deploy_rate,
+         double respawn_time_left, double respawn_time,
+         std::pair<double, double> thrust_range, std::pair<double, double> turn_rate_range,
          double max_speed, double drag)
-        : is_respawning(is_respawning), x(x), y(y), vx(vx), vy(vy), speed(speed), heading(heading),
-          mass(mass), radius(radius), id(id), team(team), lives_remaining(lives_remaining),
-          bullets_remaining(bullets_remaining), mines_remaining(mines_remaining), can_fire(can_fire),
-          fire_rate(fire_rate), can_deploy_mine(can_deploy_mine), mine_deploy_rate(mine_deploy_rate),
+        : x(x), y(y), vx(vx), vy(vy), speed(speed), heading(heading),
+          mass(mass), radius(radius), id(id), team(team), is_respawning(is_respawning),
+          lives_remaining(lives_remaining), deaths(deaths),
+          bullets_remaining(bullets_remaining), mines_remaining(mines_remaining),
+          can_fire(can_fire), fire_cooldown(fire_cooldown), fire_rate(fire_rate),
+          can_deploy_mine(can_deploy_mine), mine_cooldown(mine_cooldown), mine_deploy_rate(mine_deploy_rate),
+          respawn_time_left(respawn_time_left), respawn_time(respawn_time),
           thrust_range(thrust_range), turn_rate_range(turn_rate_range),
           max_speed(max_speed), drag(drag) {}
+
     std::string str() const {
-        return "Ship(is_respawning=" + std::to_string(is_respawning) + ", position=(" + std::to_string(x) + ", " + std::to_string(y)
-            + "), velocity=(" + std::to_string(vx) + ", " + std::to_string(vy) + "), speed=" + std::to_string(speed)
-            + ", heading=" + std::to_string(heading) + ", mass=" + std::to_string(mass) + ", radius=" + std::to_string(radius)
-            + ", id=" + std::to_string(id) + ", team=\"" + std::to_string(team) + "\", lives_remaining=" + std::to_string(lives_remaining)
-            + ", bullets_remaining=" + std::to_string(bullets_remaining) + ", mines_remaining=" + std::to_string(mines_remaining)
-            + ", can_fire=" + std::to_string(can_fire) + ", fire_rate=" + std::to_string(fire_rate)
-            + ", can_deploy_mine=" + std::to_string(can_deploy_mine) + ", mine_deploy_rate=" + std::to_string(mine_deploy_rate)
+        return "Ship(x=" + std::to_string(x) + ", y=" + std::to_string(y)
+            + ", vx=" + std::to_string(vx) + ", vy=" + std::to_string(vy)
+            + ", speed=" + std::to_string(speed) + ", heading=" + std::to_string(heading)
+            + ", mass=" + std::to_string(mass) + ", radius=" + std::to_string(radius)
+            + ", id=" + std::to_string(id) + ", team=" + std::to_string(team)
+            + ", is_respawning=" + std::to_string(is_respawning)
+            + ", lives_remaining=" + std::to_string(lives_remaining)
+            + ", deaths=" + std::to_string(deaths)
+            + ", bullets_remaining=" + std::to_string(bullets_remaining)
+            + ", mines_remaining=" + std::to_string(mines_remaining)
+            + ", can_fire=" + std::to_string(can_fire)
+            + ", fire_cooldown=" + std::to_string(fire_cooldown)
+            + ", fire_rate=" + std::to_string(fire_rate)
+            + ", can_deploy_mine=" + std::to_string(can_deploy_mine)
+            + ", mine_cooldown=" + std::to_string(mine_cooldown)
+            + ", mine_deploy_rate=" + std::to_string(mine_deploy_rate)
+            + ", respawn_time_left=" + std::to_string(respawn_time_left)
+            + ", respawn_time=" + std::to_string(respawn_time)
             + ", thrust_range=(" + std::to_string(thrust_range.first) + ", " + std::to_string(thrust_range.second) + ")"
             + ", turn_rate_range=(" + std::to_string(turn_rate_range.first) + ", " + std::to_string(turn_rate_range.second) + ")"
-            + ", max_speed=" + std::to_string(max_speed) + ", drag=" + std::to_string(drag) + ")";
+            + ", max_speed=" + std::to_string(max_speed)
+            + ", drag=" + std::to_string(drag) + ")";
     }
+
     std::string repr() const { return str(); }
+
     bool operator==(const Ship& other) const {
-        return is_respawning == other.is_respawning
-            && x == other.x && y == other.y && vx == other.vx && vy == other.vy
+        return x == other.x && y == other.y && vx == other.vx && vy == other.vy
             && speed == other.speed && heading == other.heading && mass == other.mass && radius == other.radius
-            && id == other.id && team == other.team && lives_remaining == other.lives_remaining
+            && id == other.id && team == other.team && is_respawning == other.is_respawning
+            && lives_remaining == other.lives_remaining && deaths == other.deaths
             && bullets_remaining == other.bullets_remaining && mines_remaining == other.mines_remaining
-            //&& can_fire == other.can_fire
-            && fire_rate == other.fire_rate
-            //&& can_deploy_mine == other.can_deploy_mine
-            && mine_deploy_rate == other.mine_deploy_rate
-            && thrust_range == other.thrust_range
-            && turn_rate_range == other.turn_rate_range
+            && can_fire == other.can_fire && fire_cooldown == other.fire_cooldown && fire_rate == other.fire_rate
+            && can_deploy_mine == other.can_deploy_mine && mine_cooldown == other.mine_cooldown && mine_deploy_rate == other.mine_deploy_rate
+            && respawn_time_left == other.respawn_time_left && respawn_time == other.respawn_time
+            && thrust_range == other.thrust_range && turn_rate_range == other.turn_rate_range
             && max_speed == other.max_speed && drag == other.drag;
     }
 };
+
 
 struct Mine {
     double x = 0, y = 0, mass = 0, fuse_time = 0, remaining_time = 0;
@@ -659,32 +696,28 @@ struct GameState {
     std::vector<Ship> ships;
     std::vector<Bullet> bullets;
     std::vector<Mine> mines;
-
-    double map_size_x = 0, map_size_y = 0;
-    double time = 0, delta_time = 0;
+    double map_size_x = 0.0;
+    double map_size_y = 0.0;
+    double time = 0.0;
+    double delta_time = 0.0;
+    double frame_rate = 0.0;
     int64_t sim_frame = 0;
-    double time_limit = 0;
+    double time_limit = 0.0;
+    bool random_asteroid_splits = false;
 
     GameState() = default;
+
     GameState(const std::vector<Asteroid>& asteroids, const std::vector<Ship>& ships,
               const std::vector<Bullet>& bullets, const std::vector<Mine>& mines,
-              double map_size_x, double map_size_y, double time, double delta_time,
-              int64_t sim_frame, double time_limit)
+              double map_size_x, double map_size_y,
+              double time, double delta_time, double frame_rate,
+              int64_t sim_frame, double time_limit, bool random_asteroid_splits)
         : asteroids(asteroids), ships(ships), bullets(bullets), mines(mines),
-          map_size_x(map_size_x), map_size_y(map_size_y), time(time), delta_time(delta_time),
-          sim_frame(sim_frame), time_limit(time_limit) {}
-    /*
-    std::string str() const {
-        return "GameState(asteroids=" + std::to_string(asteroids.size())
-            + ", ships=" + std::to_string(ships.size())
-            + ", bullets=" + std::to_string(bullets.size())
-            + ", mines=" + std::to_string(mines.size())
-            + ", map_size=(" + std::to_string(map_size_x) + ", " + std::to_string(map_size_y)
-            + "), time=" + std::to_string(time)
-            + ", delta_time=" + std::to_string(delta_time)
-            + ", sim_frame=" + std::to_string(sim_frame)
-            + ", time_limit=" + std::to_string(time_limit) + ")";
-    }*/
+          map_size_x(map_size_x), map_size_y(map_size_y),
+          time(time), delta_time(delta_time), frame_rate(frame_rate),
+          sim_frame(sim_frame), time_limit(time_limit),
+          random_asteroid_splits(random_asteroid_splits) {}
+
     std::string str() const {
         std::string result = "GameState(\n";
         result += "  asteroids=[\n";
@@ -703,12 +736,16 @@ struct GameState {
         result += "  map_size=(" + std::to_string(map_size_x) + ", " + std::to_string(map_size_y) + "),\n";
         result += "  time=" + std::to_string(time) + ",\n";
         result += "  delta_time=" + std::to_string(delta_time) + ",\n";
+        result += "  frame_rate=" + std::to_string(frame_rate) + ",\n";
         result += "  sim_frame=" + std::to_string(sim_frame) + ",\n";
-        result += "  time_limit=" + std::to_string(time_limit) + "\n";
+        result += "  time_limit=" + std::to_string(time_limit) + ",\n";
+        result += "  random_asteroid_splits=" + std::to_string(random_asteroid_splits) + "\n";
         result += ")";
         return result;
     }
+
     std::string repr() const { return str(); }
+
     GameState copy() const {
         std::vector<Asteroid> alive_asteroids;
         alive_asteroids.reserve(asteroids.size());
@@ -739,10 +776,11 @@ struct GameState {
             std::move(alive_bullets),
             std::move(alive_mines),
             map_size_x, map_size_y,
-            time, delta_time,
-            sim_frame, time_limit
+            time, delta_time, frame_rate,
+            sim_frame, time_limit, random_asteroid_splits
         );
     }
+
     bool operator==(const GameState& other) const {
         if (asteroids.size() != other.asteroids.size())
             return false;
@@ -756,8 +794,14 @@ struct GameState {
             return false;
         for (size_t i = 0; i < mines.size(); ++i)
             if (!(mines[i] == other.mines[i])) return false;
-        // Ships comparison commented for parity with Python
-        return true;
+        return map_size_x == other.map_size_x
+            && map_size_y == other.map_size_y
+            && time == other.time
+            && delta_time == other.delta_time
+            && frame_rate == other.frame_rate
+            && sim_frame == other.sim_frame
+            && time_limit == other.time_limit
+            && random_asteroid_splits == other.random_asteroid_splits;
     }
 };
 
@@ -770,7 +814,8 @@ struct Target {
     double intercept_x = 0.0, intercept_y = 0.0;
     double asteroid_dist_during_interception = 0.0;
     double imminent_collision_time_s = 0.0;
-    bool asteroid_will_get_hit_by_my_mine = false, asteroid_will_get_hit_by_their_mine = false;
+    bool asteroid_will_get_hit_by_my_mine = false;
+    bool asteroid_will_get_hit_by_their_mine = false;
 
     Target() = default;
     Target(const Asteroid& asteroid, bool feasible = false, double shooting_angle_error_deg = 0.0, int64_t aiming_timesteps_required = 0, double interception_time_s = 0.0, double intercept_x = 0.0, double intercept_y = 0.0, double asteroid_dist_during_interception = 0.0, double imminent_collision_time_s = 0.0, bool asteroid_will_get_hit_by_my_mine = false, bool asteroid_will_get_hit_by_their_mine = false)
@@ -885,9 +930,9 @@ inline std::ostream& operator<<(std::ostream& os, const Target& t) { return os <
 // Debug plotting
 
 struct Color {
-    uint8_t r,g,b;
-    Color(uint8_t r=0, uint8_t g=0, uint8_t b=0): r(r), g(g), b(b) {}
-    uint8_t operator[](int i) const { return (i==0)?b:((i==1)?g:r); } // for bmp b,g,r order
+    uint8_t r, g, b;
+    Color(uint8_t r = 0, uint8_t g = 0, uint8_t b = 0): r(r), g(g), b(b) {}
+    uint8_t operator[](int i) const { return (i == 0) ? b : ((i == 1) ? g : r); } // for bmp b,g,r order
 };
 
 class NeoPlot {
@@ -895,61 +940,76 @@ public:
     int width, height;
     std::vector<Color> pix;
 
-    Color bg = Color(0,0,0); // Background
+    Color bg = Color(0, 0, 0); // Background
 
-    NeoPlot(int w, int h): width(w), height(h), pix(w*h, bg) {}
+    NeoPlot(int w, int h) : width(w), height(h), pix(w * h, bg) {}
 
-    void clear() { std::fill(pix.begin(), pix.end(), bg); }
-
-    // (0,0) is lower-left unless you swap y
-    void set_pixel(int x, int y, Color c) {
-        if(x>=0 && x<width && y>=0 && y<height)
-            pix[y*width + x] = c;
+    void clear() {
+        std::fill(pix.begin(), pix.end(), bg);
     }
 
-    void draw_circle(double cx, double cy, double r, Color c, bool fill=true, int n_seg=64) {
+    // (0, 0) is lower-left unless you swap y
+    void set_pixel(int x, int y, Color c) {
+        if (x >= 0 && x < width && y >= 0 && y < height)
+            pix[y * width + x] = c;
+    }
+
+    void draw_circle(double cx, double cy, double r, Color c, bool fill = true, int n_seg = 64) {
         // Midpoint circle drawing for outline and scanline for fill
-        if(!fill) {
-            for(int i=0;i<n_seg;++i){
-                double t0 = (i)*2*pi/n_seg, t1 = (i+1)*2*pi/n_seg;
-                int x0 = int(cx + cos(t0)*r + 0.5f), y0 = int(cy + sin(t0)*r + 0.5f);
-                int x1 = int(cx + cos(t1)*r + 0.5f), y1 = int(cy + sin(t1)*r + 0.5f);
-                draw_line(x0,y0,x1,y1,c);
+        if (!fill) {
+            for (int i = 0; i < n_seg; ++i) {
+                double t0 = (i) * 2 * pi / n_seg;
+                double t1 = (i + 1) * 2 * pi / n_seg;
+                int x0 = int(cx + cos(t0) * r + 0.5f);
+                int y0 = int(cy + sin(t0) * r + 0.5f);
+                int x1 = int(cx + cos(t1) * r + 0.5f);
+                int y1 = int(cy + sin(t1) * r + 0.5f);
+                draw_line(x0, y0, x1, y1, c);
             }
         } else {
             int ir = std::ceil(r);
-            for(int dy=-ir;dy<=ir;++dy){
-                int y = int(cy+dy);
-                int dxr = int(std::sqrt(r*r - dy*dy));
-                for(int dx=-dxr;dx<=dxr;++dx) {
-                    int x=int(cx+dx);
-                    set_pixel(x,y,c);
+            for (int dy = -ir; dy <= ir; ++dy) {
+                int y = int(cy + dy);
+                int dxr = int(std::sqrt(r * r - dy * dy));
+                for (int dx = -dxr; dx <= dxr; ++dx) {
+                    int x = int(cx + dx);
+                    set_pixel(x, y, c);
                 }
             }
         }
     }
 
-    void draw_line(int x0,int y0,int x1,int y1, Color c) {
+    void draw_line(int x0, int y0, int x1, int y1, Color c) {
         // Bresenham's
-        int dx = std::abs(x1-x0), dy = std::abs(y1-y0), sx = x0<x1?1:-1, sy = y0<y1?1:-1, err = (dx>dy?dx:-dy)/2, e2;
-        for(;;) {
-            set_pixel(x0,y0,c);
-            if(x0==x1 && y0==y1) break;
+        int dx = std::abs(x1 - x0);
+        int dy = std::abs(y1 - y0);
+        int sx = x0 < x1 ? 1 : -1;
+        int sy = y0 < y1 ? 1 : -1;
+        int err = (dx > dy ? dx : -dy) / 2;
+        int e2;
+
+        for (;;) {
+            set_pixel(x0, y0, c);
+            if (x0 == x1 && y0 == y1) break;
             e2 = err;
-            if(e2 > -dx) { err -= dy; x0 += sx; }
-            if(e2 < dy) { err += dx; y0 += sy; }
+            if (e2 > -dx) { err -= dy; x0 += sx; }
+            if (e2 < dy) { err += dx; y0 += sy; }
         }
     }
 
     void draw_arrow(double x0, double y0, double x1, double y1, Color c) {
         // Draw the line shaft
-        draw_line(int(x0+0.5), int(y0+0.5), int(x1+0.5), int(y1+0.5), c);
+        draw_line(int(x0 + 0.5), int(y0 + 0.5), int(x1 + 0.5), int(y1 + 0.5), c);
 
         // Compute direction
-        double dx = x1-x0, dy = y1-y0, len = std::sqrt(dx*dx+dy*dy);
-        if(len == 0) return;
+        double dx = x1 - x0;
+        double dy = y1 - y0;
+        double len = std::sqrt(dx * dx + dy * dy);
+        if (len == 0) return;
 
-        double nx = dx/len, ny = dy/len;
+        double nx = dx / len;
+        double ny = dy / len;
+
         // Arrowhead length and half-width -- tweak these as you like
         const double arrow_len = 7.0;
         const double arrow_wid = 3.5;
@@ -958,94 +1018,105 @@ public:
         // Base center of arrowhead
         double bx = x1 - nx * arrow_len;
         double by = y1 - ny * arrow_len;
+
         // Two base corners of the triangle
-        double perp_x = -ny, perp_y = nx;
+        double perp_x = -ny;
+        double perp_y = nx;
         double b1x = bx + perp_x * arrow_wid;
         double b1y = by + perp_y * arrow_wid;
         double b2x = bx - perp_x * arrow_wid;
         double b2y = by - perp_y * arrow_wid;
 
         // Draw solid triangle arrowhead
-        std::vector<std::pair<double,double>> verts = {
-            {x1, y1},
-            {b1x, b1y},
-            {b2x, b2y}
+        std::vector<std::pair<double, double>> verts = {
+            { x1, y1 },
+            { b1x, b1y },
+            { b2x, b2y }
         };
         draw_filled_triangle(verts, c);  // You'll define this below!
     }
 
     // Helper for solid filled triangle (not super optimized)
-    void draw_filled_triangle(const std::vector<std::pair<double,double>>& pts, Color c) {
+    void draw_filled_triangle(const std::vector<std::pair<double, double>>& pts, Color c) {
         // Sort points by y
         struct V { double x, y; };
         V v[3] = {
-            {pts[0].first, pts[0].second},
-            {pts[1].first, pts[1].second},
-            {pts[2].first, pts[2].second}
+            { pts[0].first, pts[0].second },
+            { pts[1].first, pts[1].second },
+            { pts[2].first, pts[2].second }
         };
+
         // Sort vertices by y
-        if(v[0].y > v[1].y) std::swap(v[0], v[1]);
-        if(v[0].y > v[2].y) std::swap(v[0], v[2]);
-        if(v[1].y > v[2].y) std::swap(v[1], v[2]);
+        if (v[0].y > v[1].y) std::swap(v[0], v[1]);
+        if (v[0].y > v[2].y) std::swap(v[0], v[2]);
+        if (v[1].y > v[2].y) std::swap(v[1], v[2]);
         // v[0] <= v[1] <= v[2] by y
 
         auto edge_interpolate = [](double y, V a, V b) -> double {
-            if(a.y == b.y) return a.x;
+            if (a.y == b.y) return a.x;
             return a.x + (b.x - a.x) * ((y - a.y) / (b.y - a.y));
         };
 
-        int y0 = std::ceil(v[0].y), y2 = std::floor(v[2].y);
-        for(int y = y0; y <= y2; ++y) {
-            if(y < std::ceil(v[1].y)) {
+        int y0 = std::ceil(v[0].y);
+        int y2 = std::floor(v[2].y);
+        for (int y = y0; y <= y2; ++y) {
+            if (y < std::ceil(v[1].y)) {
                 // lower part
                 double xa = edge_interpolate(y, v[0], v[1]);
                 double xb = edge_interpolate(y, v[0], v[2]);
-                int x0 = std::ceil(std::min(xa, xb)), x1 = std::floor(std::max(xa, xb));
-                for(int x = x0; x <= x1; ++x) set_pixel(x, y, c);
+                int x0 = std::ceil(std::min(xa, xb));
+                int x1 = std::floor(std::max(xa, xb));
+                for (int x = x0; x <= x1; ++x) set_pixel(x, y, c);
             } else {
                 // upper part
                 double xa = edge_interpolate(y, v[1], v[2]);
                 double xb = edge_interpolate(y, v[0], v[2]);
-                int x0 = std::ceil(std::min(xa, xb)), x1 = std::floor(std::max(xa, xb));
-                for(int x = x0; x <= x1; ++x) set_pixel(x, y, c);
+                int x0 = std::ceil(std::min(xa, xb));
+                int x1 = std::floor(std::max(xa, xb));
+                for (int x = x0; x <= x1; ++x) set_pixel(x, y, c);
             }
         }
     }
 
-    void draw_polygon(const std::vector<std::pair<double,double>>& pts, Color c) {
+    void draw_polygon(const std::vector<std::pair<double, double>>& pts, Color c) {
         int n = pts.size();
-        if(n < 2) return;
-        for(int i = 0; i < n; ++i) {
+        if (n < 2) return;
+        for (int i = 0; i < n; ++i) {
             auto [x0, y0] = pts[i];
-            auto [x1, y1] = pts[(i+1)%n];
-            draw_line(int(x0+0.5f), int(y0+0.5f), int(x1+0.5f), int(y1+0.5f), c);
+            auto [x1, y1] = pts[(i + 1) % n];
+            draw_line(int(x0 + 0.5f), int(y0 + 0.5f), int(x1 + 0.5f), int(y1 + 0.5f), c);
         }
     }
 
     void write_bmp(const char* fname) {
         // Minimal BMP: 24 bit, no compression
-        int row_padded = (width*3+3)&(~3);
-        int filesize = 54 + row_padded*height;
-        uint8_t bmpfileheader[14] = {'B','M',filesize,filesize>>8,filesize>>16,filesize>>24,
-             0,0,0,0,54,0,0,0};
-        uint8_t bmpinfoheader[40] = {40,0,0,0,
-            width, width>>8, width>>16, width>>24,
-            height,height>>8,height>>16,height>>24,
-            1,0,24,0};
+        int row_padded = (width * 3 + 3) & (~3);
+        int filesize = 54 + row_padded * height;
+        uint8_t bmpfileheader[14] = {
+            'B', 'M',
+            filesize, filesize >> 8, filesize >> 16, filesize >> 24,
+            0, 0, 0, 0, 54, 0, 0, 0
+        };
+        uint8_t bmpinfoheader[40] = {
+            40, 0, 0, 0,
+            width, width >> 8, width >> 16, width >> 24,
+            height, height >> 8, height >> 16, height >> 24,
+            1, 0, 24, 0
+        };
 
-        std::ofstream f(fname,std::ios::binary);
-        f.write((char*)bmpfileheader,14);
-        f.write((char*)bmpinfoheader,40);
+        std::ofstream f(fname, std::ios::binary);
+        f.write((char*) bmpfileheader, 14);
+        f.write((char*) bmpinfoheader, 40);
 
-        std::vector<uint8_t> row(row_padded,0);
-        for(int y=0;y<height;++y) {
-            for(int x=0;x<width;++x) {
-                Color &p = pix[(height-1-y)*width + x];
-                row[x*3+0] = p.b;
-                row[x*3+1] = p.g;
-                row[x*3+2] = p.r;
+        std::vector<uint8_t> row(row_padded, 0);
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                Color &p = pix[(height - 1 - y) * width + x];
+                row[x * 3 + 0] = p.b;
+                row[x * 3 + 1] = p.g;
+                row[x * 3 + 2] = p.r;
             }
-            f.write((char*)row.data(),row_padded);
+            f.write((char*) row.data(), row_padded);
         }
         f.close();
     }
@@ -1058,7 +1129,7 @@ const std::string DEBUG_BMP_DIR = "V:/neo_debug_imgs/";
 Color fuse_time_to_color(double remaining_time, double max_time) {
     // green -> yellow -> red
     if (remaining_time >= max_time) return Color(0, 255, 0);          // green
-    if (remaining_time <= 0.0)    return Color(255, 0, 0);            // red
+    if (remaining_time <= 0.0)      return Color(255, 0, 0);          // red
 
     if (remaining_time > max_time / 2.0) {
         double t = (remaining_time - max_time / 2.0) / (max_time / 2.0); // 1..0
@@ -1072,91 +1143,88 @@ Color fuse_time_to_color(double remaining_time, double max_time) {
 }
 
 void plot_game_state_to_bmp(
-        const GameState& game_state,
-        const std::vector<Asteroid>& asteroids,
-        const Ship* ship_state,
-        const std::vector<Bullet>& bullets,
-        const std::vector<Bullet>& special_bullets,
-        const std::vector<Asteroid>& circled_asteroids,
-        const std::vector<Asteroid>& ghost_asteroids,
-        const std::vector<Asteroid>& forecasted_asteroids,
-        const std::vector<Mine>& mines,
-        const std::string& filename,
-        const std::string& debug_plot_title = ""
-    )
-{
+    const GameState& game_state,
+    const std::vector<Asteroid>& asteroids,
+    const Ship* ship_state,
+    const std::vector<Bullet>& bullets,
+    const std::vector<Bullet>& special_bullets,
+    const std::vector<Asteroid>& circled_asteroids,
+    const std::vector<Asteroid>& ghost_asteroids,
+    const std::vector<Asteroid>& forecasted_asteroids,
+    const std::vector<Mine>& mines,
+    const std::string& filename,
+    const std::string& debug_plot_title = ""
+) {
     // Make sure directory exists (C++17 or just manually create it out-of-band)
     std::filesystem::create_directories(DEBUG_BMP_DIR);
 
     NeoPlot plotter(game_state.map_size_x, game_state.map_size_y);
-    plotter.bg = Color(0,0,0);
+    plotter.bg = Color(0, 0, 0);
     plotter.clear();
 
     // --- Asteroids
-    for(const auto& a : asteroids) {
+    for (const auto& a : asteroids) {
         if (a.alive) {
-            plotter.draw_circle(a.x, a.y, a.radius, Color(128,128,128), true);
-            // Velocity arrow; scale DELTA_TIME if you want, or just use vx,vy
-            plotter.draw_arrow(a.x, a.y, a.x + a.vx, a.y + a.vy, Color(255,255,255));
+            plotter.draw_circle(a.x, a.y, a.radius, Color(128, 128, 128), true);
+            plotter.draw_arrow(a.x, a.y, a.x + a.vx, a.y + a.vy, Color(255, 255, 255));
         }
     }
-    for(const auto& a : ghost_asteroids) {
+    for (const auto& a : ghost_asteroids) {
         if (a.alive) {
-            plotter.draw_circle(a.x, a.y, a.radius, Color(51,51,51), true); // darker gray
+            plotter.draw_circle(a.x, a.y, a.radius, Color(51, 51, 51), true);
         }
     }
-    for(const auto& a : forecasted_asteroids) {
+    for (const auto& a : forecasted_asteroids) {
         if (a.alive) {
-            plotter.draw_circle(a.x, a.y, a.radius, Color(68,0,0), true);
+            plotter.draw_circle(a.x, a.y, a.radius, Color(68, 0, 0), true);
         }
     }
-    for(const auto& a : circled_asteroids) {
+    for (const auto& a : circled_asteroids) {
         if (a.alive) {
-            plotter.draw_circle(a.x, a.y, a.radius+5, Color(255,165,0), false);  // orange
+            plotter.draw_circle(a.x, a.y, a.radius + 5, Color(255, 165, 0), false);
         }
     }
-    for(const auto& m : mines) {
+    for (const auto& m : mines) {
         if (m.alive) {
             plotter.draw_circle(m.x, m.y, MINE_BLAST_RADIUS, fuse_time_to_color(m.remaining_time, MINE_FUSE_TIME), false);
         }
     }
 
     // --- Ship
-    if(ship_state) {
+    if (ship_state) {
         double angle_rad = ship_state->heading * DEG_TO_RAD;
-        double sx = ship_state->x, sy = ship_state->y;
+        double sx = ship_state->x;
+        double sy = ship_state->y;
         double ship_base = SHIP_RADIUS;
         double ship_tip  = SHIP_RADIUS;
-        std::vector<std::pair<double,double>> verts = {
-            { sx + ship_tip * std::cos(angle_rad), sy + ship_tip * std::sin(angle_rad) },
-            { sx + ship_base * std::cos(angle_rad + 3.0 * pi / 4.0), sy + ship_base * std::sin(angle_rad + 3.0 * pi / 4.0) },
-            { sx + ship_base * std::cos(angle_rad - 3.0 * pi / 4.0), sy + ship_base * std::sin(angle_rad - 3.0 * pi / 4.0) },
+        std::vector<std::pair<double, double>> verts = {
+            { sx + ship_tip  * std::cos(angle_rad),                sy + ship_tip  * std::sin(angle_rad) },
+            { sx + ship_base * std::cos(angle_rad + 3.0 * pi / 4), sy + ship_base * std::sin(angle_rad + 3.0 * pi / 4) },
+            { sx + ship_base * std::cos(angle_rad - 3.0 * pi / 4), sy + ship_base * std::sin(angle_rad - 3.0 * pi / 4) },
         };
         plotter.draw_polygon(verts, Color(0, 255, 0));
         plotter.draw_circle(sx, sy, SHIP_RADIUS, Color(0, 0, 255), false);
     }
 
     // --- Bullets
-    for(const auto& b : bullets) {
+    for (const auto& b : bullets) {
         if (b.alive) {
             double rad = b.heading * DEG_TO_RAD;
             double tail_x = b.x - BULLET_LENGTH * std::cos(rad);
             double tail_y = b.y - BULLET_LENGTH * std::sin(rad);
-            // Regular bullets are red
             plotter.draw_arrow(tail_x, tail_y, b.x, b.y, Color(255, 0, 0));
         }
     }
-    for(const auto& b : special_bullets) {
+    for (const auto& b : special_bullets) {
         if (b.alive) {
             double rad = b.heading * DEG_TO_RAD;
             double tail_x = b.x - BULLET_LENGTH * std::cos(rad);
             double tail_y = b.y - BULLET_LENGTH * std::sin(rad);
-            // Special bullets are green
             plotter.draw_arrow(tail_x, tail_y, b.x, b.y, Color(0, 255, 0));
         }
     }
 
-    // plotter.draw_circle(1017.35, 423.2, 25, Color(255,0,0), false);  // hardcoded debug
+    // plotter.draw_circle(1017.35, 423.2, 25, Color(255, 0, 0), false);  // hardcoded debug
 
     std::string full_path = DEBUG_BMP_DIR + filename;
     plotter.write_bmp(full_path.c_str());
