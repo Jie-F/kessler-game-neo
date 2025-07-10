@@ -1816,8 +1816,8 @@ forecast_asteroid_mine_instantaneous_splits(const Asteroid& asteroid, const Mine
     double delta_x = mine.x - asteroid.x;
     double delta_y = mine.y - asteroid.y;
     double dist = std::sqrt(delta_x * delta_x + delta_y * delta_y);
-    double F = (-dist / MINE_BLAST_RADIUS + 1.0) * MINE_BLAST_PRESSURE * 2.0 * asteroid.radius;
-    double a_accel = F / asteroid.mass;
+    double force = (1.0 - dist / (MINE_BLAST_RADIUS + asteroid.radius)) * MINE_BLAST_PRESSURE * 2.0 * asteroid.radius;
+    double a_accel = force / asteroid.mass;
     double vfx, vfy, v, split_angle;
     // calculate "impulse" based on acc
     if (dist != 0.0) {
@@ -1955,7 +1955,7 @@ inline std::pair<bool, int64_t> check_mine_opportunity(const Ship& ship_state, c
     if (mine_ast_count == 0) {
         drop_mine_probability = 0.0;
     } else {
-        drop_mine_probability = fast_sigmoid(static_cast<double>(mine_ast_count), 0.4, 14.0)*static_cast<double>(MINE_OPPORTUNITY_CHECK_INTERVAL_TS)/300.0;
+        drop_mine_probability = fast_sigmoid(static_cast<double>(mine_ast_count), 0.4, 14.0) * static_cast<double>(MINE_OPPORTUNITY_CHECK_INTERVAL_TS) / 300.0;
     }
     bool drop_a_mine = random_double() <= drop_mine_probability;
     if (drop_a_mine) {
@@ -2101,7 +2101,7 @@ void inspect_scenario(const GameState& game_state, const Ship& ship_state) {
         print_explanation("Oh no, I haven't been given any bullets. I'll just hopefully put on a good show and dodge asteroids until the end of time.", 0);
     } else {
         std::ostringstream oss;
-        double percent = static_cast<double>(ship_state.bullets_remaining)/std::max(int64_t(1), asteroids_count);
+        double percent = static_cast<double>(ship_state.bullets_remaining) / std::max(int64_t(1), asteroids_count);
         oss.precision(0);
         oss << std::fixed;
         oss << "Bullets are limited to letting me shoot " << (percent*100.0)
@@ -5381,13 +5381,14 @@ public:
         // Check whether we have enough time to aim at it and shoot it down
         // PROBLEM, what if the asteroid breaks into pieces and I need to shoot those down too? But I have plenty of time, and I still want the fitness function to be good in that case, but there's no easy way to evaluate that. It's hard to decide whether we want to shoot the asteroids that are about to hit us, or to just dodge it by moving myself.
 
-        double turn_angle_deg_until_can_fire = static_cast<double>(timesteps_until_can_fire)*SHIP_MAX_TURN_RATE*DELTA_TIME;
+        double turn_angle_deg_until_can_fire = static_cast<double>(timesteps_until_can_fire) * SHIP_MAX_TURN_RATE * DELTA_TIME;
         // if there’s an imminent shot coming toward me, I will aim at the asteroid that gets me CLOSEST to the direction of the imminent shot.
         // So it only plans one shot at a time instead of a series of shots, and it’ll keep things simpler
         std::optional<Asteroid> actual_asteroid_hit;
         std::vector<Action> aiming_move_sequence;
         Asteroid target_asteroid, target_asteroid_when_firing, actual_asteroid_hit_when_firing, actual_asteroid_hit_at_present_time;
-        double target_asteroid_shooting_angle_error_deg = 0, target_asteroid_interception_time_s = 0;
+        double target_asteroid_shooting_angle_error_deg = 0.0;
+        double target_asteroid_interception_time_s = 0.0;
         int64_t target_asteroid_turning_timesteps = 0;
         std::optional<int64_t> timesteps_until_bullet_hit_asteroid;
         Ship ship_state_after_aiming;
@@ -5406,9 +5407,9 @@ public:
                 std::sort(sorted_imminent_targets.begin(), sorted_imminent_targets.end(), [&](const Target& t1, const Target& t2) {
                     auto score = [&](const Target& t) {
                         return std::min(10.0, t.imminent_collision_time_s) +
-                            ASTEROID_SIZE_SHOT_PRIORITY[t.asteroid.size]*0.25 +
+                            ASTEROID_SIZE_SHOT_PRIORITY[t.asteroid.size] * 0.25 +
                             t.interception_time_s + // Might be more correct to do t.interception_time_s + t.aiming_timesteps_required*DELTA_TIME - get_adversary_interception_time_lower_bound(t.asteroid, self.other_ships, self.game_state)
-                            t.asteroid_dist_during_interception/400.0 +
+                            t.asteroid_dist_during_interception / 400.0 +
                             frontrun_score_multiplier*std::min(0.5, std::max(0.0, t.interception_time_s - get_adversary_interception_time_lower_bound(t.asteroid, other_ships, game_state))) +
                             ((t.asteroid.size == 1 ? 5.0 : -5.0) * (t.asteroid_will_get_hit_by_my_mine ? 1.0 : 0.0)) +
                             ((t.asteroid.size != 1 ? 3.0 : -3.0) * (t.asteroid_will_get_hit_by_their_mine ? 1.0 : 0.0));
@@ -5419,8 +5420,8 @@ public:
                 std::sort(sorted_imminent_targets.begin(), sorted_imminent_targets.end(), [&](const Target& t1, const Target& t2) {
                     auto score = [&](const Target& t) {
                         return std::min(10.0, t.imminent_collision_time_s) +
-                            ASTEROID_SIZE_SHOT_PRIORITY[t.asteroid.size]*0.25 +
-                            t.asteroid_dist_during_interception/400.0 +
+                            ASTEROID_SIZE_SHOT_PRIORITY[t.asteroid.size] * 0.25 +
+                            t.asteroid_dist_during_interception / 400.0 +
                             ((t.asteroid.size == 1 ? 5.0 : -5.0) * (t.asteroid_will_get_hit_by_my_mine ? 1.0 : 0.0));
                     };
                     return score(t1) < score(t2);
@@ -5529,10 +5530,10 @@ public:
                     // Sort by just convenience (and anything else I'd like)
                     std::sort(sorted_targets.begin(), sorted_targets.end(), [&](const Target& t1, const Target& t2) {
                         auto score = [&](const Target& t) {
-                            return static_cast<double>(t.aiming_timesteps_required)*2.0 +
+                            return static_cast<double>(t.aiming_timesteps_required) * 2.0 +
                                 ASTEROID_SIZE_SHOT_PRIORITY[t.asteroid.size] +
                                 t.interception_time_s + // Might be more correct to do t.interception_time_s + t.aiming_timesteps_required*DELTA_TIME - get_adversary_interception_time_lower_bound(t.asteroid, self.other_ships, self.game_state)
-                                t.asteroid_dist_during_interception/400.0 +
+                                t.asteroid_dist_during_interception / 400.0 +
                                 frontrun_score_multiplier*std::min(0.5, std::max(0.0, t.interception_time_s - get_adversary_interception_time_lower_bound(t.asteroid, other_ships, game_state))) +
                                 ((t.asteroid.size == 1 ? 20.0 : -20.0) * (t.asteroid_will_get_hit_by_my_mine ? 1.0 : 0.0)) +
                                 ((t.asteroid.size != 1 ? 20.0 : -20.0) * (t.asteroid_will_get_hit_by_their_mine ? 1.0 : 0.0));
@@ -5542,9 +5543,9 @@ public:
                 } else {
                     std::sort(sorted_targets.begin(), sorted_targets.end(), [&](const Target& t1, const Target& t2) {
                         auto score = [&](const Target& t) {
-                            return static_cast<double>(t.aiming_timesteps_required)*2.0
+                            return static_cast<double>(t.aiming_timesteps_required) * 2.0
                                 + ASTEROID_SIZE_SHOT_PRIORITY[t.asteroid.size]
-                                + t.asteroid_dist_during_interception/400.0
+                                + t.asteroid_dist_during_interception / 400.0
                                 + ((t.asteroid.size == 1 ? 20.0 : -20.0) * (t.asteroid_will_get_hit_by_my_mine ? 1.0 : 0.0));
                         };
                         return score(t1) < score(t2);
