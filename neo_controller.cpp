@@ -1399,7 +1399,6 @@ struct BasePlanningGameState {
     bool respawning;
     Ship ship_state;
     GameState game_state;
-    double ship_respawn_timer;
     std::unordered_map<int64_t, std::vector<Asteroid>> asteroids_pending_death;
     std::vector<Asteroid> forecasted_asteroid_splits;
     int64_t last_timestep_fired;
@@ -4226,9 +4225,7 @@ public:
     //std::optional<GameStatePlotter> game_state_plotter;
     int64_t sim_id;
     std::vector<std::string> explanation_messages;
-    std::vector<std::string> safety_messages; 
-    double respawn_timer;
-    std::vector<double> respawn_timer_history;
+    std::vector<std::string> safety_messages;
     bool plot_this_sim;
     bool ship_crashed;
     std::optional<GameState> backed_up_game_state_before_post_mutation;
@@ -4254,7 +4251,6 @@ public:
         const GameState& game_state_,
         const Ship& ship_state_,
         int64_t initial_timestep_,
-        double respawn_timer_ = 0.0,
         const std::unordered_map<int64_t, std::vector<Asteroid>>* asteroids_pending_death_ = nullptr,
         const std::vector<Asteroid>* forecasted_asteroid_splits_ = nullptr,
         int64_t last_timestep_fired_ = INT_NEG_INF,
@@ -4276,7 +4272,6 @@ public:
           fire_first_timestep(fire_first_timestep_),
           //game_state_plotter(game_state_plotter_),
           sim_id(randint(1, 100000)),
-          respawn_timer(respawn_timer_),
           plot_this_sim(false),
           ship_crashed(false),
           cancel_firing_first_timestep(false),
@@ -4302,7 +4297,7 @@ public:
         }
 
         if constexpr (ENABLE_SANITY_CHECKS) {
-            assert(static_cast<bool>(ship_state_.is_respawning) == (respawn_timer_ != 0.0));
+            assert(static_cast<bool>(ship_state_.is_respawning) == (ship_state.respawn_time_left != 0.0));
         }
 
         game_state = game_state_.copy();
@@ -4375,7 +4370,6 @@ public:
         fire_next_timestep_flag = false;
         explanation_messages.clear();
         safety_messages.clear();
-        respawn_timer_history.clear();
         backed_up_game_state_before_post_mutation = std::nullopt;
         fitness_breakdown = std::nullopt;
         intended_move_sequence.clear();
@@ -4451,20 +4445,8 @@ public:
         return sim_id;
     }
 
-    double get_respawn_timer() const {
-        return respawn_timer;
-    }
-
     int64_t get_respawn_maneuver_pass_number() const {
         return this->respawn_maneuver_pass_number;
-    }
-
-    std::unordered_map<int64_t, double> get_respawn_timer_history() const {
-        std::unordered_map<int64_t, double> respawn_timer_history_dict;
-        for (size_t i = 0; i < respawn_timer_history.size(); ++i) {
-            respawn_timer_history_dict[initial_timestep + static_cast<int64_t>(i) + 1] = respawn_timer_history[i];
-        }
-        return respawn_timer_history_dict;
     }
 
     Ship get_ship_state() const {
@@ -6780,7 +6762,7 @@ public:
             if (fire_this_timestep) {
                 this->last_timestep_fired = initial_timestep + future_timesteps;
                 ship_state.is_respawning = false;
-                respawn_timer = 0.0;
+                this->ship_state.respawn_time_left = 0.0;
                 if (ship_state.bullets_remaining != -1) {
                     --ship_state.bullets_remaining;
                 }
@@ -6840,7 +6822,7 @@ public:
                     explanation_messages.push_back("This is a good chance to drop a mine to hit some asteroids and maybe even the other ship. Bombs away!");
                     // Remove respawn cooldown if we were in it
                     ship_state.is_respawning = false;
-                    respawn_timer = 0.0;
+                    ship_state.respawn_time_left = 0.0;
                     Mine new_mine(ship_state.x, ship_state.y, MINE_MASS, MINE_FUSE_TIME, MINE_FUSE_TIME);
                     mine_positions_placed_history[initial_timestep + future_timesteps + 1] = mine_positions_placed;
                     mine_positions_placed.insert(std::make_pair(ship_state.x, ship_state.y));
@@ -6856,14 +6838,16 @@ public:
             }
 
             // Update respawn timer
-            if (respawn_timer <= 0) {
-                respawn_timer = 0.0;
-            } else {
-                respawn_timer -= DELTA_TIME;
+            if (ship_state.respawn_time_left != 0.0) {
+                ship_state.respawn_time_left -= DELTA_TIME;
+                if (ship_state.respawn_time_left <= 1e-12) {
+                    ship_state.respawn_time_left = 0.0;
+                }
             }
-            if (!respawn_timer) {
+            // Update is_respawning flag
+            if (!ship_state.respawn_time_left) {
                 ship_state.is_respawning = false;
-                assert(respawn_timer == 0.0);
+                assert(ship_state.respawn_time_left == 0.0);
             }
             // Simulate ship dynamics
             double drag_amount = SHIP_DRAG * DELTA_TIME;
@@ -6964,7 +6948,7 @@ public:
                             ship_state.speed = 0.0;
                             ship_state.vx = 0.0;
                             ship_state.vy = 0.0;
-                            respawn_timer = 3.0;
+                            ship_state.respawn_time_left = 3.0;
                         }
                     } else if (respawn_maneuver_pass_number == 1) {
                         if (check_collision(ship_state.x, ship_state.y, SHIP_RADIUS, mine.x, mine.y, MINE_BLAST_RADIUS)) {
@@ -7014,7 +6998,7 @@ public:
                             ship_state.speed = 0.0;
                             ship_state.vx = 0.0;
                             ship_state.vy = 0.0;
-                            respawn_timer = 3.0;
+                            ship_state.respawn_time_left = 3.0;
                             break;
                         }
                     }
@@ -7044,7 +7028,6 @@ public:
             future_timesteps += 1;
             game_state.sim_frame += 1;
         }
-        respawn_timer_history.push_back(respawn_timer);
 
         // Final return
         if (!return_value.has_value()) return true;
@@ -7132,22 +7115,7 @@ public:
     bool cruise(int64_t cruise_time, double cruise_turn_rate = 0.0) {
         // Maintain current speed
         for (int64_t i = 0; i < cruise_time; ++i) {
-            if (sim_id == 4223423471) {
-                std::cout << "In respawn sim that'll crash, future_timesteps=" << future_timesteps
-                        << " respawn_timer=" << respawn_timer
-                        << " ship_state=" << ship_state.str() << std::endl;
-            }
             if (!update(sign(ship_state.speed) * SHIP_DRAG, cruise_turn_rate)) {
-                if (sim_id == 42735461) {
-                    std::cout << "AHA CRUISE FAILED SOMEHOW?!!!! " << ship_state.str() << " ";
-                    // Assuming respawn_timer_history is a vector<double>
-                    std::cout << "[";
-                    for (size_t k = 0; k < respawn_timer_history.size(); ++k) {
-                        if (k > 0) std::cout << ", ";
-                        std::cout << respawn_timer_history[k];
-                    }
-                    std::cout << "]" << std::endl;
-                }
                 return false;
             }
         }
@@ -7305,7 +7273,6 @@ public:
     int64_t second_best_fitness_this_planning_period_index = INT_NEG_INF;
     int64_t stationary_targetting_sim_index = INT_NEG_INF;
     double current_sequence_fitness = -inf; // The fitness of the current sequence of actions we're performing
-    std::unordered_map<int64_t, double> respawn_timer_history;
     std::unordered_map<int64_t, int64_t> last_timestep_fired_schedule = {{0, INT_NEG_INF}}; // Just pretend, to make the code simpler. If we decide to fire on frame N, it'll only show up in frame N + 1 that we fired on frame N!
     std::unordered_map<int64_t, int64_t> last_timestep_mined_schedule = {{0, INT_NEG_INF}};
     std::unordered_set<int64_t> fire_next_timestep_schedule; // If a timestep is in the set, the bool value is True. Otherwise, it's false.
@@ -7357,7 +7324,6 @@ public:
         second_best_fitness_this_planning_period_index = INT_NEG_INF;
         stationary_targetting_sim_index = INT_NEG_INF;
         current_sequence_fitness = -inf;
-        respawn_timer_history.clear();
         last_timestep_fired_schedule = {{0, INT_NEG_INF}};
         last_timestep_mined_schedule = {{0, INT_NEG_INF}};
         fire_next_timestep_schedule.clear();
@@ -7459,7 +7425,6 @@ public:
                 game_state,
                 ship_state,
                 current_timestep,
-                game_state_to_base_planning->ship_respawn_timer,
                 &game_state_to_base_planning->asteroids_pending_death,
                 &game_state_to_base_planning->forecasted_asteroid_splits,
                 game_state_to_base_planning->last_timestep_fired,
@@ -7639,7 +7604,7 @@ public:
             // Then I assert that our next action is not a respawning action, AND we're not firing at the start of the next next action
                 if (game_state_to_base_planning->respawning || new_fire_next_timestep_flag) {
                     std::cerr << "We haven't done a respawn maneuver for having " << new_ship_state.lives_remaining << " lives left\n";
-                    std::cerr << "game_state_to_base_planning->respawning: " << game_state_to_base_planning->respawning << ", new_fire_next_timestep_flag: " << new_fire_next_timestep_flag << ", respawn_timer=" << best_action_sim.get_respawn_timer() << "\n";
+                    std::cerr << "game_state_to_base_planning->respawning: " << game_state_to_base_planning->respawning << ", new_fire_next_timestep_flag: " << new_fire_next_timestep_flag << ", respawn_time_left=" << best_action_sim.get_ship_state().respawn_time_left << "\n";
                 }
             // assert(!game_state_to_base_planning->respawning && !new_fire_next_timestep_flag);
             }
@@ -7652,7 +7617,6 @@ public:
             lives_remaining_that_we_did_respawn_maneuver_for.contains(new_ship_state.lives_remaining) == lives_remaining_that_we_did_respawn_maneuver_for.end() && new_ship_state.is_respawning,
             new_ship_state,
             next_base_game_state,
-            best_action_sim.get_respawn_timer(),
             asteroids_pending_death,
             forecasted_asteroid_splits,
             best_action_sim.get_last_timestep_fired(),
@@ -7662,7 +7626,6 @@ public:
         };*/
 
         // Histories
-        respawn_timer_history = best_action_sim.get_respawn_timer_history();
         asteroids_pending_death_schedule = best_action_sim.get_asteroids_pending_death_history();
         forecasted_asteroid_splits_schedule = best_action_sim.get_forecasted_asteroid_splits_history();
         mine_positions_placed_schedule = best_action_sim.get_mine_positions_placed_history();
@@ -7675,8 +7638,7 @@ public:
         }
 
         if constexpr (ENABLE_SANITY_CHECKS) {
-            //assert((bool)game_state_to_base_planning->ship_respawn_timer == game_state_to_base_planning->ship_state.is_respawning);
-            assert((bool)best_action_sim.get_respawn_timer() == new_ship_state.is_respawning);
+            assert((bool)best_action_sim.get_ship_state().respawn_time_left == new_ship_state.is_respawning);
         }
         if (new_ship_state.is_respawning) {
             // The action we're doing now is a respawn maneuver, so mark the number of lives we now have after losing a life
@@ -7772,11 +7734,10 @@ public:
         std::string state_type = base_state_is_exact ? "exact" : "predicted";
         // We only plan for respawn maneuvers if we're currently in our respawn invincibility (duh), AND we aren't at the very tail end of a respawn maneuver where we just came to a complete stop, and we should be ditching our invincibility and starting the next non-respawn action!
         // Another criteria for deciding the tail end of the maneuver, is if the ship's respawn invincibility time we have left is below a threshold. Probably want to be "conservative" here and add some buffer to this threshold.
-        //assert((planning_state.respawning && planning_state.ship_respawn_timer != 0.0) || !planning_state.respawning);
-        if (!((planning_state.respawning && planning_state.ship_respawn_timer != 0.0) || !planning_state.respawning)) {
-            std::cout << std::fixed << std::setprecision(20) << "Weird! planning_state.respawning=" << planning_state.respawning << ", planning_state.ship_respawn_timer=" << planning_state.ship_respawn_timer << std::endl;
+        if (!((planning_state.respawning && planning_state.ship_state.respawn_time_left != 0.0) || !planning_state.respawning)) {
+            std::cout << std::fixed << std::setprecision(20) << "Weird! planning_state.respawning=" << planning_state.respawning << ", planning_state.ship_state.respawn_time_left=" << planning_state.ship_state.respawn_time_left << std::endl;
         }
-        if (planning_state.respawning && !planning_state.fire_next_timestep_flag && !(planning_state.ship_respawn_timer < 3.0 - (1.0 + TIMESTEPS_IT_TAKES_SHIP_TO_ACCELERATE_TO_FULL_SPEED_FROM_DEAD_STOP) * DELTA_TIME && is_kinda_close_to_zero(planning_state.ship_state.speed) && this->lives_remaining_that_we_did_respawn_maneuver_for.contains(planning_state.ship_state.lives_remaining))) {
+        if (planning_state.respawning && !planning_state.fire_next_timestep_flag && !(planning_state.ship_state.respawn_time_left < 3.0 - (1.0 + TIMESTEPS_IT_TAKES_SHIP_TO_ACCELERATE_TO_FULL_SPEED_FROM_DEAD_STOP) * DELTA_TIME && is_kinda_close_to_zero(planning_state.ship_state.speed) && this->lives_remaining_that_we_did_respawn_maneuver_for.contains(planning_state.ship_state.lives_remaining))) {
             // --- Respawn branch ---
             // Simulate and look for a good move
             //std::cout << "Planning a respawn maneuver" << std::endl;
@@ -7836,9 +7797,9 @@ public:
                     ship_cruise_timesteps = randint(0, int64_t(round(MAX_CRUISE_SECONDS * FPS)));
                 }
                 if constexpr (ENABLE_SANITY_CHECKS) {
-                    if (!(bool(planning_state.ship_respawn_timer) == planning_state.ship_state.is_respawning)) {
-                        std::cout << "BAD, game_state_to_base_planning->ship_respawn_timer: "
-                                << planning_state.ship_respawn_timer
+                    if (!(bool(planning_state.ship_state.respawn_time_left) == planning_state.ship_state.is_respawning)) {
+                        std::cout << "BAD, game_state_to_base_planning->ship_state.respawn_time_left: "
+                                << planning_state.ship_state.respawn_time_left
                                 << ", game_state_to_base_planning->ship_state.is_respawning: "
                                 << planning_state.ship_state.is_respawning
                                 << std::endl;
@@ -7852,7 +7813,6 @@ public:
                     planning_state.game_state,
                     planning_state.ship_state,
                     planning_state.timestep,
-                    planning_state.ship_respawn_timer,
                     &planning_state.asteroids_pending_death,
                     &planning_state.forecasted_asteroid_splits,
                     planning_state.last_timestep_fired,
@@ -7869,15 +7829,15 @@ public:
 
                 double current_ship_speed = planning_state.ship_state.speed;
                 double timesteps_it_takes_to_stop_from_current_speed = std::ceil(current_ship_speed / (SHIP_DRAG + SHIP_MAX_THRUST) * FPS);
-                double timesteps_we_have_for_respawn_maneuver = std::round(planning_state.ship_respawn_timer * FPS);
+                double timesteps_we_have_for_respawn_maneuver = std::round(planning_state.ship_state.respawn_time_left * FPS);
                 double timesteps_we_have_for_middle_of_maneuver = std::round(timesteps_we_have_for_respawn_maneuver - timesteps_it_takes_to_stop_from_current_speed);
                 //if constexpr (ENABLE_SANITY_CHECKS) {
                 if (timesteps_we_have_for_middle_of_maneuver <= 0.0) {
-                    std::cout << "timesteps_we_have_for_middle_of_maneuver=" << timesteps_we_have_for_middle_of_maneuver << ", timesteps_we_have_for_respawn_maneuver=" << timesteps_we_have_for_respawn_maneuver << ", planning_state.ship_respawn_timer=" << planning_state.ship_respawn_timer << std::endl;
+                    std::cout << "timesteps_we_have_for_middle_of_maneuver=" << timesteps_we_have_for_middle_of_maneuver << ", timesteps_we_have_for_respawn_maneuver=" << timesteps_we_have_for_respawn_maneuver << ", planning_state.ship_state.respawn_time_left=" << planning_state.ship_state.respawn_time_left << std::endl;
                 }
                 //}
                 assert(timesteps_we_have_for_middle_of_maneuver > 0.0 && "We don't have a positive number of timesteps for a maneuver!");
-                bool start_of_respawn_maneuver = planning_state.ship_respawn_timer == 3.0;
+                bool start_of_respawn_maneuver = planning_state.ship_state.respawn_time_left == 3.0;
                 // If this is true, then that means the turning and acceleration phase of the existing respawn maneuver is done
                 bool respawn_maneuver_at_max_speed = is_close(std::abs(current_ship_speed), SHIP_MAX_SPEED);
                 assert(!(start_of_respawn_maneuver && respawn_maneuver_at_max_speed)); // We can't be at the start of a maneuver, and still already be at max speed! Respawn maneuvers start from 0 speed!
@@ -7886,7 +7846,7 @@ public:
                 // So we have to use this preview move sequence to get an idea of the length of the maneuver.
                 // It's possible to calculate this mathematically, but this might be more accurate.
                 bool respawn_maneuver_without_crash;
-                if (planning_state.ship_respawn_timer <= (3.0 + TIMESTEPS_IT_TAKES_SHIP_TO_ACCELERATE_TO_FULL_SPEED_FROM_DEAD_STOP + TIMESTEPS_IT_TAKES_SHIP_TO_COME_TO_DEAD_STOP_FROM_FULL_SPEED) * DELTA_TIME + GRAIN) { // Honestly it's kinda sketch cutting off the respawn maneuver after 3-2=1 seconds have passed, but we can come up with a better way to do it later shall I wish to
+                if (planning_state.ship_state.respawn_time_left <= (3.0 + TIMESTEPS_IT_TAKES_SHIP_TO_ACCELERATE_TO_FULL_SPEED_FROM_DEAD_STOP + TIMESTEPS_IT_TAKES_SHIP_TO_COME_TO_DEAD_STOP_FROM_FULL_SPEED) * DELTA_TIME + GRAIN) { // Honestly it's kinda sketch cutting off the respawn maneuver after 3-2=1 seconds have passed, but we can come up with a better way to do it later shall I wish to
                     // We don't really have time, so just come to a stop and call the respawn maneuver right there
                     assert(!is_kinda_close_to_zero(current_ship_speed) && "Uhh the ship shouldn't be stationary here!");
                     respawn_maneuver_without_crash = maneuver_sim.accelerate(0.0, rand_uniform(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE));
@@ -7955,7 +7915,7 @@ public:
                     respawn_maneuver_without_crash = (respawn_maneuver_at_max_speed || ((maneuver_sim.rotate_heading(random_ship_heading_angle)) && (maneuver_sim.accelerate(ship_cruise_speed, ship_accel_turn_rate)))) && maneuver_sim.cruise(ship_cruise_timesteps, ship_cruise_turn_rate) && maneuver_sim.accelerate(0.0, 0.0);
                 }
 
-                assert(respawn_maneuver_without_crash && "The respawn maneuver somehow crashed. Maybe it's too long! The respawn timer was game_state_to_base_planning->ship_respawn_timer and the maneuver length was maneuver_sim.get_sequence_length()");
+                assert(respawn_maneuver_without_crash && "The respawn maneuver somehow crashed. Maybe it's too long! The respawn timer was game_state_to_base_planning->ship_state.respawn_time_left and the maneuver length was maneuver_sim.get_sequence_length()");
 
                 double maneuver_fitness = maneuver_sim.get_fitness();
 
@@ -7999,7 +7959,6 @@ public:
                     planning_state.game_state,
                     planning_state.ship_state,
                     planning_state.timestep,
-                    planning_state.ship_respawn_timer,
                     &planning_state.asteroids_pending_death,
                     &planning_state.forecasted_asteroid_splits,
                     planning_state.last_timestep_fired,
@@ -8166,7 +8125,6 @@ public:
                     planning_state.game_state,
                     planning_state.ship_state,
                     planning_state.timestep,
-                    planning_state.ship_respawn_timer,
                     &planning_state.asteroids_pending_death,
                     &planning_state.forecasted_asteroid_splits,
                     planning_state.last_timestep_fired,
@@ -8365,7 +8323,6 @@ public:
                         ship_state.is_respawning,// && !lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
                         ship_state,
                         game_state,
-                        3.0, // ship_respawn_timer
                         // asteroids_pending_death: empty if not found, else value for this timestep
                         asteroids_pending_death_schedule.contains(current_timestep) ? asteroids_pending_death_schedule[current_timestep] : std::unordered_map<int64_t, std::vector<Asteroid>>{},
                         // forecasted_asteroid_splits: empty if not found, else value for this timestep
@@ -8398,7 +8355,6 @@ public:
                         ship_state.is_respawning,// && !lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
                         ship_state,
                         game_state,
-                        0.0, // ship_respawn_timer
                         // asteroids_pending_death: empty if not found, else value for this timestep
                         asteroids_pending_death_schedule.contains(current_timestep) ? asteroids_pending_death_schedule[current_timestep] : std::unordered_map<int64_t, std::vector<Asteroid>>{},
                         // forecasted_asteroid_splits: empty if not found, else value for this timestep
@@ -8425,11 +8381,6 @@ public:
                         ship_state.is_respawning,// && !lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
                         ship_state,
                         game_state,
-                        // ship_respawn_timer: 0.0 if timestep == 0 else respawn_timer_history[cur_timestep]
-                        this->current_timestep == 0 ? 0.0 :
-                            (respawn_timer_history.contains(this->current_timestep) ?
-                                respawn_timer_history[this->current_timestep] : 3.0),  // fallback to 3.0 if key missing (optional)
-
                         // asteroids_pending_death
                         asteroids_pending_death_schedule.contains(this->current_timestep) ?
                             asteroids_pending_death_schedule[this->current_timestep] :
@@ -8467,22 +8418,16 @@ public:
                     if (game_state_to_base_planning->respawning) {
                         this->lives_remaining_that_we_did_respawn_maneuver_for.insert(ship_state.lives_remaining);
                     }
-                    assert((bool)game_state_to_base_planning->ship_respawn_timer == game_state_to_base_planning->ship_state.is_respawning);
+                    assert((bool)game_state_to_base_planning->ship_state.respawn_time_left == game_state_to_base_planning->ship_state.is_respawning);
                 } else {
                     // Refresh the state anyway to the latest state:
                     //std::cout << "ASSUME COMING IN HERE" << std::endl;
-                    assert(respawn_timer_history.contains(this->current_timestep));
                     this->game_state_to_base_planning = {
                         this->current_timestep,
                         // respawning
                         ship_state.is_respawning,// && !this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining),
                         ship_state,
                         game_state,
-                        // ship_respawn_timer: 0.0 if timestep == 0 else respawn_timer_history[cur_timestep]
-                        this->current_timestep == 0 ? 0.0 :
-                            (respawn_timer_history.contains(this->current_timestep) ?
-                                respawn_timer_history[this->current_timestep] : 3.0),  // fallback to 3.0 if key missing (optional)
-
                         // asteroids_pending_death
                         asteroids_pending_death_schedule.contains(this->current_timestep) ?
                             asteroids_pending_death_schedule[this->current_timestep] :
@@ -8552,7 +8497,6 @@ public:
                             std::to_string(last_timestep_mined_schedule.size()) + "," +
                             std::to_string(mine_positions_placed_schedule.size()));
                 
-                assert(respawn_timer_history.contains(this->current_timestep));
                 assert(asteroids_pending_death_schedule.contains(this->current_timestep));
                 assert(forecasted_asteroid_splits_schedule.contains(this->current_timestep));
                 if constexpr (ENABLE_SANITY_CHECKS) {
@@ -8580,11 +8524,6 @@ public:
                     ship_state.is_respawning,
                     ship_state,
                     game_state,
-                    // ship_respawn_timer
-                    this->current_timestep == 0 ? 0.0 :
-                        (respawn_timer_history.contains(this->current_timestep) ?
-                            respawn_timer_history[this->current_timestep] : 0.0),  // fallback to 0.0 if key missing (optional)
-
                     // asteroids_pending_death
                     asteroids_pending_death_schedule.contains(this->current_timestep) ?
                         asteroids_pending_death_schedule[this->current_timestep] :
@@ -8687,7 +8626,6 @@ public:
                             recovering_from_crash, // respawning
                             ship_state,
                             game_state,
-                            3.0,   // ship_respawn_timer
                             {},    // asteroids_pending_death
                             {},    // forecasted_asteroid_splits
                             -1,    // last_timestep_fired
@@ -8701,7 +8639,6 @@ public:
                         recovering_from_crash, // respawning
                         ship_state,
                         game_state,
-                        3.0,   // ship_respawn_timer
                         {},    // asteroids_pending_death
                         {},    // forecasted_asteroid_splits
                         -1,    // last_timestep_fired
@@ -8718,7 +8655,6 @@ public:
                         false,  // respawning
                         ship_state,
                         game_state,
-                        0.0,    // ship_respawn_timer
                         {},     // asteroids_pending_death
                         {},     // forecasted_asteroid_splits
                         -1,     // last_timestep_fired
@@ -8732,7 +8668,6 @@ public:
                         false,  // respawning
                         ship_state,
                         game_state,
-                        0.0,    // ship_respawn_timer
                         {},     // asteroids_pending_death
                         {},     // forecasted_asteroid_splits
                         -1,     // last_timestep_fired
@@ -8742,16 +8677,16 @@ public:
                     };
                     if (game_state_to_base_planning->respawning)
                         this->lives_remaining_that_we_did_respawn_maneuver_for.insert(ship_state.lives_remaining);
-                    assert((bool)game_state_to_base_planning->ship_respawn_timer == game_state_to_base_planning->ship_state.is_respawning);
+                    assert((bool)game_state_to_base_planning->ship_state.respawn_time_left == game_state_to_base_planning->ship_state.is_respawning);
                 }
                 if (!this->action_queue.empty()) {
                     plan_action(this->other_ships_exist, false, iterations_boost, false);
                 } else {
                     game_state_to_base_planning->ship_state = ship_state;
                     game_state_to_base_planning->game_state = game_state;
-                    if (!game_state_to_base_planning->ship_state.is_respawning && bool(game_state_to_base_planning->ship_respawn_timer))
-                        game_state_to_base_planning->ship_respawn_timer = 0.0;
-                    assert((bool)game_state_to_base_planning->ship_respawn_timer == game_state_to_base_planning->ship_state.is_respawning);
+                    if (!game_state_to_base_planning->ship_state.is_respawning && bool(game_state_to_base_planning->ship_state.respawn_time_left))
+                        game_state_to_base_planning->ship_state.respawn_time_left = 0.0;
+                    assert((bool)game_state_to_base_planning->ship_state.respawn_time_left == game_state_to_base_planning->ship_state.is_respawning);
                     plan_action(this->other_ships_exist, true, iterations_boost, true);
                     assert(this->best_fitness_this_planning_period_index != INT_NEG_INF);
                     while (this->sims_this_planning_period.size() < (get_planning_min_iterations())) {
@@ -8786,7 +8721,7 @@ public:
                     game_state_to_base_planning = create_base_planning_state(this->current_timestep, ship_state, game_state, 0.0, recovering_from_crash);
                     if (recovering_from_crash)
                         print_explanation("Recovering from crash! Setting the base gamestate. The timestep is "+std::to_string(this->current_timestep), this->current_timestep);
-                    assert((bool)game_state_to_base_planning->ship_respawn_timer == game_state_to_base_planning->ship_state.is_respawning);
+                    assert((bool)game_state_to_base_planning->ship_state.respawn_time_left == game_state_to_base_planning->ship_state.is_respawning);
                 }
                 if (this->sims_this_planning_period.empty()) {
                     plan_action(this->other_ships_exist, true, iterations_boost, true);
