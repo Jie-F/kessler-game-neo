@@ -967,7 +967,7 @@ public:
                 draw_line(x0, y0, x1, y1, c);
             }
         } else {
-            int ir = std::ceil(r);
+            int ir = static_cast<int>(std::ceil(r));
             for (int dy = -ir; dy <= ir; ++dy) {
                 int y = int(cy + dy);
                 int dxr = int(std::sqrt(r * r - dy * dy));
@@ -1057,29 +1057,29 @@ public:
             return a.x + (b.x - a.x) * ((y - a.y) / (b.y - a.y));
         };
 
-        int y0 = std::ceil(v[0].y);
-        int y2 = std::floor(v[2].y);
+        int y0 = static_cast<int>(std::ceil(v[0].y));
+        int y2 = static_cast<int>(std::floor(v[2].y));
         for (int y = y0; y <= y2; ++y) {
             if (y < std::ceil(v[1].y)) {
                 // lower part
                 double xa = edge_interpolate(y, v[0], v[1]);
                 double xb = edge_interpolate(y, v[0], v[2]);
-                int x0 = std::ceil(std::min(xa, xb));
-                int x1 = std::floor(std::max(xa, xb));
+                int x0 = static_cast<int>(std::ceil(std::min(xa, xb)));
+                int x1 = static_cast<int>(std::floor(std::max(xa, xb)));
                 for (int x = x0; x <= x1; ++x) set_pixel(x, y, c);
             } else {
                 // upper part
                 double xa = edge_interpolate(y, v[1], v[2]);
                 double xb = edge_interpolate(y, v[0], v[2]);
-                int x0 = std::ceil(std::min(xa, xb));
-                int x1 = std::floor(std::max(xa, xb));
+                int x0 = static_cast<int>(std::ceil(std::min(xa, xb)));
+                int x1 = static_cast<int>(std::floor(std::max(xa, xb)));
                 for (int x = x0; x <= x1; ++x) set_pixel(x, y, c);
             }
         }
     }
 
     void draw_polygon(const std::vector<std::pair<double, double>>& pts, Color c) {
-        int n = pts.size();
+        int n = static_cast<int>(pts.size());
         if (n < 2) return;
         for (int i = 0; i < n; ++i) {
             auto [x0, y0] = pts[i];
@@ -1089,34 +1089,53 @@ public:
     }
 
     void write_bmp(const char* fname) {
-        // Minimal BMP: 24 bit, no compression
+        // Minimal BMP: 24-bit, no compression
         int row_padded = (width * 3 + 3) & (~3);
         int filesize = 54 + row_padded * height;
+
         uint8_t bmpfileheader[14] = {
             'B', 'M',
-            filesize, filesize >> 8, filesize >> 16, filesize >> 24,
-            0, 0, 0, 0, 54, 0, 0, 0
+            static_cast<uint8_t>(filesize),
+            static_cast<uint8_t>(filesize >> 8),
+            static_cast<uint8_t>(filesize >> 16),
+            static_cast<uint8_t>(filesize >> 24),
+            0, 0, 0, 0,         // Reserved fields
+            54, 0, 0, 0         // Pixel data offset
         };
+
         uint8_t bmpinfoheader[40] = {
-            40, 0, 0, 0,
-            width, width >> 8, width >> 16, width >> 24,
-            height, height >> 8, height >> 16, height >> 24,
-            1, 0, 24, 0
+            40, 0, 0, 0,        // Header size
+            static_cast<uint8_t>(width),
+            static_cast<uint8_t>(width >> 8),
+            static_cast<uint8_t>(width >> 16),
+            static_cast<uint8_t>(width >> 24),
+            static_cast<uint8_t>(height),
+            static_cast<uint8_t>(height >> 8),
+            static_cast<uint8_t>(height >> 16),
+            static_cast<uint8_t>(height >> 24),
+            1, 0,               // Planes
+            24, 0,              // Bits per pixel
+            0, 0, 0, 0,         // Compression (none)
+            0, 0, 0, 0,         // Image size (can be 0 for no compression)
+            0, 0, 0, 0,         // X pixels per meter
+            0, 0, 0, 0,         // Y pixels per meter
+            0, 0, 0, 0,         // Colors used
+            0, 0, 0, 0          // Important colors
         };
 
         std::ofstream f(fname, std::ios::binary);
-        f.write((char*) bmpfileheader, 14);
-        f.write((char*) bmpinfoheader, 40);
+        f.write(reinterpret_cast<char*>(bmpfileheader), 14);
+        f.write(reinterpret_cast<char*>(bmpinfoheader), 40);
 
         std::vector<uint8_t> row(row_padded, 0);
         for (int y = 0; y < height; ++y) {
             for (int x = 0; x < width; ++x) {
-                Color &p = pix[(height - 1 - y) * width + x];
+                Color& p = pix[(height - 1 - y) * width + x];
                 row[x * 3 + 0] = p.b;
                 row[x * 3 + 1] = p.g;
                 row[x * 3 + 2] = p.r;
             }
-            f.write((char*) row.data(), row_padded);
+            f.write(reinterpret_cast<char*>(row.data()), row_padded);
         }
         f.close();
     }
@@ -1134,11 +1153,11 @@ Color fuse_time_to_color(double remaining_time, double max_time) {
     if (remaining_time > max_time / 2.0) {
         double t = (remaining_time - max_time / 2.0) / (max_time / 2.0); // 1..0
         int red = int(255 * (1.0 - t));
-        return Color(red, 255, 0);     // green -> yellow
+        return Color(static_cast<uint8_t>(red), 255, 0);     // green -> yellow
     } else {
         double t = remaining_time / (max_time / 2.0);  // 1..0
         int green = int(255 * t);
-        return Color(255, green, 0);   // yellow -> red
+        return Color(255, static_cast<uint8_t>(green), 0);   // yellow -> red
     }
 }
 
@@ -1158,7 +1177,7 @@ void plot_game_state_to_bmp(
     // Make sure directory exists (C++17 or just manually create it out-of-band)
     std::filesystem::create_directories(DEBUG_BMP_DIR);
 
-    NeoPlot plotter(game_state.map_size_x, game_state.map_size_y);
+    NeoPlot plotter(static_cast<int>(game_state.map_size_x), static_cast<int>(game_state.map_size_y));
     plotter.bg = Color(0, 0, 0);
     plotter.clear();
 
@@ -1268,29 +1287,35 @@ Ship create_ship_from_dict(nb::dict d) {
     auto turn_range = d.contains("turn_rate_range") ? nb::cast<std::pair<double, double>>(d["turn_rate_range"]) : std::make_pair(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE);
 
     return Ship(
-        d.contains("is_respawning") ? nb::cast<bool>(d["is_respawning"]) : false,
-        pos.first, pos.second,
-        vel.first, vel.second,
+        pos.first,
+        pos.second,
+        vel.first,
+        vel.second,
         d.contains("speed") ? nb::cast<double>(d["speed"]) : 0.0,
         d.contains("heading") ? nb::cast<double>(d["heading"]) : 0.0,
         d.contains("mass") ? nb::cast<double>(d["mass"]) : 0.0,
         d.contains("radius") ? nb::cast<double>(d["radius"]) : 0.0,
         d.contains("id") ? nb::cast<int64_t>(d["id"]) : 0,
         d.contains("team") ? nb::cast<int64_t>(d["team"]) : 0,
+        d.contains("is_respawning") ? nb::cast<bool>(d["is_respawning"]) : false,
         d.contains("lives_remaining") ? nb::cast<int64_t>(d["lives_remaining"]) : 0,
+        d.contains("deaths") ? nb::cast<int64_t>(d["deaths"]) : 0,
         d.contains("bullets_remaining") ? nb::cast<int64_t>(d["bullets_remaining"]) : 0,
         d.contains("mines_remaining") ? nb::cast<int64_t>(d["mines_remaining"]) : 0,
         d.contains("can_fire") ? nb::cast<bool>(d["can_fire"]) : true,
-        d.contains("fire_rate") ? nb::cast<double>(d["fire_rate"]) : 10.0,
+        d.contains("fire_cooldown") ? nb::cast<double>(d["fire_cooldown"]) : 0.0,
+        d.contains("fire_rate") ? nb::cast<double>(d["fire_rate"]) : 0.0,
         d.contains("can_deploy_mine") ? nb::cast<bool>(d["can_deploy_mine"]) : true,
-        d.contains("mine_deploy_rate") ? nb::cast<double>(d["mine_deploy_rate"]) : 1.0,
+        d.contains("mine_cooldown") ? nb::cast<double>(d["mine_cooldown"]) : 0.0,
+        d.contains("mine_deploy_rate") ? nb::cast<double>(d["mine_deploy_rate"]) : 0.0,
+        d.contains("respawn_time_left") ? nb::cast<double>(d["respawn_time_left"]) : 0.0,
+        d.contains("respawn_time") ? nb::cast<double>(d["respawn_time"]) : 0.0,
         thrust_range,
         turn_range,
         d.contains("max_speed") ? nb::cast<double>(d["max_speed"]) : SHIP_MAX_SPEED,
         d.contains("drag") ? nb::cast<double>(d["drag"]) : SHIP_DRAG
     );
 }
-
 
 Mine create_mine_from_dict(nb::dict d) {
     auto pos = nb::cast<std::pair<double, double>>(d["position"]);
@@ -1347,18 +1372,27 @@ GameState create_game_state_from_dict(nb::dict game_state_dict) {
     for (auto m : mine_list)
         mines.push_back(create_mine_from_dict(nb::cast<nb::dict>(m)));
 
+    // Map size
+    auto map_size = game_state_dict.contains("map_size")
+        ? nb::cast<std::pair<double, double>>(game_state_dict["map_size"])
+        : std::make_pair(0.0, 0.0);
+
     // Construct GameState
-    auto map_size = nb::cast<std::pair<double, double>>(game_state_dict["map_size"]);
     return GameState(
-        asteroids, ships, bullets, mines,
-        map_size.first, map_size.second,
-        nb::cast<double>(game_state_dict["time"]),
-        nb::cast<double>(game_state_dict["delta_time"]),
-        nb::cast<int64_t>(game_state_dict["sim_frame"]),
-        nb::cast<double>(game_state_dict["time_limit"])
+        asteroids,
+        ships,
+        bullets,
+        mines,
+        map_size.first,
+        map_size.second,
+        game_state_dict.contains("time") ? nb::cast<double>(game_state_dict["time"]) : 0.0,
+        game_state_dict.contains("delta_time") ? nb::cast<double>(game_state_dict["delta_time"]) : 0.0,
+        game_state_dict.contains("frame_rate") ? nb::cast<double>(game_state_dict["frame_rate"]) : 0.0,
+        game_state_dict.contains("sim_frame") ? nb::cast<int64_t>(game_state_dict["sim_frame"]) : 0,
+        game_state_dict.contains("time_limit") ? nb::cast<double>(game_state_dict["time_limit"]) : 0.0,
+        game_state_dict.contains("random_asteroid_splits") ? nb::cast<bool>(game_state_dict["random_asteroid_splits"]) : false
     );
 }
-
 
 struct BasePlanningGameState {
     int64_t timestep;
@@ -3907,10 +3941,11 @@ inline std::tuple<
         assert(-pi <= delta_theta_solution && delta_theta_solution <= pi);
 
         // Check validity of solution to make sure time is positive and stuff
-        double delta_theta_solution_deg = degrees(delta_theta_solution);
         double t_rot = rotation_time(delta_theta_solution);
-
-        assert(is_close(t_rot, std::abs(delta_theta_solution_deg) / SHIP_MAX_TURN_RATE));
+        if constexpr (ENABLE_SANITY_CHECKS) {
+            double delta_theta_solution_deg = degrees(delta_theta_solution);
+            assert(is_close(t_rot, std::abs(delta_theta_solution_deg) / SHIP_MAX_TURN_RATE));
+        }
 
         double t_bullet = bullet_travel_time(delta_theta_solution, t_rot);
         if (t_bullet < 0) {
@@ -5233,7 +5268,6 @@ public:
         // First, find the most imminent asteroid
         std::vector<Target> target_asteroids_list;
         Ship dummy_ship_state(
-            /*is_respawning=*/false,
             /*x=*/ship_state.x,
             /*y=*/ship_state.y,
             /*vx=*/0.0,
@@ -5244,13 +5278,19 @@ public:
             /*radius=*/20.0,
             /*id=*/ship_state.id,
             /*team=*/ship_state.team,
+            /*is_respawning=*/false,
             /*lives_remaining=*/123,
+            /*deaths=*/0,  // new field, defaulting to 0
             /*bullets_remaining=*/0,
             /*mines_remaining=*/0,
             /*can_fire=*/ship_state.can_fire,
+            /*fire_cooldown=*/0.0, // new field, defaulting to 0
             /*fire_rate=*/10.0,
             /*can_deploy_mine=*/false, /* note: need to set properly if used */
+            /*mine_cooldown=*/0.0, // new field, defaulting to 0
             /*mine_deploy_rate=*/0.0,
+            /*respawn_time_left=*/0.0, // new field, defaulting to 0
+            /*respawn_time=*/0.0,      // new field, defaulting to 0
             /*thrust_range=*/std::make_pair(-480.0, 480.0),
             /*turn_rate_range=*/std::make_pair(-180.0, 180.0),
             /*max_speed=*/240,
