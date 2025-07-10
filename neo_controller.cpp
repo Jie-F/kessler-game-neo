@@ -5878,39 +5878,22 @@ public:
                 );
             }
 
-            // Simulate bullets
             if (!(skip_half_of_first_cycle && timesteps_until_bullet_hit_asteroid == 0)) {
-                // Advance all bullets
                 for (Bullet& b : bullets) {
                     if (b.alive) {
-                        new_bullet_x = b.x + b.vx * DELTA_TIME;
-                        new_bullet_y = b.y + b.vy * DELTA_TIME;
-                        // if check_coordinate_bounds(self.game_state, new_bullet_x, new_bullet_y):
-                        if (0.0 <= new_bullet_x && new_bullet_x <= game_state.map_size_x && 0.0 <= new_bullet_y && new_bullet_y <= game_state.map_size_y) {
-                            b.x = new_bullet_x;
-                            b.y = new_bullet_y;
-                        } else {
-                            b.alive = false;
-                        }
+                        b.x += b.vx * DELTA_TIME;
+                        b.y += b.vy * DELTA_TIME;
                     }
                 }
                 if (my_bullet.has_value()) {
-                    new_bullet_x = my_bullet->x + my_bullet->vx * DELTA_TIME;
-                    new_bullet_y = my_bullet->y + my_bullet->vy * DELTA_TIME;
-                    // if check_coordinate_bounds(self.game_state, my_new_bullet_x, my_new_bullet_y):
-                    if (0.0 <= new_bullet_x && new_bullet_x <= game_state.map_size_x && 0.0 <= new_bullet_y && new_bullet_y <= game_state.map_size_y) {
-                        my_bullet->x = new_bullet_x;
-                        my_bullet->y = new_bullet_y;
-                    } else {
-                        // The bullet got shot into the void without hitting anything :(
-                        std::cout << "Bullet sim: The bullet got shot into the void without hitting anything :( id: " << sim_id << std::endl;
-                        return std::make_tuple(std::nullopt, int64_t(-1), ship_not_collided_with_asteroid);
-                    }
+                    my_bullet->x += my_bullet->vx * DELTA_TIME;
+                    my_bullet->y += my_bullet->vy * DELTA_TIME;
                 }
 
                 for (Mine& m : mines)
-                    if (m.alive)
+                    if (m.alive) {
                         m.remaining_time -= DELTA_TIME;
+                    }
 
                 for (Asteroid& a : asteroids) {
                     // Idea: I can advance the asteroid REGARDLESS of whether they're alive or not, and just have
@@ -5930,15 +5913,11 @@ public:
                 sin_heading = std::sin(rad_heading);
                 new_bullet_x = initial_ship_state.x + SHIP_RADIUS * cos_heading;
                 new_bullet_y = initial_ship_state.y + SHIP_RADIUS * sin_heading;
-                // Make sure the bullet isn't being fired out into the void
-                // if check_coordinate_bounds(self.game_state, bullet_x, bullet_y):
-                if (0.0 <= new_bullet_x && new_bullet_x <= game_state.map_size_x && 0.0 <= new_bullet_y && new_bullet_y <= game_state.map_size_y) {
-                    Bullet initial_timestep_fire_bullet(
-                        new_bullet_x, new_bullet_y, BULLET_SPEED*cos_heading, BULLET_SPEED*sin_heading,
-                        initial_ship_state.heading, BULLET_MASS, -BULLET_LENGTH*cos_heading, -BULLET_LENGTH*sin_heading
-                    );
-                    bullets.push_back(initial_timestep_fire_bullet);
-                }
+                Bullet initial_timestep_fire_bullet(
+                    new_bullet_x, new_bullet_y, BULLET_SPEED*cos_heading, BULLET_SPEED*sin_heading,
+                    initial_ship_state.heading, BULLET_MASS, -BULLET_LENGTH*cos_heading, -BULLET_LENGTH*sin_heading
+                );
+                bullets.push_back(initial_timestep_fire_bullet);
             }
             // The new bullet we create will end up at the end of the list of bullets
             if (!my_bullet.has_value() && timesteps_until_bullet_hit_asteroid + (skip_half_of_first_cycle ? 0 : -1) == fire_after_timesteps) {
@@ -5956,13 +5935,6 @@ public:
                 sin_heading = std::sin(rad_heading);
                 new_bullet_x = bullet_fired_from_ship_position_x + SHIP_RADIUS * cos_heading;
                 new_bullet_y = bullet_fired_from_ship_position_y + SHIP_RADIUS * sin_heading;
-                // Make sure my bullet isn't being fired out into the void
-                // if not check_coordinate_bounds(self.game_state, bullet_x, bullet_y):
-                if (!(0.0 <= new_bullet_x && new_bullet_x <= game_state.map_size_x && 0.0 <= new_bullet_y && new_bullet_y <= game_state.map_size_y)) {
-                    // My bullet got shot into the void without hitting anything :(
-                    std::cout << "Bullet sim: The bullet got shot into the void without hitting anything (in place 2) :(" << std::endl;
-                    return std::make_tuple(std::nullopt, int64_t(-1), ship_not_collided_with_asteroid);
-                }
                 my_bullet = Bullet(new_bullet_x,
                     new_bullet_y,
                     BULLET_SPEED * cos_heading,
@@ -6017,59 +5989,77 @@ public:
 
             // Helper lambda to process bullet/asteroid collision logic
             auto process_bullet = [&](Bullet& b, size_t b_idx){
-                if (b.alive) {
-                    new_asteroids.clear();
-                    for (auto& a : asteroids) {
-                        if (a.alive) {
-                            //if constexpr (ENABLE_SANITY_CHECKS) {
-                            //    assert(asteroid_bullet_collision(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius) == asteroid_bullet_collision_kessler(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius));
-                            //}
-                            if (circle_line_collision_continuous(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, b.vx, b.vy, a.x, a.y, a.vx, a.vy, a.radius, game_state.delta_time)) {
-                                if (b_idx == len_bullets) {
-                                    // This bullet is my bullet!
-                                    std::cout << "Bullet sim: Bullet landed! Sim number: " << sim_id << std::endl;
-                                    return std::optional<std::tuple<std::optional<Asteroid>, int64_t, bool>>(
-                                        std::make_tuple(std::optional<Asteroid>(a), timesteps_until_bullet_hit_asteroid, ship_not_collided_with_asteroid)
-                                    );
-                                } else {
-                                    // Kill bullet
-                                    b.alive = false;
+                // Assume bullet is alive
+                new_asteroids.clear();
+                for (auto& a : asteroids) {
+                    if (a.alive) {
+                        //if constexpr (ENABLE_SANITY_CHECKS) {
+                        //    assert(asteroid_bullet_collision(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius) == asteroid_bullet_collision_kessler(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius));
+                        //}
+                        if (circle_line_collision_continuous(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, b.vx, b.vy, a.x, a.y, a.vx, a.vy, a.radius, game_state.delta_time)) {
+                            if (b_idx == len_bullets) {
+                                // This bullet is my bullet!
+                                std::cout << "Bullet sim: Bullet landed! Sim number: " << sim_id << std::endl;
+                                return std::optional<std::tuple<std::optional<Asteroid>, int64_t, bool>>(
+                                    std::make_tuple(std::optional<Asteroid>(a), timesteps_until_bullet_hit_asteroid, ship_not_collided_with_asteroid)
+                                );
+                            } else {
+                                // Kill bullet
+                                b.alive = false;
 
-                                    // Create asteroid splits and mark for removal
-                                    if (a.size != 1) {
-                                        for (const Asteroid& new_ast: forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, game_state)) {
-                                            new_asteroids.push_back(new_ast);
-                                        }
+                                // Create asteroid splits and mark for removal
+                                if (a.size != 1) {
+                                    for (const Asteroid& new_ast: forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, game_state)) {
+                                        new_asteroids.push_back(new_ast);
                                     }
-
-                                    a.alive = false;
-                                    break;  // Stop checking this bullet
                                 }
+
+                                a.alive = false;
+                                break;  // Stop checking this bullet
                             }
                         }
                     }
+                }
 
-                    // Add new asteroids safely after loop
-                    asteroids.insert(
-                        asteroids.end(),
-                        new_asteroids.begin(),
-                        new_asteroids.end()
-                    );
+                // Add new asteroids safely after loop
+                asteroids.insert(
+                    asteroids.end(),
+                    new_asteroids.begin(),
+                    new_asteroids.end()
+                );
 
+                // Handle bullet culling here
+                if (a.alive) {
+                    if (!check_coordinate_bounds(game_state, b.x, b.y) && !check_coordinate_bounds(game_state, b.x + b.tail_delta_x, b.y + b.tail_delta_y)) {
+                        if (b_idx == len_bullets) {
+                            // This bullet is my bullet!
+                            // The bullet got shot into the void without hitting anything :(
+                            std::cout << "Bullet sim: The bullet got shot into the void without hitting anything :( id: " << sim_id << std::endl;
+                            return std::optional<std::tuple<std::optional<Asteroid>, int64_t, bool>>(
+                                std::make_tuple(std::nullopt, int64_t(-1), ship_not_collided_with_asteroid)
+                            );
+                        } else {
+                            b.alive = false;
+                        }
+                    }
                 }
                 return std::optional<std::tuple<std::optional<Asteroid>, int64_t, bool>>{};
             };
 
             // First, process main bullets
             for (size_t b_idx = 0; b_idx < bullets.size(); ++b_idx) {
-                auto result = process_bullet(bullets[b_idx], b_idx);
-                if (result) {
-                    return *result;
+                if (bullets[b_idx].alive) {
+                    auto result = process_bullet(bullets[b_idx], b_idx);
+                    if (result) {
+                        return *result;
+                    }
                 }
             }
 
-            // Then, process your bullet (if it exists)
+            // Then, process my bullet if it exists
             if (my_bullet.has_value()) {
+                // My bullet is guaranteed to be alive
+                assert(my_bullet.alive);
                 auto result = process_bullet(my_bullet.value(), len_bullets);
                 if (result) {
                     return *result;
@@ -6274,7 +6264,9 @@ public:
         if (!wait_out_mines) {
             forecasted_asteroid_splits_history.push_back(forecasted_asteroid_splits);
             if constexpr (ENABLE_SANITY_CHECKS) {
-                for (const auto& a : forecasted_asteroid_splits_history.back()) { assert(a.alive); }
+                for (const auto& a : forecasted_asteroid_splits_history.back()) {
+                    assert(a.alive);
+                }
             }
             if (PRUNE_SIM_STATE_SEQUENCE && future_timesteps != 0) {
                 // Create a super lightweight state that omits unnecessary stuff
@@ -6336,18 +6328,11 @@ public:
         // So we need to detect when the bullets are crossing the boundary, and delete them if they try to
         // Enumerate and track indices to delete
 
-        // Bullets step (advance and out-of-bounds cull)
+        // Bullets step
         for (Bullet& b : game_state.bullets) {
             if (b.alive) {
-                double new_x = b.x + b.vx * DELTA_TIME;
-                double new_y = b.y + b.vy * DELTA_TIME;
-                if (check_coordinate_bounds(game_state, new_x, new_y)) {
-                //if (0.0 <= new_x && new_x <= game_state.map_size_x && 0.0 <= new_y && new_y <= game_state.map_size_y) {
-                    b.x = new_x;
-                    b.y = new_y;
-                } else {
-                    b.alive = false;
-                }
+                b.x += b.vx * DELTA_TIME;
+                b.y += b.vy * DELTA_TIME;
             }
         }
         // Mines step
@@ -6791,7 +6776,7 @@ public:
                 fire_this_timestep = false;
             }
 
-            // Create bullet if needed
+            // Create bullet if firing
             if (fire_this_timestep) {
                 this->last_timestep_fired = initial_timestep + future_timesteps;
                 ship_state.is_respawning = false;
@@ -6800,18 +6785,15 @@ public:
                     --ship_state.bullets_remaining;
                 }
                 double rad_heading = radians(ship_state.heading);
-                double cos_head = cos(rad_heading);
-                double sin_head = sin(rad_heading);
-                double bullet_x = ship_state.x + SHIP_RADIUS * cos_head;
-                double bullet_y = ship_state.y + SHIP_RADIUS * sin_head;
-                // Make sure the bullet isn't being fired out into the void
-                if (0.0 <= bullet_x && bullet_x <= game_state.map_size_x && 0.0 <= bullet_y && bullet_y <= game_state.map_size_y) {
-                    Bullet new_bullet(
-                        bullet_x, bullet_y, BULLET_SPEED * cos_head, BULLET_SPEED * sin_head,
-                        ship_state.heading, BULLET_MASS, -BULLET_LENGTH * cos_head, -BULLET_LENGTH * sin_head
-                    );
-                    game_state.bullets.push_back(new_bullet);
-                }
+                double cos_heading = cos(rad_heading);
+                double sin_heading = sin(rad_heading);
+                double bullet_x = ship_state.x + SHIP_RADIUS * cos_heading;
+                double bullet_y = ship_state.y + SHIP_RADIUS * sin_heading;
+                Bullet new_bullet(
+                    bullet_x, bullet_y, BULLET_SPEED * cos_heading, BULLET_SPEED * sin_heading,
+                    ship_state.heading, BULLET_MASS, -BULLET_LENGTH * cos_heading, -BULLET_LENGTH * sin_heading
+                );
+                game_state.bullets.push_back(new_bullet);
             }
 
             // Mine dropping logic!
@@ -6926,8 +6908,14 @@ public:
                             }
                         }
                         a.alive = false;
-                        break;  // Only one asteroid per bullet
+                        break;  // Stop checking this bullet
                     }
+                }
+            }
+            // Check whether the bullet has left the map, and "cull" them here
+            if (b.alive) {
+                if (!check_coordinate_bounds(game_state, b.x, b.y) && !check_coordinate_bounds(game_state, b.x + b.tail_delta_x, b.y + b.tail_delta_y)) {
+                    b.alive = false;
                 }
             }
         }
