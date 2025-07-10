@@ -232,6 +232,7 @@ constexpr const char* BUILD_NUMBER = "2025-07-08 Neo, for Kessler v2's latest ve
 constexpr bool DEBUG_MODE = false;
 constexpr bool PRINT_EXPLANATIONS = false;
 constexpr double EXPLANATION_MESSAGE_SILENCE_INTERVAL_S = 2.0;
+constexpr bool PLOT_BULLET_SIM = true;
 
 // Safety and Performance Flags
 constexpr bool STATE_CONSISTENCY_CHECK_AND_RECOVERY = true;
@@ -3263,8 +3264,8 @@ inline std::tuple<
     double a = avx * avx + avy * avy - vb_sq;
 
     double time_until_can_fire_s = static_cast<double>(future_shooting_timesteps) * DELTA_TIME;
-    double ax_delayed = ax + time_until_can_fire_s * avx; // We add a delay to account for the timesteps until we can fire delay
-    double ay_delayed = ay + time_until_can_fire_s * avy;
+    double ax_delayed = ax + avx * time_until_can_fire_s; // We add a delay to account for the timesteps until we can fire delay
+    double ay_delayed = ay + avy * time_until_can_fire_s;
 
     double b = 2.0 * (ax_delayed * avx + ay_delayed * avy - vb_sq * t_0);
     double c = ax_delayed * ax_delayed + ay_delayed * ay_delayed - vb_sq * t_0 * t_0;
@@ -5810,54 +5811,57 @@ public:
                 return std::make_tuple(std::nullopt, int64_t(-1), ship_not_collided_with_asteroid);
             }
 
-            if (!(skip_half_of_first_cycle && timesteps_until_bullet_hit_asteroid == 0)) {
-                // 1. Prepare the ship pointer for plotting (null or set):
-                const Ship* ship_plot_state = nullptr;
-                if (whole_move_sequence.has_value()) {
-                    if (bullet_sim_ship_state.has_value()) {
-                        ship_plot_state = &bullet_sim_ship_state.value();
+            if constexpr (PLOT_BULLET_SIM) {
+                if (!(skip_half_of_first_cycle && timesteps_until_bullet_hit_asteroid == 0)) {
+                    // 1. Prepare the ship pointer for plotting (null or set):
+                    const Ship* ship_plot_state = nullptr;
+                    if (whole_move_sequence.has_value()) {
+                        if (bullet_sim_ship_state.has_value()) {
+                            ship_plot_state = &bullet_sim_ship_state.value();
+                        }
+                        // else, leave as nullptr
                     }
-                    // else, leave as nullptr
+
+                    // 2. Prepare a vector for my_bullet (if any):
+                    std::vector<Bullet> my_bullet_vec;
+                    if (my_bullet.has_value()) {
+                        my_bullet_vec.push_back(my_bullet.value());
+                    }
+
+                    // 3. flattened_asteroids_pending_death - fill this in as appropriate for your logic.
+                    // If you have asteroids_pending_death as a map<something, vector<Asteroid>>, flatten it:
+                    std::vector<Asteroid> flattened_asteroids_pending_death;
+                    for (const auto& pair : asteroids_pending_death) {
+                        flattened_asteroids_pending_death.insert(flattened_asteroids_pending_death.end(),
+                            pair.second.begin(), pair.second.end());
+                    }
+
+                    // 4. The forecasted_asteroid_splits vector (use as is, or substitute as necessary):
+                    // e.g. std::vector<Asteroid> forecasted_asteroids;
+
+                    std::string filename = "sim_" + std::to_string(sim_id) +
+                        "_bulletsimstartts" + std::to_string(initial_timestep + future_timesteps) +
+                        "_t" + std::to_string(initial_timestep + future_timesteps + timesteps_until_bullet_hit_asteroid) + ".bmp";
+
+                    std::string plot_title = "SIM ID " + std::to_string(sim_id) +
+                        " Ast count: " + std::to_string(asteroids.size()) +
+                        " BULLET SIMULATION TIMESTEP " + std::to_string(initial_timestep + timesteps_until_bullet_hit_asteroid);
+
+                    // 5. Finally, call the function:
+                    plot_game_state_to_bmp(
+                        game_state,
+                        asteroids,
+                        ship_plot_state,
+                        bullets,
+                        my_bullet_vec,
+                        flattened_asteroids_pending_death,
+                        {},
+                        forecasted_asteroid_splits,
+                        mines,
+                        filename,
+                        plot_title
+                    );
                 }
-
-                // 2. Prepare a vector for my_bullet (if any):
-                std::vector<Bullet> my_bullet_vec;
-                if (my_bullet.has_value()) {
-                    my_bullet_vec.push_back(my_bullet.value());
-                }
-
-                // 3. flattened_asteroids_pending_death - fill this in as appropriate for your logic.
-                // If you have asteroids_pending_death as a map<something, vector<Asteroid>>, flatten it:
-                std::vector<Asteroid> flattened_asteroids_pending_death;
-                for (const auto& pair : asteroids_pending_death) {
-                    flattened_asteroids_pending_death.insert(flattened_asteroids_pending_death.end(),
-                        pair.second.begin(), pair.second.end());
-                }
-
-                // 4. The forecasted_asteroid_splits vector (use as is, or substitute as necessary):
-                // e.g. std::vector<Asteroid> forecasted_asteroids;
-
-                std::string filename = "sim_" + std::to_string(sim_id) +
-                    "_t" + std::to_string(initial_timestep + timesteps_until_bullet_hit_asteroid) + ".bmp";
-
-                std::string plot_title = "SIM ID " + std::to_string(sim_id) +
-                    " Ast count: " + std::to_string(asteroids.size()) +
-                    " BULLET SIMULATION TIMESTEP " + std::to_string(initial_timestep + timesteps_until_bullet_hit_asteroid);
-
-                // 5. Finally, call the function:
-                plot_game_state_to_bmp(
-                    game_state,
-                    asteroids,
-                    ship_plot_state,
-                    bullets,
-                    my_bullet_vec,
-                    flattened_asteroids_pending_death,
-                    {},
-                    forecasted_asteroid_splits,
-                    mines,
-                    filename,
-                    plot_title
-                );
             }
 
             if (!(skip_half_of_first_cycle && timesteps_until_bullet_hit_asteroid == 0)) {
@@ -5981,7 +5985,7 @@ public:
                         if (circle_line_collision_continuous(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, b.vx, b.vy, a.x, a.y, a.vx, a.vy, a.radius, game_state.delta_time)) {
                             if (b_idx == len_bullets) {
                                 // This bullet is my bullet!
-                                std::cout << "Bullet sim: Bullet landed! Sim number: " << sim_id << std::endl;
+                                std::cout << "Bullet sim: Bullet landed! Starting on timestep " << initial_timestep + future_timesteps << " Sim number: " << sim_id << std::endl;
                                 return std::optional<std::tuple<std::optional<Asteroid>, int64_t, bool>>(
                                     std::make_tuple(std::optional<Asteroid>(a), timesteps_until_bullet_hit_asteroid, ship_not_collided_with_asteroid)
                                 );
@@ -6011,7 +6015,7 @@ public:
                 );
 
                 // Handle bullet culling here
-                if (a.alive) {
+                if (b.alive) {
                     if (!check_coordinate_bounds(game_state, b.x, b.y) && !check_coordinate_bounds(game_state, b.x + b.tail_delta_x, b.y + b.tail_delta_y)) {
                         if (b_idx == len_bullets) {
                             // This bullet is my bullet!
@@ -6472,7 +6476,7 @@ public:
                                         bool feasible;
                                         double shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist_during_interception;
                                         std::tie(feasible, shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist_during_interception) =
-                                            calculate_interception(ship_state.x, ship_state.y, a.x - a.vx * DELTA_TIME, a.y - a.vy * DELTA_TIME, a.vx, a.vy, a.radius, ship_state.heading, game_state);
+                                            calculate_interception(ship_state.x, ship_state.y, a.x - a.vx * DELTA_TIME, a.y - a.vy * DELTA_TIME, a.vx, a.vy, a.radius, ship_state.heading, game_state, 0i64);
 
                                         if (feasible) {
                                             // Regardless of whether our heading is close enough to shooting this asteroid, keep track of this, just in case no asteroids are within shooting range this timestep, but we can begin to turn toward it next timestep!
