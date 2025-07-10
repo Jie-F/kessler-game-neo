@@ -10,9 +10,11 @@ from scenarios.custom_scenarios import *
 import argparse
 
 ASTEROID_COUNT_LOOKUP = (0, 1, 4, 13, 40)
-
-from src.kesslergame import Scenario, KesslerGame, GraphicsType
-from src.kesslergame.controller_gamepad import GamepadController
+try:
+    from kesslergame import Scenario, KesslerGame, GraphicsType
+except Exception as e:
+    print(e)
+from kesslergame.controller_gamepad import GamepadController
 from examples.test_controller import TestController
 from neo_controller import NeoController
 #from test_controller import TestController as CPPController
@@ -438,8 +440,8 @@ while True:
         #random.seed(randseed)
             # [ReplayController0(), ReplayController1()] GamepadController()])#, NeoController()])#, TestController()])GamepadController NeoController Neo
         random.seed(randseed)
-        from neo_controller import NeoController
-        controllers_used = [JamieController(), JamieController()]
+        #from neo_controller import NeoController
+        controllers_used = [NeoController(), NeoController()]
         #random.setstate(state)
         #print(f"RNG State: {random.getstate()}")
         #score, perf_data = game.run(scenario=ex_adv_four_corners_pt1, controllers=controllers_used)

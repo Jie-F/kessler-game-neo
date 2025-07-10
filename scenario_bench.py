@@ -14,24 +14,24 @@ windll.shcore.SetProcessDpiAwareness(1) # Fixes blurriness when a scale factor i
 
 ASTEROID_COUNT_LOOKUP = (0, 1, 4, 13, 40)
 
-from src.kesslergame import Scenario, KesslerGame, GraphicsType
-from src.kesslergame.controller_gamepad import GamepadController
+from kesslergame import Scenario, KesslerGame, GraphicsType
+from kesslergame.controller_gamepad import GamepadController
 #from src.neo_controller import NeoController
 from neo_controller import NeoController
 #from src.neo_controller_cont_working import NeoController 
 #from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
 from benchmark_controller import BenchmarkController
-from examples.test_controller import TestController
+#from examples.test_controller import TestController
 
-BENCHMARK_TIME_LIMIT = 60.0
+BENCHMARK_TIME_LIMIT = 300.0
 #BENCHMARK_TIME_LIMIT = 3.0
-JUMP_IND = 2000
+JUMP_IND = 0
 global color_text
 color_text = True
 
-TRIALS = 1
+TRIALS = 10
 
-GRAPHICS = True
+GRAPHICS = False
 
 def color_print(text='', color='white', style='normal', same=False, previous=False) -> None:
     global color_text
@@ -83,7 +83,9 @@ game_settings = {'perf_tracker': True,
                  'realtime_multiplier': 0.0,
                  'graphics_obj': None,
                  'frequency': 30.0,
-                 'UI_settings': 'all'}
+                 'UI_settings': {'ships': True, 'lives_remaining': True, 'accuracy': True,
+                                'asteroids_hit': True, 'shots_fired': True, 'bullets_remaining': True,
+                                'controller_name': True, 'scale': 2.0}}
 
 game = KesslerGame(settings=game_settings)  # Use this to visualize the game scenario
 
@@ -287,7 +289,7 @@ color_print(f'\nUsing seed {randseed}', 'green')
 random.seed(randseed)
 
 benchmark_scenario = Scenario(name="Benchmark Scenario",
-                                num_asteroids=3000,
+                                num_asteroids=300,
                                 ship_states=[
                                     {'position': (width/2.0, height/2.0), 'angle': 0.0, 'lives': 1000000, 'team': 1, 'mines_remaining': 1000000},
                                 ],
@@ -304,16 +306,7 @@ for i in range(JUMP_IND, JUMP_IND + TRIALS):
     print()
     print(f"Trial {i}")
     print()
-    benchmark_scenario = Scenario(name="Benchmark Scenario",
-                                    num_asteroids=200,
-                                    ship_states=[
-                                        {'position': (width/2.0, height/2.0), 'angle': 0.0, 'lives': 1000000, 'team': 1, 'mines_remaining': 100000},
-                                        #{'position': (width, height), 'angle': 0.0, 'lives': 1000000, 'team': 1, 'mines_remaining': 1000000}
-                                    ],
-                                    map_size=(width, height),
-                                    seed=i,
-                                    time_limit=BENCHMARK_TIME_LIMIT)
-    controllers_used = [NeoController(), TestController()]
+    controllers_used = [NeoController()]
     scenario_to_run = benchmark_scenario
     if scenario_to_run is not None:
         print(f"Evaluating scenario {scenario_to_run.name}")
@@ -353,7 +346,7 @@ for i in range(JUMP_IND, JUMP_IND + TRIALS):
         color_print('Accuracy: ' + str([team.accuracy for team in score.teams]), 'green')
         color_print('Mean eval time: ' + str([team.mean_eval_time for team in score.teams]), 'green')
         if score.teams[0].accuracy < 1:
-            color_print('NEO MISSED SDIOFJSDI(FJSDIOJFIOSDJFIODSJFIOJSDIOFJSDIOFJOSDIJFISJFOSDJFOJSDIOFJOSDIJFDSJFI)SDFJHSUJFIOSJFIOSJIOFJSDIOFJIOSDFOSDF\n\n', 'red')
+            #color_print('NEO MISSED SDIOFJSDI(FJSDIOJFIOSDJFIODSJFIOJSDIOFJSDIOFJOSDIJFISJFOSDJFOJSDIOFJOSDIJFDSJFI)SDFJHSUJFIOSJFIOSJIOFJSDIOFJIOSDFOSDF\n\n', 'red')
             missed = True
         else:
             missed = False
@@ -372,8 +365,8 @@ for i in range(JUMP_IND, JUMP_IND + TRIALS):
     print(f"Team 1, 2 accuracies: ({team_1_bullets_hit/(team_1_shots_fired + 0.000000000000001)}, {team_2_bullets_hit/(team_2_shots_fired + 0.000000000000001)})")
     print(f"Team 1, 2 shot efficiencies: ({team_1_shot_efficiency:.02%}, {team_2_shot_efficiency:.02%})")
     print(f"Team 1, 2 shot efficiencies inc. mines/ship hits: ({team_1_shot_efficiency_including_mines:.02%}, {team_2_shot_efficiency_including_mines:.02%})")
-    if missed:
-        break
+    #if missed:
+    #    break
 print(f"Run times are: {run_times}")
 print(f"The average time over {TRIALS} trials is {sum(run_times)/len(run_times)} s")
 assert len(run_times) == TRIALS, f"Looks like not all trials completed!"

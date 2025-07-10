@@ -438,7 +438,7 @@ constexpr double SHIP_DRAG = 80.0;
 constexpr double SHIP_MAX_SPEED = 240.0;
 constexpr double SHIP_RADIUS = 20.0;
 constexpr double SHIP_MASS = 300.0;
-const int64_t TIMESTEPS_UNTIL_SHIP_ACHIEVES_MAX_SPEED = static_cast<int64_t>(std::ceil(SHIP_MAX_SPEED/(SHIP_MAX_THRUST - SHIP_DRAG)*FPS));
+const int64_t TIMESTEPS_UNTIL_SHIP_ACHIEVES_MAX_SPEED = static_cast<int64_t>(std::ceil(SHIP_MAX_SPEED / (SHIP_MAX_THRUST - SHIP_DRAG) * FPS));
 constexpr double MINE_BLAST_RADIUS = 150.0;
 constexpr double MINE_RADIUS = 12.0;
 constexpr double MINE_BLAST_PRESSURE = 2000.0;
@@ -567,7 +567,7 @@ struct Ship {
     double x = 0, y = 0, vx = 0, vy = 0;
     double speed = 0, heading = 0, mass = 0, radius = 0;
     int64_t id = 0;
-    std::string team;
+    int64_t team;
     int64_t lives_remaining = 0, bullets_remaining = 0, mines_remaining = 0;
     bool can_fire = true, can_deploy_mine = true;
     double fire_rate = 0.0, mine_deploy_rate = 0.0;
@@ -577,7 +577,7 @@ struct Ship {
 
     Ship() = default;
     Ship(bool is_respawning, double x, double y, double vx, double vy, double speed, double heading, double mass, double radius,
-         int64_t id, std::string team, int64_t lives_remaining, int64_t bullets_remaining, int64_t mines_remaining, bool can_fire, double fire_rate,
+         int64_t id, int64_t team, int64_t lives_remaining, int64_t bullets_remaining, int64_t mines_remaining, bool can_fire, double fire_rate,
          bool can_deploy_mine, double mine_deploy_rate, std::pair<double, double> thrust_range, std::pair<double, double> turn_rate_range,
          double max_speed, double drag)
         : is_respawning(is_respawning), x(x), y(y), vx(vx), vy(vy), speed(speed), heading(heading),
@@ -590,7 +590,7 @@ struct Ship {
         return "Ship(is_respawning=" + std::to_string(is_respawning) + ", position=(" + std::to_string(x) + ", " + std::to_string(y)
             + "), velocity=(" + std::to_string(vx) + ", " + std::to_string(vy) + "), speed=" + std::to_string(speed)
             + ", heading=" + std::to_string(heading) + ", mass=" + std::to_string(mass) + ", radius=" + std::to_string(radius)
-            + ", id=" + std::to_string(id) + ", team=\"" + team + "\", lives_remaining=" + std::to_string(lives_remaining)
+            + ", id=" + std::to_string(id) + ", team=\"" + std::to_string(team) + "\", lives_remaining=" + std::to_string(lives_remaining)
             + ", bullets_remaining=" + std::to_string(bullets_remaining) + ", mines_remaining=" + std::to_string(mines_remaining)
             + ", can_fire=" + std::to_string(can_fire) + ", fire_rate=" + std::to_string(fire_rate)
             + ", can_deploy_mine=" + std::to_string(can_deploy_mine) + ", mine_deploy_rate=" + std::to_string(mine_deploy_rate)
@@ -1208,7 +1208,7 @@ Ship create_ship_from_dict(nb::dict d) {
         d.contains("mass") ? nb::cast<double>(d["mass"]) : 0.0,
         d.contains("radius") ? nb::cast<double>(d["radius"]) : 0.0,
         d.contains("id") ? nb::cast<int64_t>(d["id"]) : 0,
-        d.contains("team") ? nb::cast<std::string>(d["team"]) : "",
+        d.contains("team") ? nb::cast<int64_t>(d["team"]) : 0,
         d.contains("lives_remaining") ? nb::cast<int64_t>(d["lives_remaining"]) : 0,
         d.contains("bullets_remaining") ? nb::cast<int64_t>(d["bullets_remaining"]) : 0,
         d.contains("mines_remaining") ? nb::cast<int64_t>(d["mines_remaining"]) : 0,
