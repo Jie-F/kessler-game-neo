@@ -397,9 +397,9 @@ while True:
                                         num_asteroids=random.randint(1, 15),
                                         position_range_x=(0, width),
                                         position_range_y=(0, height),
-                                        speed_range=(600, 800, 0),
+                                        speed_range=(300, 600, 0),
                                         angle_range=(-1, 361),
-                                        size_range=(1, 1)
+                                        size_range=(1, 4)
                                     )*random.choice([1])
 
         # Define game scenario

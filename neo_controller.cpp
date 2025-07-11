@@ -232,7 +232,7 @@ constexpr const char* BUILD_NUMBER = "2025-07-08 Neo, for Kessler v2's latest ve
 constexpr bool DEBUG_MODE = false;
 constexpr bool PRINT_EXPLANATIONS = false;
 constexpr double EXPLANATION_MESSAGE_SILENCE_INTERVAL_S = 2.0;
-constexpr bool PLOT_BULLET_SIM = true;
+constexpr bool PLOT_BULLET_SIM = false;
 
 // Safety and Performance Flags
 constexpr bool STATE_CONSISTENCY_CHECK_AND_RECOVERY = true;
@@ -3238,7 +3238,8 @@ inline std::tuple<
     const GameState& game_state,
     int64_t future_shooting_timesteps = 0
 ) {
-    // This is a simplified version of solve_interception(). This will, given the position of the ship and an asteroid, tell you which angle you need to fire at after future_shooting_timesteps to shoot the asteroid
+    // This is a simplified version of solve_interception().
+    // This will, given the position of the ship and an asteroid, tell you which angle you need to fire at after future_shooting_timesteps to shoot the asteroid
     // The bullet's head originates from the edge of the ship's radius.
     // We want to set the position of the bullet to the center of the bullet, so we have to do some fanciness here so that at t=0, the bullet's center is where it should be
     
