@@ -103,6 +103,7 @@
 #include <fstream>
 #include <cstring>
 #include <filesystem>
+#include <complex>
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/array.h>
@@ -3222,6 +3223,180 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
     return {most_imminent_asteroid_speed_val, imminent_asteroid_relative_heading_deg, largest_gap_relative_heading_deg, nearby_asteroid_average_speed, nearby_asteroid_count, average_directional_speed, total_asteroid_count, current_asteroids_count};
 }
 
+std::array<double, 4> durand_kerner_real_roots(double k0, double k1, double k2, double k3, double k4) {
+    constexpr int max_iter = 40;
+    constexpr double eps = 1e-10;
+    const double nan_val = std::numeric_limits<double>::quiet_NaN();
+
+    if (std::abs(k4) < eps) {
+        return {nan_val, nan_val, nan_val, nan_val}; // Not a quartic
+    }
+
+    // Normalize polynomial: divide all coefficients by k4 to make it monic
+    std::array<double, 5> coeffs = {k0 / k4, k1 / k4, k2 / k4, k3 / k4, 1.0};
+
+    // Polynomial evaluation using Horner's method
+    auto eval_poly = [&](const std::complex<double>& x) -> std::complex<double> {
+        std::complex<double> result = 0.0;
+        for (int j = 4; j >= 0; --j) {
+            result = result * x + coeffs[j];
+        }
+        return result;
+    };
+
+    // Hardcoded root initialization
+    std::array<std::complex<double>, 4> roots = {
+        std::complex<double>(1.0, 0.0),
+        std::complex<double>(0.4, 0.9),
+        std::complex<double>(-0.65, 0.72),
+        std::complex<double>(-0.908, -0.297)
+    };
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        bool converged = true;
+
+        std::cout << "Iteration " << iter << ":\n";
+        for (int i = 0; i < 4; ++i) {
+            std::cout << "  root[" << i << "] = " << roots[i] << "\n";
+        }
+
+        for (int i = 0; i < 4; ++i) {
+            std::complex<double> denom = 1.0;
+            for (int j = 0; j < 4; ++j) {
+                if (i != j) {
+                    denom *= (roots[i] - roots[j]);
+                }
+            }
+            std::complex<double> delta = eval_poly(roots[i]) / denom;
+            roots[i] -= delta;
+            if (std::abs(delta) > eps) {
+                converged = false;
+            }
+        }
+
+        if (converged) {
+            std::cout << "Converged at iteration " << iter << "\n";
+            break;
+        }
+    }
+
+    std::array<double, 4> real_roots = {nan_val, nan_val, nan_val, nan_val};
+    int real_count = 0;
+
+    for (const auto& root : roots) {
+        if (std::abs(root.imag()) < eps && real_count < 4) {
+            real_roots[real_count++] = root.real();
+        }
+    }
+
+    return real_roots;
+}
+
+inline std::tuple<
+    bool,         // feasible
+    double,       // shot_heading_min
+    double,       // shot_heading_max
+    double,       // interception_time_s
+    double,       // intercept_x - Actually this would be a range, since the interception takes place over some time, not just at one instant! This is used to calculate feasibility.
+    double,       // intercept_y - This should be where the asteroid is, on the frame that we detect the collision. Round up the time to the next frame up, and this is where the ast is.
+    double        // asteroid_dist_during_interception - Basically equal to sqrt(intercept_x^2 + intercept_y^2)
+> calculate_continuous_interception(
+    double ship_pos_x, double ship_pos_y,
+    double asteroid_pos_x, double asteroid_pos_y,
+    double avx, double avy, double ar,
+    double ship_heading_deg,
+    const GameState& game_state,
+    int64_t future_shooting_timesteps = 0
+) {
+    constexpr double t0 = SHIP_RADIUS / BULLET_SPEED; // Head start that the bullet head got
+    constexpr double t1 = (SHIP_RADIUS - BULLET_LENGTH) / BULLET_SPEED; // Head start that the bullet tail got
+    // Add 1 to this, because by the time the bullet is fired, it's the next timestep and the asteroids have moved by a step again!
+    double time_until_can_fire_s = static_cast<double>(future_shooting_timesteps + 1) * DELTA_TIME;
+
+    constexpr double vb = BULLET_SPEED;
+
+    // Normalized start position of asteroid, relative to ship (origin)
+    double ax = asteroid_pos_x - ship_pos_x + avx * time_until_can_fire_s;
+    double ay = asteroid_pos_y - ship_pos_y + avy * time_until_can_fire_s;
+
+    // SymPy CSE Optimized Computation
+    // Common subexpressions:
+    double x0 = ar * ar;
+    double x1 = avx * vb;
+    double x2 = 2.0 * x1;
+    double x3 = x0 * x2;
+    double x4 = ay * ay;
+    double x5 = x2 * x4;
+    double x6 = ax * ay;
+    double x7 = vb * x6;
+    double x8 = 2.0 * avy;
+    double x9 = x7 * x8;
+    double x10 = avy * avy;
+    double x11 = ax * t0;
+    double x12 = 2.0 * vb * x10 * x11;
+    double x13 = ay * t0;
+    double x14 = avy * x13;
+    double x15 = x14 * x2;
+    double x16 = vb * vb;
+    double x17 = x16 * x4;
+    double x18 = t0 * t0;
+    double x19 = x16 * x18;
+    double x20 = x10 * x19;
+    double x21 = 2.0 * x16;
+    double x22 = x14 * x21;
+    double x23 = avx * avx;
+    double x24 = ax * ax;
+    double x25 = avx * x6;
+    double x26 = x0 * (x10 + x16 + x23) - x10 * x24 - x23 * x4 + x25 * x8;
+    double x27 = -x17 - x20 + x22 + x26;
+    double x28 = x1 * x13;
+    double x29 = avy * x11;
+    double x30 = vb * x29;
+    double x31 = avy * x1 * x18;
+    double x32 = avx * x29 + avy * (x0 - x24) - ay * t0 * x23 + x25;
+    double x33 = 16.0 * vb;
+
+    // Polynomial coefficients:
+    double k0 = 4.0 * (x12 - x15 + x27 - x3 + x5 - x9);
+    double k1 = x33 * (-x28 - x30 + x31 - x32 + x7);
+    double k2 = 8.0 * (4.0 * avx * x11 * x16 + x17 - 2.0 * x19 * x23 + x20 - x21 * x24 - x22 + x26);
+    double k3 = x33 * (x28 + x30 - x31 - x32 - x7);
+    double k4 = 4.0 * (-x12 + x15 + x27 + x3 - x5 + x9);
+
+    // Polynomial k is for the head of the bullet
+    // Polynomial q will be for the tail:
+    // Only recalculate the ones that depend on t1
+    x11 = ax * t1;
+    x12 = 2.0 * vb * x10 * x11;
+    x13 = ay * t1;
+    x14 = avy * x13;
+    x15 = x14 * x2;
+    x18 = t1 * t1;
+    x19 = x16 * x18;
+    x20 = x10 * x19;
+    x22 = x14 * x21;
+    x27 = -x17 - x20 + x22 + x26;
+    x28 = x1 * x13;
+    x29 = avy * x11;
+    x30 = vb * x29;
+    x31 = avy * x1 * x18;
+    x32 = avx * x29 + avy * (x0 - x24) - ay * t1 * x23 + x25;
+
+    double q0 = 4.0 * (x12 - x15 + x27 - x3 + x5 - x9);
+    double q1 = x33 * (-x28 - x30 + x31 - x32 + x7);
+    double q2 = 8.0 * (4.0 * avx * x11 * x16 + x17 - 2.0 * x19 * x23 + x20 - x21 * x24 - x22 + x26);
+    double q3 = x33 * (x28 + x30 - x31 - x32 - x7);
+    double q4 = 4.0 * (-x12 + x15 + x27 + x3 - x5 + x9);
+
+    // So now we need to solve polynomials k and q. k0 + k1*x + k2*x^2 + k3*x^3 + k4*x^4 = 0, and q0 + q1*x + q2*x^2 + q3*x^3 + q4*x^4 = 0
+    // These will typically have 4 real solutions. The solutions come in pairs that are fairly close together.
+    // One of the pairs will be in negative time, which we ignore. But the other two will be in positive time.
+    // Say k's solution pair is [a, b] and q's solution pair is [c, d].
+    // The union of the ranges [a, b] and [c, d] represent the range of tan(theta/2) that we can fire at.
+    // So take the endpoint of the ranges, and do 2*arctan(the endpoint) to get our answers.
+
+}
+
 inline std::tuple<
     bool,         // feasible
     double,       // shot_heading_error_rad
@@ -3695,6 +3870,8 @@ inline std::tuple<
     double   // asteroid_dist_during_interception
 > solve_interception(const Asteroid& asteroid, const Ship& ship_state, const GameState& game_state, int64_t timesteps_until_can_fire = 0)
 {
+    // TODO: Deprecate this. This is slow and unnecessary. Just optimize the regular solver, and linear search or binary search it.
+
     // The bullet's head originates from the edge of the ship's radius.
     // We want to set the position of the bullet to the center of the bullet, so we have to do some fanciness here so that at t=0, the bullet's center is where it should be
     //double t_0 = 0.0175;
@@ -6697,7 +6874,7 @@ public:
                                     bool feasible;
                                     double shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist;
                                     std::tie(feasible, shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist) =
-                                        calculate_interception(ship_predicted_pos_x, ship_predicted_pos_y, a.x, a.y, a.vx, a.vy, a.radius, ship_state.heading, game_state, timesteps_until_can_fire);
+                                        calculate_interception(ship_predicted_pos_x, ship_predicted_pos_y, a.x - a.vx * DELTA_TIME, a.y - a.vy * DELTA_TIME, a.vx, a.vy, a.radius, ship_state.heading, game_state, timesteps_until_can_fire);
                                     if (feasible &&
                                         (asteroids_shot >= RANDOM_WALK_SCHEDULE_LENGTH ||
                                         (random_walk_schedule[asteroids_shot] && shot_heading_error_rad >= 0.0) ||
