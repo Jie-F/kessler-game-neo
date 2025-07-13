@@ -233,7 +233,7 @@ constexpr const char* BUILD_NUMBER = "2025-07-08 Neo, for Kessler v2's latest ve
 constexpr bool DEBUG_MODE = false;
 constexpr bool PRINT_EXPLANATIONS = false;
 constexpr double EXPLANATION_MESSAGE_SILENCE_INTERVAL_S = 2.0;
-constexpr bool PLOT_BULLET_SIM = false;
+constexpr bool PLOT_BULLET_SIM = true;
 
 // Safety and Performance Flags
 constexpr bool STATE_CONSISTENCY_CHECK_AND_RECOVERY = true;
@@ -3223,25 +3223,30 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
     return {most_imminent_asteroid_speed_val, imminent_asteroid_relative_heading_deg, largest_gap_relative_heading_deg, nearby_asteroid_average_speed, nearby_asteroid_count, average_directional_speed, total_asteroid_count, current_asteroids_count};
 }
 
-std::array<double, 4> durand_kerner_real_roots(double k0, double k1, double k2, double k3, double k4) {
+std::array<double, 4> durand_kerner_real_roots_complex(double k0, double k1, double k2, double k3, double k4) {
     constexpr int max_iter = 40;
     constexpr double eps = 1e-10;
-    const double nan_val = std::numeric_limits<double>::quiet_NaN();
 
     if (std::abs(k4) < eps) {
-        return {nan_val, nan_val, nan_val, nan_val}; // Not a quartic
+        return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()}; // Not a quartic
     }
 
-    // Normalize polynomial: divide all coefficients by k4 to make it monic
-    std::array<double, 5> coeffs = {k0 / k4, k1 / k4, k2 / k4, k3 / k4, 1.0};
+    // Normalize coefficients to make the quartic monic
+    k0 /= k4;
+    k1 /= k4;
+    k2 /= k4;
+    k3 /= k4;
+    // k4 becomes 1.0 implicitly, no need to store
 
-    // Polynomial evaluation using Horner's method
+    std::cout << "Normalized polynomial: x^4 + " 
+            << k3 << "*x^3 + " 
+            << k2 << "*x^2 + " 
+            << k1 << "*x + " 
+            << k0 << "\n";
+
+    // Horner's method
     auto eval_poly = [&](const std::complex<double>& x) -> std::complex<double> {
-        std::complex<double> result = 0.0;
-        for (int j = 4; j >= 0; --j) {
-            result = result * x + coeffs[j];
-        }
-        return result;
+        return (((x + k3) * x + k2) * x + k1) * x + k0;
     };
 
     // Hardcoded root initialization
@@ -3250,6 +3255,10 @@ std::array<double, 4> durand_kerner_real_roots(double k0, double k1, double k2, 
         std::complex<double>(0.4, 0.9),
         std::complex<double>(-0.65, 0.72),
         std::complex<double>(-0.908, -0.297)
+        //std::complex<double>(-0.9, 0.0),
+        //std::complex<double>(-0.3, 0.0),
+        //std::complex<double>(0.3, 0.0),
+        //std::complex<double>(0.9, 0.0)
     };
 
     for (int iter = 0; iter < max_iter; ++iter) {
@@ -3280,7 +3289,7 @@ std::array<double, 4> durand_kerner_real_roots(double k0, double k1, double k2, 
         }
     }
 
-    std::array<double, 4> real_roots = {nan_val, nan_val, nan_val, nan_val};
+    std::array<double, 4> real_roots = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     int real_count = 0;
 
     for (const auto& root : roots) {
@@ -3291,6 +3300,97 @@ std::array<double, 4> durand_kerner_real_roots(double k0, double k1, double k2, 
 
     return real_roots;
 }
+
+std::array<double, 4> durand_kerner_real_roots(double k0, double k1, double k2, double k3, double k4) {
+    constexpr int max_iter = 25;
+    constexpr double eps = 1e-10;
+    constexpr bool debug_prints = false;
+
+    if (std::abs(k4) < eps) {
+        return {
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN()
+        }; // Not a quartic
+    }
+
+    // Normalize coefficients to make the quartic monic
+    k0 /= k4;
+    k1 /= k4;
+    k2 /= k4;
+    k3 /= k4;
+    // k4 becomes 1.0 implicitly, no need to store
+    if constexpr (debug_prints) {
+        std::cout << "Normalized polynomial: x^4 + " 
+                << k3 << "*x^3 + " 
+                << k2 << "*x^2 + " 
+                << k1 << "*x + " 
+                << k0 << "\n";
+    }
+
+    // Horner's method for evaluating the polynomial at a real x
+    auto eval_poly = [&](double x) -> double {
+        return (((x + k3) * x + k2) * x + k1) * x + k0;
+    };
+
+    // Hardcoded real root initialization (as previously commented)
+    std::array<double, 4> roots = {-0.9, -0.3, 0.15, 0.96};
+
+    bool converged = false;
+    for (int iter = 0; iter < max_iter; ++iter) {
+        converged = true;
+        if constexpr (debug_prints) {
+            std::cout << "Iteration " << iter << ":\n";
+            for (int i = 0; i < 4; ++i) {
+                std::cout << "  root[" << i << "] = " << roots[i] << "\n";
+            }
+        }
+
+        for (int i = 0; i < 4; ++i) {
+            double denom = 1.0;
+            for (int j = 0; j < 4; ++j) {
+                if (i != j) {
+                    denom *= (roots[i] - roots[j]);
+                }
+            }
+            if (std::abs(denom) < eps) {
+                continue; // Avoid division by zero or near-zero
+            }
+            double delta = eval_poly(roots[i]) / denom;
+            roots[i] -= delta;
+            if (std::abs(delta) > eps) {
+                converged = false;
+            }
+        }
+
+        if (converged) {
+            if constexpr (debug_prints) {
+                std::cout << "Converged at iteration " << iter << std::endl;
+            }
+            break;
+        }
+    }
+    if (!converged) {
+        if constexpr (debug_prints) {
+            std::cout << "Did not converge after " << max_iter << " iterations.\n";
+            std::cout << "Normalized polynomial that did not converge: x^4 + " 
+                    << k3 << "*x^3 + " 
+                    << k2 << "*x^2 + " 
+                    << k1 << "*x + " 
+                    << k0 << std::endl;
+        }
+        return {
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN()
+        };
+    }
+    // Return roots directly — no filtering of imaginary parts needed in this real-only version
+    return roots;
+}
+
 
 inline std::tuple<
     bool,         // feasible
@@ -3319,8 +3419,14 @@ inline std::tuple<
     double ax = asteroid_pos_x - ship_pos_x + avx * time_until_can_fire_s;
     double ay = asteroid_pos_y - ship_pos_y + avy * time_until_can_fire_s;
 
-    // SymPy CSE Optimized Computation
-    // Common subexpressions:
+    // So to solve for the tangency condition where the bullet just grazes the asteroid, we set up a quadratic equation:
+    // (ast_x - bul_x)**2 + (ast_y - bul_y)**2 - ar**2 == 0
+    // And the bullet x and y, we need to set up an equation for the bullet head, and another for the tail
+    // The unknowns would be t and theta
+    // The equation is quadratic in t, and we can compute the quadratic coefficients.
+    // If we set the discriminant to 0, b*b - 4*a*c == 0, then that gives us the tangency condition where the bullet grazes the asteroid
+
+    // SymPy CSE Optimized Computation of common subexpressions:
     double x0 = ar * ar;
     double x1 = avx * vb;
     double x2 = 2.0 * x1;
@@ -3390,11 +3496,103 @@ inline std::tuple<
 
     // So now we need to solve polynomials k and q. k0 + k1*x + k2*x^2 + k3*x^3 + k4*x^4 = 0, and q0 + q1*x + q2*x^2 + q3*x^3 + q4*x^4 = 0
     // These will typically have 4 real solutions. The solutions come in pairs that are fairly close together.
+    std::array<double, 4> k_roots = durand_kerner_real_roots(k0, k1, k2, k3, k4);
+    std::array<double, 4> q_roots = durand_kerner_real_roots(q0, q1, q2, q3, q4);
+    // Now go through the roots of x, and replace them with 2*arctan(root) to get theta
+    // The thetas will be from -pi to pi
+    for (double& root : k_roots) {
+        if (!std::isnan(root)) {
+            root = 2.0 * std::atan(root);
+            //std::cout << "Root: " << root << std::endl;
+        }
+    }
+    for (double& root : q_roots) {
+        if (!std::isnan(root)) {
+            root = 2.0 * std::atan(root);
+            //std::cout << "Root: " << root << std::endl;
+        }
+    }
+
     // One of the pairs will be in negative time, which we ignore. But the other two will be in positive time.
+    // Thinking back to our quadratic equation in t, if the discriminant is 0,
+    // then the single solution for t will be -b/(2*a). Let's calculate that.
+    auto extract_valid_time_range = [&](const std::array<double, 4>& theta_roots, double t_head_start) -> std::tuple<int64_t, double, double, double> {
+        int64_t num_positive_time_roots = 0;
+        double range_low = 0.0;
+        double range_high = 0.0;
+        double solution_sum = 0.0;
+
+        for (double theta_root : theta_roots) {
+            if (!std::isnan(theta_root)) {
+                double y0 = vb * vb;
+                double y1 = vb * std::cos(theta_root);
+                double y2 = avx * y1;
+                double y3 = vb * std::sin(theta_root);
+                double y4 = avy * y3;
+
+                // Solve for time t using the derived formula for the tangency condition.
+                double interception_time = (-avx * ax - avy * ay + ax * y1 + ay * y3 - t_head_start * y0 + t_head_start * y2 + t_head_start * y4) / (avx * avx + avy * avy + y0 - 2.0 * y2 - 2.0 * y4);
+                //std::cout << sol << std::endl;
+                if (interception_time >= 0.0) {
+                    solution_sum += interception_time;
+                    ++num_positive_time_roots;
+                    if (num_positive_time_roots == 1) {
+                        range_low = theta_root;
+                        range_high = theta_root;
+                    } else if (num_positive_time_roots == 2) {
+                        if (theta_root > range_high) {
+                            range_high = theta_root;
+                        } else if (theta_root < range_low) {
+                            range_low = theta_root;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handle angle wrapping: if range > pi, we assume the interval wrapped around -pi/pi
+        if (range_high - range_low > pi) {
+            std::swap(range_high, range_low);
+            range_high += 2.0 * pi;
+        }
+
+        return {num_positive_time_roots, range_low, range_high, solution_sum};
+    };
+
+    // Extract valid theta ranges and times for bullet head (k) and tail (q)
+    auto [num_positive_time_k_roots, k_range_low, k_range_high, solution_sum_k] = extract_valid_time_range(k_roots, t0);
+    auto [num_positive_time_q_roots, q_range_low, q_range_high, solution_sum_q] = extract_valid_time_range(q_roots, t1);
+
     // Say k's solution pair is [a, b] and q's solution pair is [c, d].
     // The union of the ranges [a, b] and [c, d] represent the range of tan(theta/2) that we can fire at.
-    // So take the endpoint of the ranges, and do 2*arctan(the endpoint) to get our answers.
+    double combined_range_low = std::min(k_range_low, q_range_low);
+    double combined_range_high = std::max(k_range_high, q_range_high);
+    // The low and high theta values are definitely between -pi, and 2*pi
 
+    bool feasible = num_positive_time_k_roots > 0 && num_positive_time_q_roots > 0;
+    if (feasible) {
+        if (!(num_positive_time_k_roots == 2 || num_positive_time_q_roots == 2)) {
+            std::cout << "pos k roots " << num_positive_time_k_roots << " num pos q roots " << num_positive_time_q_roots << std::endl;
+        }
+        assert(num_positive_time_k_roots == 2 || num_positive_time_q_roots == 2);
+        double solution_average_time_s = (solution_sum_k + solution_sum_q) / (num_positive_time_k_roots + num_positive_time_q_roots);
+        double x = ax + avx * solution_average_time_s;
+        double y = ay + avy * solution_average_time_s;
+        double intercept_x = x + ship_pos_x;
+        double intercept_y = y + ship_pos_y;
+        if (check_coordinate_bounds(game_state, intercept_x, intercept_y)) {
+            return std::make_tuple(true,
+                combined_range_low,
+                combined_range_high,
+                solution_average_time_s,
+                intercept_x,
+                intercept_y,
+                std::sqrt(x * x + y * y)
+            );
+        }
+    }
+    return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+    // feasible, shot_heading_min_rad, shot_heading_max_rad, interception_time_s + 0*future_shooting_timesteps*delta_time, intercept_x, intercept_y, asteroid_dist, asteroid_dist_during_interception
 }
 
 inline std::tuple<
@@ -6223,7 +6421,7 @@ public:
             // Then, process my bullet if it exists
             if (my_bullet.has_value()) {
                 // My bullet is guaranteed to be alive
-                assert(my_bullet.alive);
+                assert(my_bullet.value().alive);
                 auto result = process_bullet(my_bullet.value(), len_bullets);
                 if (result) {
                     return *result;
@@ -6652,15 +6850,69 @@ public:
 
                                         // Do interception prediction math
                                         bool feasible;
-                                        double shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist_during_interception;
-                                        std::tie(feasible, shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist_during_interception) =
-                                            calculate_interception(ship_state.x, ship_state.y, a.x - a.vx * DELTA_TIME, a.y - a.vy * DELTA_TIME, a.vx, a.vy, a.radius, ship_state.heading, game_state, 0i64);
+                                        
+                                        double shot_heading_min_rad, shot_heading_max_rad, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception;
+                                        double interception_time_s_OLD, intercept_x_OLD, intercept_y_OLD, asteroid_dist_during_interception_OLD, shot_heading_error_rad_OLD, shot_heading_tolerance_rad_OLD;
+                                        bool feasible_OLD;
+                                        if constexpr (ENABLE_SANITY_CHECKS) {
+                                            std::tie(feasible_OLD, shot_heading_error_rad_OLD, shot_heading_tolerance_rad_OLD, interception_time_s_OLD, intercept_x_OLD, intercept_y_OLD, asteroid_dist_during_interception_OLD) =
+                                                calculate_interception(ship_state.x, ship_state.y, a.x - a.vx * DELTA_TIME, a.y - a.vy * DELTA_TIME, a.vx, a.vy, a.radius, ship_state.heading, game_state, 0);
+                                            std::cout << "[OLD] feasible: " << feasible_OLD
+                                                    << ", perfect shooting angle rad: " << shot_heading_error_rad_OLD + radians(ship_state.heading)
+                                                    << ", shot_heading_error_rad: " << shot_heading_error_rad_OLD
+                                                    << ", shot_heading_tolerance_rad: " << shot_heading_tolerance_rad_OLD
+                                                    << ", interception_time_s: " << interception_time_s_OLD
+                                                    << ", intercept_x: " << intercept_x_OLD
+                                                    << ", intercept_y: " << intercept_y_OLD
+                                                    << ", asteroid_dist_during_interception: " << asteroid_dist_during_interception_OLD
+                                                    << std::endl;
+                                        }
+                                        
+                                        std::tie(feasible, shot_heading_min_rad, shot_heading_max_rad, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception) =
+                                        calculate_continuous_interception(ship_state.x, ship_state.y, a.x - a.vx * DELTA_TIME, a.y - a.vy * DELTA_TIME, a.vx, a.vy, a.radius, ship_state.heading, game_state, 0);
+                                        if constexpr (ENABLE_SANITY_CHECKS) {
+                                            std::cout << "[NEW] feasible: " << feasible
+                                                    << ", shot_heading_min_rad: " << shot_heading_min_rad
+                                                    << ", shot_heading_max_rad: " << shot_heading_max_rad
+                                                    << ", interception_time_s: " << interception_time_s
+                                                    << ", intercept_x: " << intercept_x
+                                                    << ", intercept_y: " << intercept_y
+                                                    << ", asteroid_dist_during_interception: " << asteroid_dist_during_interception
+                                                    << std::endl;
+                                            if (asteroid_dist_during_interception > 50.0 && !std::isnan(shot_heading_tolerance_rad_OLD) && !std::isnan(shot_heading_error_rad_OLD)) {
+                                                std::cout << "Asteroid distance during interception: " << asteroid_dist_during_interception << std::endl;
+                                                double new_tolerance = 0.5 * (shot_heading_max_rad - shot_heading_min_rad);
+                                                std::cout << "OLD shot heading tolerance (rad): " << shot_heading_tolerance_rad_OLD << std::endl;
+                                                std::cout << "New computed tolerance (rad): " << new_tolerance << std::endl;
+                                                // Assert that the new tolerance is bigger than the old tolerance, which only served as a lower bound
+                                                if (!(shot_heading_tolerance_rad_OLD < new_tolerance)) {
+                                                    std::cout << "Assertion failed: shot_heading_tolerance_rad_OLD < new_tolerance\n";
+                                                }
+                                                assert(shot_heading_tolerance_rad_OLD < new_tolerance);
+                                                // Assert that the old perfect shooting angle fits within the new min/max bounds
+                                                double heading_rad = radians(ship_state.heading);
+                                                double angle_diff_min = angle_difference_rad(shot_heading_min_rad, heading_rad);
+                                                double angle_diff_max = angle_difference_rad(shot_heading_max_rad, heading_rad);
 
+                                                // Debug: print heading and angle errors
+                                                std::cout << "Ship heading (rad): " << heading_rad << std::endl;
+                                                std::cout << "Angle difference with min bound: " << angle_diff_min << std::endl;
+                                                std::cout << "Angle difference with max bound: " << angle_diff_max << std::endl;
+                                                std::cout << "OLD shot heading error (rad): " << shot_heading_error_rad_OLD << std::endl;
+
+                                                if (!(angle_diff_min < shot_heading_error_rad_OLD && shot_heading_error_rad_OLD < angle_diff_max)) {
+                                                    std::cout << "Assertion failed: heading error not within bounds\n";
+                                                }
+                                                assert(angle_diff_min < shot_heading_error_rad_OLD && shot_heading_error_rad_OLD < angle_diff_max);
+                                            }
+                                        }
                                         if (feasible) {
                                             // Regardless of whether our heading is close enough to shooting this asteroid, keep track of this, just in case no asteroids are within shooting range this timestep, but we can begin to turn toward it next timestep!
                                             // if abs(shot_heading_error_rad) < abs(min_shot_heading_error_rad):
                                             //     second_min_shot_heading_error_rad = min_shot_heading_error_rad
                                             //     min_shot_heading_error_rad = shot_heading_error_rad
+                                            assert(shot_heading_max_rad > shot_heading_min_rad);
+                                            double shot_heading_error_rad = angle_difference_rad(0.5 * (shot_heading_min_rad + shot_heading_max_rad), radians(ship_state.heading));
                                             if (shot_heading_error_rad >= 0.0) {
                                                 if (shot_heading_error_rad < min_positive_shot_heading_error_rad) {
                                                     second_min_positive_shot_heading_error_rad = min_positive_shot_heading_error_rad;
@@ -6672,8 +6924,10 @@ public:
                                                     min_negative_shot_heading_error_rad = shot_heading_error_rad;
                                                 }
                                             }
-                                            //std::cout << "Tolerance DEG: " << degrees(shot_heading_tolerance_rad) << ", distance from ast: " << asteroid_dist_during_interception << ", ast radius: " << a.radius << ", ast speed" << std::sqrt(a.vx * a.vx + a.vy * a.vy) << std::endl;
-                                            if (std::abs(shot_heading_error_rad) <= shot_heading_tolerance_rad) {
+                                            if constexpr (ENABLE_SANITY_CHECKS) {
+                                                std::cout << "Shot heading error rad: " << shot_heading_error_rad << " Tolerance rad: " << 0.5 * (shot_heading_max_rad - shot_heading_min_rad) << ", distance from ast: " << asteroid_dist_during_interception << ", ast radius: " << a.radius << ", ast speed " << std::sqrt(a.vx * a.vx + a.vy * a.vy) << std::endl;
+                                            }
+                                            if (std::abs(shot_heading_error_rad) < 0.5 * (shot_heading_max_rad - shot_heading_min_rad)) {
                                                 // If we shoot at our current heading, this asteroid can be hit!
                                                 if (ast_idx < len_asteroids) {
                                                     // Only add real asteroids to the set of asteroids we simulate! Don't simulate the asteroids that don't exist yet.
@@ -6686,8 +6940,8 @@ public:
                                                     }
                                                 }
                                                 feasible_targets_exist = true;
-                                                if (interception_time > max_interception_time_s) {
-                                                    max_interception_time_s = interception_time;
+                                                if (interception_time_s > max_interception_time_s) {
+                                                    max_interception_time_s = interception_time_s;
                                                 }
                                                 //move_on_to_next_asteroid = true;
                                                 // Move onto the next asteroid. This one has no hope!
@@ -6697,7 +6951,6 @@ public:
                                     }
                                 }
                             }
-
                             if (feasible_targets_exist) {
                                 // Use the bullet sim to confirm that this will hit something
                                 // There's technically a chance for culled_targets_for_simulation to be empty at this point, if we're purely shooting asteroids that haven't come into existence yet.
@@ -6708,7 +6961,8 @@ public:
                                         culled_targets_for_simulation.push_back(game_state.asteroids[idx]);
                                     }
                                 }
-                                int bullet_sim_timestep_limit = static_cast<int>(std::ceil(max_interception_time_s * FPS)) + 1;
+                                //std::cout << "Interception time in seconds is " << max_interception_time_s << std::endl;
+                                int bullet_sim_timestep_limit = static_cast<int>(std::ceil(max_interception_time_s * FPS)) + 2;
                                 std::optional<Asteroid> actual_asteroid_hit;
                                 int64_t timesteps_until_bullet_hit_asteroid;
                                 bool ship_was_safe;
@@ -6802,8 +7056,8 @@ public:
                                     double min_shot_heading_error_deg = degrees(next_target_heading_error);
                                     double altered_turn_command =
                                         (std::abs(min_shot_heading_error_deg) <= DEGREES_TURNED_PER_TIMESTEP)
-                                        ? min_shot_heading_error_deg*FPS
-                                        : SHIP_MAX_TURN_RATE*sign(min_shot_heading_error_rad);
+                                        ? min_shot_heading_error_deg * FPS
+                                        : SHIP_MAX_TURN_RATE * sign(min_shot_heading_error_rad);
                                     turn_rate = altered_turn_command;
                                     if (whole_move_sequence) {
                                         (whole_move_sequence.value())[future_timesteps].turn_rate = altered_turn_command;
@@ -6839,9 +7093,9 @@ public:
                             ship_pred_speed = -SHIP_MAX_SPEED;
                         }
                         double rad_heading = radians(ship_state.heading);
-                        double ship_speed_ts = DELTA_TIME*(double)timesteps_until_can_fire*ship_pred_speed;
-                        double ship_predicted_pos_x = ship_state.x + ship_speed_ts*cos(rad_heading);
-                        double ship_predicted_pos_y = ship_state.y + ship_speed_ts*sin(rad_heading);
+                        double ship_speed_ts = DELTA_TIME * static_cast<double>(timesteps_until_can_fire) * ship_pred_speed;
+                        double ship_predicted_pos_x = ship_state.x + ship_speed_ts * std::cos(rad_heading);
+                        double ship_predicted_pos_y = ship_state.y + ship_speed_ts * std::sin(rad_heading);
 
                         // For both actual and forecasted asteroids
                         for (size_t i = 0; i < game_state.asteroids.size() + forecasted_asteroid_splits.size(); ++i) {
@@ -6872,15 +7126,17 @@ public:
                                 std::vector<Asteroid> unwrapped_asteroids = unwrap_asteroid(*asteroid, game_state.map_size_x, game_state.map_size_y, UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON, true);
                                 for (const Asteroid& a : unwrapped_asteroids) {
                                     bool feasible;
-                                    double shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist;
-                                    std::tie(feasible, shot_heading_error_rad, shot_heading_tolerance_rad, interception_time, intercept_x, intercept_y, asteroid_dist) =
-                                        calculate_interception(ship_predicted_pos_x, ship_predicted_pos_y, a.x - a.vx * DELTA_TIME, a.y - a.vy * DELTA_TIME, a.vx, a.vy, a.radius, ship_state.heading, game_state, timesteps_until_can_fire);
-                                    if (feasible &&
+                                    double shot_heading_min_rad, shot_heading_max_rad, interception_time, intercept_x, intercept_y, asteroid_dist;
+                                    std::tie(feasible, shot_heading_min_rad, shot_heading_max_rad, interception_time, intercept_x, intercept_y, asteroid_dist) =
+                                        calculate_continuous_interception(ship_predicted_pos_x, ship_predicted_pos_y, a.x - a.vx * DELTA_TIME, a.y - a.vy * DELTA_TIME, a.vx, a.vy, a.radius, ship_state.heading, game_state, timesteps_until_can_fire);
+                                    double shot_heading_error_rad = angle_difference_rad(0.5 * (shot_heading_min_rad + shot_heading_max_rad), radians(ship_state.heading));
+                                        if (feasible &&
                                         (asteroids_shot >= RANDOM_WALK_SCHEDULE_LENGTH ||
                                         (random_walk_schedule[asteroids_shot] && shot_heading_error_rad >= 0.0) ||
                                         (!random_walk_schedule[asteroids_shot] && shot_heading_error_rad <= 0.0))) {
+                                        // We want to go for this one
                                         double shot_heading_error_deg = degrees(shot_heading_error_rad);
-                                        double shot_heading_tolerance_deg = degrees(shot_heading_tolerance_rad);
+                                        double shot_heading_tolerance_deg = degrees(0.5 * (shot_heading_max_rad - shot_heading_min_rad));
                                         if (std::abs(shot_heading_error_deg) - shot_heading_tolerance_deg < std::abs(asteroid_least_shot_heading_error_deg)) {
                                             asteroid_least_shot_heading_error_deg = shot_heading_error_deg;
                                             asteroid_least_shot_heading_tolerance_deg = shot_heading_tolerance_deg;
@@ -6890,14 +7146,17 @@ public:
                                             locked_in = true;
                                             double altered_turn_command;
                                             if (std::abs(shot_heading_error_deg) <= DEGREES_TURNED_PER_TIMESTEP) {
-                                                altered_turn_command = shot_heading_error_deg*FPS;
+                                                // We can turn toward the "center" of the asteroid (actually center of aim region)
+                                                altered_turn_command = shot_heading_error_deg * FPS;
                                                 assert(std::abs(altered_turn_command) <= SHIP_MAX_TURN_RATE);
                                             } else {
-                                                altered_turn_command = SHIP_MAX_TURN_RATE*sign(shot_heading_error_deg);
+                                                // Can't turn all the way to center of ast, but can just turn max, and it'll hit the ast
+                                                altered_turn_command = SHIP_MAX_TURN_RATE * sign(shot_heading_error_deg);
                                             }
                                             turn_rate = altered_turn_command;
-                                            if (whole_move_sequence)
+                                            if (whole_move_sequence) {
                                                 (whole_move_sequence.value())[future_timesteps].turn_rate = altered_turn_command;
+                                            }
                                             break;
                                         }
                                     }
@@ -6906,8 +7165,9 @@ public:
                             if (!locked_in && !std::isinf(asteroid_least_shot_heading_error_deg) && !std::isnan(asteroid_least_shot_heading_tolerance_deg)) {
                                 double altered_turn_command = SHIP_MAX_TURN_RATE*sign(asteroid_least_shot_heading_error_deg);
                                 turn_rate = altered_turn_command;
-                                if (whole_move_sequence)
+                                if (whole_move_sequence) {
                                     (whole_move_sequence.value())[future_timesteps].turn_rate = altered_turn_command;
+                                }
                             }
                         }
                     }
@@ -8679,8 +8939,8 @@ public:
                             std::to_string(last_timestep_mined_schedule.size()) + "," +
                             std::to_string(mine_positions_placed_schedule.size()));
                 
-                assert(asteroids_pending_death_schedule.contains(this->current_timestep));
-                assert(forecasted_asteroid_splits_schedule.contains(this->current_timestep));
+                assert(this->current_timestep == 0 || asteroids_pending_death_schedule.contains(this->current_timestep));
+                assert(this->current_timestep == 0 || forecasted_asteroid_splits_schedule.contains(this->current_timestep));
                 if constexpr (ENABLE_SANITY_CHECKS) {
                     if (!asteroids_pending_death_schedule.contains(this->current_timestep)) {
                         std::cout << "DEBUG: asteroids_pending_death_schedule does NOT contain timestep " 

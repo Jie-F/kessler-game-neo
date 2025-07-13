@@ -361,13 +361,13 @@ if args.portfolio is not None:
         case 'xfc2024':
             selected_portfolio = xfc2024
 
-random.seed()
+#random.seed()
 
 while True:
     for scenario in selected_portfolio[0 if not args.index else args.index:]:
         #random.seed()
         debseed = random.randint(1, 1000000000)
-        #debseed = 1
+        debseed = 1
         print(f"Debseed is {debseed}")
         random.seed(debseed)
         debug_scenario = Scenario(name="Debug scenario",
@@ -387,17 +387,17 @@ while True:
             pass
             randseed = random.randint(1, 1000000000)
         color_print(f'\nUsing seed {randseed}, running test iteration {iterations}', 'green')
-        random.seed(randseed)
+        #random.seed(1)
         #controllers_used = [NeoController(), XFC2024NeoController()]
         
         #controllers_used = [XFC2024NeoController(), NeoController()]
         #controllers_used = [NeoController(), BabyNeoController()]
 
         asteroids_random = generate_asteroids(
-                                        num_asteroids=random.randint(1, 15),
+                                        num_asteroids=random.randint(4, 15),
                                         position_range_x=(0, width),
                                         position_range_y=(0, height),
-                                        speed_range=(300, 600, 0),
+                                        speed_range=(10, 1300, 0),
                                         angle_range=(-1, 361),
                                         size_range=(1, 4)
                                     )*random.choice([1])
@@ -410,14 +410,14 @@ while True:
                                     #                {'position': (width*2//3, height*40//100), 'speed': 100, 'angle': -91, 'size': 4},
                                     #                 {'position': (width*1//3, height*40//100), 'speed': 100, 'angle': -91, 'size': 4}],
                                     ship_states=[
-                                        {'position': (width//300000, height//200000), 'angle': 0, 'lives': 3, 'team': 1, "mines_remaining": 0},
+                                        {'position': (width//2, height//2), 'angle': 0, 'lives': 3, 'team': 1, "mines_remaining": 0},
                                         #{'position': (width*2//3, height//2), 'angle': 90, 'lives': 3, 'team': 2, "mines_remaining": 3},
                                     ],
                                     map_size=(width, height),
-                                    time_limit=500.0,
+                                    time_limit=20.0,
                                     ammo_limit_multiplier=random.choice([0]),
                                     stop_if_no_ammo=False)
-        random.seed(randseed)
+        #random.seed(randseed)
         benchmark_scenario = Scenario(name="Benchmark Scenario",
                                         num_asteroids=100,
                                         ship_states=[
@@ -439,7 +439,7 @@ while True:
         #state = 
         #random.seed(randseed)
             # [ReplayController0(), ReplayController1()] GamepadController()])#, NeoController()])#, TestController()])GamepadController NeoController Neo
-        random.seed(randseed)
+        #random.seed(randseed)
         #from neo_controller import NeoController
         controllers_used = [NeoController(), NeoController()]
         #random.setstate(state)
