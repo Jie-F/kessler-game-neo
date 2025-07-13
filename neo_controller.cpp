@@ -240,9 +240,10 @@ constexpr bool STATE_CONSISTENCY_CHECK_AND_RECOVERY = true;
 constexpr bool CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS = true;
 constexpr bool ENABLE_SANITY_CHECKS = true;
 constexpr bool PRUNE_SIM_STATE_SEQUENCE = true;
+constexpr bool BULLET_SIM_CULLING = false;
 //constexpr bool VALIDATE_SIMULATED_KEY_STATES = false;
 constexpr bool VALIDATE_ALL_SIMULATED_STATES = false;
-constexpr bool VERIFY_AST_TRACKING = false;
+constexpr bool VERIFY_AST_TRACKING = true;
 constexpr bool RESEED_RNG = false;
 constexpr bool ENABLE_UNWRAP_CACHE = false; // This is slightly slower than not using the cache lmao
 constexpr bool UNWRAP_CROSS_PRODUCT_OPTIMIZATION = true;
@@ -6759,6 +6760,7 @@ public:
                 } else if (!fire.has_value()) {
                     // ----------- BEGIN BULLET "CONVENIENT FIRE" LOGIC -----------
                     // We're able to decide whether we want to fire any convenient shots we can get
+                    std::cout << "Beginning convenient fire in update() in sim id: " << sim_id << std::endl;
                     int64_t timesteps_until_can_fire = std::max<int64_t>(0, FIRE_COOLDOWN_TS - (initial_timestep + future_timesteps - last_timestep_fired));
                     fire_this_timestep = false;
                     double ship_heading_rad = radians(ship_state.heading);
@@ -6929,6 +6931,7 @@ public:
                                             }
                                             if (std::abs(shot_heading_error_rad) < 0.5 * (shot_heading_max_rad - shot_heading_min_rad)) {
                                                 // If we shoot at our current heading, this asteroid can be hit!
+                                                std::cout << "This ast is feasible to hit: " << a << std::endl;
                                                 if (ast_idx < len_asteroids) {
                                                     // Only add real asteroids to the set of asteroids we simulate! Don't simulate the asteroids that don't exist yet.
                                                     //culled_targets_for_simulation.append(asteroid)
@@ -6956,10 +6959,23 @@ public:
                                 // There's technically a chance for culled_targets_for_simulation to be empty at this point, if we're purely shooting asteroids that haven't come into existence yet.
                                 // In that case, this will detect that and will avoid doing the culling, and do the full sim. This should be rare.
                                 culled_targets_for_simulation.clear();
-                                for (auto idx : culled_target_idxs_for_simulation) {
-                                    if (idx < static_cast<int64_t>(game_state.asteroids.size())) {
-                                        culled_targets_for_simulation.push_back(game_state.asteroids[idx]);
+                                if constexpr (ENABLE_SANITY_CHECKS) {
+                                    // Make sure there's no dupes in here
+                                    std::unordered_set<int64_t> seen;
+                                    for (int64_t val : culled_target_idxs_for_simulation) {
+                                        bool inserted = seen.insert(val).second;
+                                        assert(inserted && "Duplicate value found in culled_target_idxs_for_simulation!");
                                     }
+                                }
+                                if constexpr (BULLET_SIM_CULLING) {
+                                    for (auto idx : culled_target_idxs_for_simulation) {
+                                        if (idx < static_cast<int64_t>(game_state.asteroids.size())) {
+                                            culled_targets_for_simulation.push_back(game_state.asteroids[idx]);
+                                        }
+                                    }
+                                } else {
+                                    // TODO: THIS IS SLOW, FIX IT
+                                    culled_targets_for_simulation = game_state.asteroids;
                                 }
                                 //std::cout << "Interception time in seconds is " << max_interception_time_s << std::endl;
                                 int bullet_sim_timestep_limit = static_cast<int>(std::ceil(max_interception_time_s * FPS)) + 2;
