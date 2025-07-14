@@ -3393,6 +3393,81 @@ std::array<double, 4> durand_kerner_real_roots(double k0, double k1, double k2, 
     return roots;
 }
 
+inline std::pair<double, double> interception_time_window(double ship_x, double ship_y, double ship_heading_deg, double ast_x, double ast_y, double ast_vx, double ast_vy, double ast_r) {
+    // If we shoot a bullet right now with this config, this will return the ordered start and end time in seconds, of the collision between the bullet and the asteroid
+    // If there is no interception, this returns NaN
+
+    // First, as a rejection check, we can project the asteroid center onto both of the lines formed by the ends of the bullet travelling, with the asteroid as the reference frame
+    
+    // We just use the projection code, except without clamping to the line segment!
+    /*
+    auto project_origin_onto_line_dist_sq = [](double x1, double y1, double x2, double y2) -> double {
+        // Given a segment from (x1, y1) to (x2, y2), project the origin (0, 0)
+        // onto this segment and return the squared distance from the origin
+        // to the closest point on the segment.
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        double len_sq = dx * dx + dy * dy;
+        // If the endpoints are basically the same point,
+        // just return squared dist to the (degenerate) endpoint.
+        if (len_sq < 1e-12) {
+            return x1 * x1 + y1 * y1;
+        }
+        // Compute the projection parameter t of the origin onto the segment,
+        // where t=0 yields (x1, y1) and t=1 yields (x2, y2).
+        // Clamp t to [0, 1] to stay on the segment.
+        double t = -(x1 * dx + y1 * dy) / len_sq;
+        if (t < 0.0) {
+            t = 0.0;
+        }
+        if (t > 1.0) {
+            t = 1.0;
+        }
+        // Compute the closest point's coordinates.
+        double px = x1 + t * dx;
+        double py = y1 + t * dy;
+        // Return the squared distance from the origin to this closest point.
+        return px * px + py * py;
+    };*/
+
+    constexpr double t0 = SHIP_RADIUS / BULLET_SPEED; // Head start that the bullet head got
+    constexpr double t1 = (SHIP_RADIUS - BULLET_LENGTH) / BULLET_SPEED; // Head start that the bullet tail got
+
+    double ast_r_sq = ast_r * ast_r;
+    double theta = radians(ship_heading_deg);
+    double cos_theta = std::cos(theta);
+    double sin_theta = std::sin(theta);
+    // Relative velocities and positions
+    double vx = BULLET_SPEED * cos_theta - ast_vx; // Per second velocities
+    double vy = BULLET_SPEED * sin_theta - ast_vy;
+    double tail_x = ship_x + BULLET_SPEED * cos_theta * t1 - ast_x; // Asteroid is at the origin
+    double tail_y = ship_y + BULLET_SPEED * sin_theta * t1  - ast_y;
+    double head_x = ship_x + BULLET_SPEED * cos_theta * t0 - ast_x;
+    double head_y = ship_y + BULLET_SPEED * sin_theta * t0  - ast_y;
+
+    // Set up quadratic equations and solve
+    double k0 = head_x * head_x + head_y * head_y - ast_r_sq;
+    double k1 = 2.0 * (vx * head_x + vy * head_y);
+    double k2 = vx * vx + vy * vy;
+    auto [t0_head, t1_head] = solve_quadratic(k2, k1, k0);
+
+    double q0 = tail_x * tail_x + tail_y * tail_y - ast_r_sq;
+    double q1 = 2.0 * (vx * tail_x + vy * tail_y);
+    double q2 = k2;
+    auto [t0_tail, t1_tail] = solve_quadratic(q2, q1, q0);
+
+    double t0 = std::fmin(t0_head, t0_tail);
+    double t1 = std::fmax(t1_head, t1_tail);
+    return {t0, t1};
+    /*
+    if (project_origin_onto_line_dist_sq(tail_x, tail_y, tail_x + vx, tail_y + vy) <= ast_r_sq || project_origin_onto_line_dist_sq(head_x, head_y, head_x + vx, head_y + vy) <= ast_r_sq) {
+        // The bullet and asteroid collides. Let's find the time interval of that
+
+        return;
+    } else {
+        return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    }*/
+}
 
 inline std::tuple<
     bool,         // feasible
@@ -3600,20 +3675,48 @@ inline std::tuple<
         assert(num_positive_time_k_roots == 2 || num_positive_time_q_roots == 2);
         assert(num_positive_time_k_roots != 4);
         assert(num_positive_time_q_roots != 4);
-        double solution_average_time_s = (solution_sum_k + solution_sum_q) / (num_positive_time_k_roots + num_positive_time_q_roots);
-        double x = ax + avx * solution_average_time_s;
-        double y = ay + avy * solution_average_time_s;
-        double intercept_x = x + ship_pos_x;
-        double intercept_y = y + ship_pos_y;
-        if (check_coordinate_bounds(game_state, intercept_x, intercept_y)) {
-            return std::make_tuple(true,
-                combined_range_low,
-                combined_range_high,
-                solution_average_time_s,
-                intercept_x,
-                intercept_y,
-                std::sqrt(x * x + y * y)
-            );
+        if (future_shooting_timesteps == 0) {
+            // We're shooting right now, and we know the ship heading. We can exactly calculate feasibility of this shot!
+            auto [t0, t1] = interception_time_window(ship_pos_x, ship_pos_y, ship_heading_deg, asteroid_pos_x, asteroid_pos_y, avx, avy, ar);
+            assert(!std::isnan(t0) && !std::isnan(t1));
+            assert(t0 <= (solution_sum_k + solution_sum_q) / (num_positive_time_k_roots + num_positive_time_q_roots) && (solution_sum_k + solution_sum_q) / (num_positive_time_k_roots + num_positive_time_q_roots) <= t1);
+            int64_t t0_frame = std::ceil(FPS * t0);
+            int64_t t1_frame = std::ceil(FPS * t1);
+            for (int64_t t = t0_frame; t <= t1_frame; ++t) {
+                // Simulate each frame of the collision, and return the soonest one
+                double intercept_ast_x = ship_pos_x + ax + avx * t * DELTA_TIME;
+                double intercept_ast_y = ship_pos_y + ay + avy * t * DELTA_TIME;
+                if (check_coordinate_bounds(game_state, intercept_ast_x, intercept_ast_y)) {
+                    return std::make_tuple(true,
+                        combined_range_low,
+                        combined_range_high,
+                        t * DELTA_TIME,
+                        intercept_ast_x,
+                        intercept_ast_y,
+                        std::sqrt(intercept_ast_x * intercept_ast_x + intercept_ast_y * intercept_ast_y)
+                    );
+                }
+            }
+            // If we fell out of the loop, it's not feasible and it'll return NaN at the end of the function
+        } else {
+            // We have to just estimate feasibility using the best of our knowledge and guessing :/
+            double solution_average_time_s = (solution_sum_k + solution_sum_q) / (num_positive_time_k_roots + num_positive_time_q_roots);
+            double x = ax + avx * solution_average_time_s;
+            double y = ay + avy * solution_average_time_s;
+            double intercept_x = x + ship_pos_x;
+            double intercept_y = y + ship_pos_y;
+
+            if (check_coordinate_bounds(game_state, intercept_x, intercept_y)) {
+                return std::make_tuple(true,
+                    combined_range_low,
+                    combined_range_high,
+                    solution_average_time_s,
+                    intercept_x,
+                    intercept_y,
+                    std::sqrt(x * x + y * y)
+                );
+            }
+            // It's not feasible and it'll return NaN at the end of the function
         }
     }
     return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
@@ -3995,8 +4098,8 @@ inline bool circle_line_collision_continuous(
     double ay = line_y1 - circle_y;
     double bx = line_x2 - circle_x;
     double by = line_y2 - circle_y;
-    double vx = bullet_rel_vx * delta_time; // Per frame velocities
-    double vy = bullet_rel_vy * delta_time;
+    double vx = bullet_dx; // Per frame velocities
+    double vy = bullet_dy;
     // c and d are the head and tails of the bullet, delta_time in the past, forming the other two points of the parallelogram
     double cx = ax - vx;
     double cy = ay - vy;
@@ -4016,23 +4119,27 @@ inline bool circle_line_collision_continuous(
         // to the closest point on the segment.
         double dx = x2 - x1;
         double dy = y2 - y1;
-        double len_sq = dx*dx + dy*dy;
+        double len_sq = dx * dx + dy * dy;
         // If the endpoints are basically the same point,
         // just return squared dist to the (degenerate) endpoint.
         if (len_sq < 1e-12) {
-            return x1*x1 + y1*y1;
+            return x1 * x1 + y1 * y1;
         }
         // Compute the projection parameter t of the origin onto the segment,
         // where t=0 yields (x1, y1) and t=1 yields (x2, y2).
         // Clamp t to [0, 1] to stay on the segment.
-        double t = -(x1*dx + y1*dy)/len_sq;
-        if (t < 0.0) t = 0.0;
-        if (t > 1.0) t = 1.0;
+        double t = -(x1 * dx + y1 * dy) / len_sq;
+        if (t < 0.0) {
+            t = 0.0;
+        }
+        if (t > 1.0) {
+            t = 1.0;
+        }
         // Compute the closest point's coordinates.
-        double px = x1 + t*dx;
-        double py = y1 + t*dy;
+        double px = x1 + t * dx;
+        double py = y1 + t * dy;
         // Return the squared distance from the origin to this closest point.
-        return px*px + py*py;
+        return px * px + py * py;
     };
 
     // Check whether any of these projected points with clamping are within the circle. If yes, there's a collision.
