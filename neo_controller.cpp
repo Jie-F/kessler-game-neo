@@ -3430,8 +3430,8 @@ inline std::pair<double, double> interception_time_window(double ship_x, double 
         return px * px + py * py;
     };*/
 
-    constexpr double t0 = SHIP_RADIUS / BULLET_SPEED; // Head start that the bullet head got
-    constexpr double t1 = (SHIP_RADIUS - BULLET_LENGTH) / BULLET_SPEED; // Head start that the bullet tail got
+    constexpr double t_head_headstart = SHIP_RADIUS / BULLET_SPEED; // Head start that the bullet head got
+    constexpr double t_tail_headstart = (SHIP_RADIUS - BULLET_LENGTH) / BULLET_SPEED; // Head start that the bullet tail got
 
     double ast_r_sq = ast_r * ast_r;
     double theta = radians(ship_heading_deg);
@@ -3440,10 +3440,10 @@ inline std::pair<double, double> interception_time_window(double ship_x, double 
     // Relative velocities and positions
     double vx = BULLET_SPEED * cos_theta - ast_vx; // Per second velocities
     double vy = BULLET_SPEED * sin_theta - ast_vy;
-    double tail_x = ship_x + BULLET_SPEED * cos_theta * t1 - ast_x; // Asteroid is at the origin
-    double tail_y = ship_y + BULLET_SPEED * sin_theta * t1  - ast_y;
-    double head_x = ship_x + BULLET_SPEED * cos_theta * t0 - ast_x;
-    double head_y = ship_y + BULLET_SPEED * sin_theta * t0  - ast_y;
+    double tail_x = ship_x + BULLET_SPEED * cos_theta * t_tail_headstart - ast_x; // Asteroid is at the origin
+    double tail_y = ship_y + BULLET_SPEED * sin_theta * t_tail_headstart  - ast_y;
+    double head_x = ship_x + BULLET_SPEED * cos_theta * t_head_headstart - ast_x;
+    double head_y = ship_y + BULLET_SPEED * sin_theta * t_head_headstart  - ast_y;
 
     // Set up quadratic equations and solve
     double k0 = head_x * head_x + head_y * head_y - ast_r_sq;
@@ -3485,8 +3485,8 @@ inline std::tuple<
     const GameState& game_state,
     int64_t future_shooting_timesteps = 0
 ) {
-    constexpr double t0 = SHIP_RADIUS / BULLET_SPEED; // Head start that the bullet head got
-    constexpr double t1 = (SHIP_RADIUS - BULLET_LENGTH) / BULLET_SPEED; // Head start that the bullet tail got
+    constexpr double t_head_headstart = SHIP_RADIUS / BULLET_SPEED; // Head start that the bullet head got
+    constexpr double t_tail_headstart = (SHIP_RADIUS - BULLET_LENGTH) / BULLET_SPEED; // Head start that the bullet tail got
     // Add 1 to this, because by the time the bullet is fired, it's the next timestep and the asteroids have moved by a step again!
     double time_until_can_fire_s = static_cast<double>(future_shooting_timesteps + 1) * DELTA_TIME;
 
@@ -3515,14 +3515,14 @@ inline std::tuple<
     double x8 = 2.0 * avy;
     double x9 = x7 * x8;
     double x10 = avy * avy;
-    double x11 = ax * t0;
+    double x11 = ax * t_head_headstart;
     double x12 = 2.0 * vb * x10 * x11;
-    double x13 = ay * t0;
+    double x13 = ay * t_head_headstart;
     double x14 = avy * x13;
     double x15 = x14 * x2;
     double x16 = vb * vb;
     double x17 = x16 * x4;
-    double x18 = t0 * t0;
+    double x18 = t_head_headstart * t_head_headstart;
     double x19 = x16 * x18;
     double x20 = x10 * x19;
     double x21 = 2.0 * x16;
@@ -3536,7 +3536,7 @@ inline std::tuple<
     double x29 = avy * x11;
     double x30 = vb * x29;
     double x31 = avy * x1 * x18;
-    double x32 = avx * x29 + avy * (x0 - x24) - ay * t0 * x23 + x25;
+    double x32 = avx * x29 + avy * (x0 - x24) - ay * t_head_headstart * x23 + x25;
     double x33 = 16.0 * vb;
 
     // Polynomial coefficients:
@@ -3548,13 +3548,13 @@ inline std::tuple<
 
     // Polynomial k is for the head of the bullet
     // Polynomial q will be for the tail:
-    // Only recalculate the ones that depend on t1
-    x11 = ax * t1;
+    // Only recalculate the ones that depend on t_tail_headstart
+    x11 = ax * t_tail_headstart;
     x12 = 2.0 * vb * x10 * x11;
-    x13 = ay * t1;
+    x13 = ay * t_tail_headstart;
     x14 = avy * x13;
     x15 = x14 * x2;
-    x18 = t1 * t1;
+    x18 = t_tail_headstart * t_tail_headstart;
     x19 = x16 * x18;
     x20 = x10 * x19;
     x22 = x14 * x21;
@@ -3563,7 +3563,7 @@ inline std::tuple<
     x29 = avy * x11;
     x30 = vb * x29;
     x31 = avy * x1 * x18;
-    x32 = avx * x29 + avy * (x0 - x24) - ay * t1 * x23 + x25;
+    x32 = avx * x29 + avy * (x0 - x24) - ay * t_tail_headstart * x23 + x25;
 
     double q0 = 4.0 * (x12 - x15 + x27 - x3 + x5 - x9);
     double q1 = x33 * (-x28 - x30 + x31 - x32 + x7);
@@ -3641,8 +3641,8 @@ inline std::tuple<
     };
 
     // Extract valid theta ranges and times for bullet head (k) and tail (q)
-    auto [num_positive_time_k_roots, k_range_low, k_range_high, solution_sum_k] = extract_valid_time_range(k_roots, t0);
-    auto [num_positive_time_q_roots, q_range_low, q_range_high, solution_sum_q] = extract_valid_time_range(q_roots, t1);
+    auto [num_positive_time_k_roots, k_range_low, k_range_high, solution_sum_k] = extract_valid_time_range(k_roots, t_head_headstart);
+    auto [num_positive_time_q_roots, q_range_low, q_range_high, solution_sum_q] = extract_valid_time_range(q_roots, t_tail_headstart);
 
     // Say k's solution pair is [a, b] and q's solution pair is [c, d].
     // The union of the ranges [a, b] and [c, d] represent the range of tan(theta/2) that we can fire at.
@@ -3677,27 +3677,33 @@ inline std::tuple<
         assert(num_positive_time_q_roots != 4);
         if (future_shooting_timesteps == 0) {
             // We're shooting right now, and we know the ship heading. We can exactly calculate feasibility of this shot!
-            auto [t0, t1] = interception_time_window(ship_pos_x, ship_pos_y, ship_heading_deg, asteroid_pos_x, asteroid_pos_y, avx, avy, ar);
-            assert(!std::isnan(t0) && !std::isnan(t1));
-            assert(t0 <= (solution_sum_k + solution_sum_q) / (num_positive_time_k_roots + num_positive_time_q_roots) && (solution_sum_k + solution_sum_q) / (num_positive_time_k_roots + num_positive_time_q_roots) <= t1);
-            int64_t t0_frame = std::ceil(FPS * t0);
-            int64_t t1_frame = std::ceil(FPS * t1);
-            for (int64_t t = t0_frame; t <= t1_frame; ++t) {
-                // Simulate each frame of the collision, and return the soonest one
-                double intercept_ast_x = ship_pos_x + ax + avx * t * DELTA_TIME;
-                double intercept_ast_y = ship_pos_y + ay + avy * t * DELTA_TIME;
-                if (check_coordinate_bounds(game_state, intercept_ast_x, intercept_ast_y)) {
-                    return std::make_tuple(true,
-                        combined_range_low,
-                        combined_range_high,
-                        t * DELTA_TIME,
-                        intercept_ast_x,
-                        intercept_ast_y,
-                        std::sqrt(intercept_ast_x * intercept_ast_x + intercept_ast_y * intercept_ast_y)
-                    );
+            double shot_heading_error_rad = angle_difference_rad(0.5 * (combined_range_low + combined_range_high), radians(ship_heading_deg));
+            if (std::abs(shot_heading_error_rad) < 0.5 * (combined_range_high - combined_range_low)) {
+                // The ship heading is within range, so we can continue with the feasibility check
+                auto [t0, t1] = interception_time_window(ship_pos_x, ship_pos_y, ship_heading_deg, asteroid_pos_x, asteroid_pos_y, avx, avy, ar);
+                assert(!std::isnan(t0) && !std::isnan(t1));
+                assert(t0 <= (solution_sum_k + solution_sum_q) / (num_positive_time_k_roots + num_positive_time_q_roots) && (solution_sum_k + solution_sum_q) / (num_positive_time_k_roots + num_positive_time_q_roots) <= t1);
+                int64_t t0_frame = static_cast<int64_t>(std::ceil(FPS * t0));
+                int64_t t1_frame = static_cast<int64_t>(std::ceil(FPS * t1));
+                for (int64_t t = t0_frame; t <= t1_frame; ++t) {
+                    if (t >= 0) {
+                        // Simulate each frame of the collision, and return the soonest one
+                        double intercept_ast_x = ship_pos_x + ax + avx * t * DELTA_TIME;
+                        double intercept_ast_y = ship_pos_y + ay + avy * t * DELTA_TIME;
+                        if (check_coordinate_bounds(game_state, intercept_ast_x, intercept_ast_y)) {
+                            return std::make_tuple(true,
+                                combined_range_low,
+                                combined_range_high,
+                                t * DELTA_TIME,
+                                intercept_ast_x,
+                                intercept_ast_y,
+                                std::sqrt(intercept_ast_x * intercept_ast_x + intercept_ast_y * intercept_ast_y)
+                            );
+                        }
+                    }
                 }
+                // If we fell out of the loop, it's not feasible and it'll return NaN at the end of the function
             }
-            // If we fell out of the loop, it's not feasible and it'll return NaN at the end of the function
         } else {
             // We have to just estimate feasibility using the best of our knowledge and guessing :/
             double solution_average_time_s = (solution_sum_k + solution_sum_q) / (num_positive_time_k_roots + num_positive_time_q_roots);
