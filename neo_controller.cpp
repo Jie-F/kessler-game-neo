@@ -4878,6 +4878,25 @@ public:
     }
 
     std::unordered_map<int64_t, std::unordered_map<int64_t, std::vector<Asteroid>>> get_asteroids_pending_death_history() const {
+        if constexpr (true) {
+            std::cout << "\nPrinting asteroids pending death history full:\n";
+
+            for (const auto& outer_pair : asteroids_pending_death_history) {
+                int64_t timestep = outer_pair.first;
+                const auto& inner_map = outer_pair.second;
+                std::cout << "Timestep: " << timestep << "\n";
+                for (const auto& inner_pair : inner_map) {
+                    int64_t asteroid_id = inner_pair.first;
+                    const auto& asteroid_vec = inner_pair.second;
+                    std::cout << "  Asteroid ID: " << asteroid_id << "\n";
+                    for (const auto& asteroid : asteroid_vec) {
+                        std::cout << "    " << asteroid << "\n";
+                    }
+                }
+            }
+
+            std::cout << "\n";
+        }
         // This is a doozy. First of all, if we never shot any asteroids during this sim, then this history map will be empty!
         // But each time we shoot an asteroid, we add to this map the timestep the thing was updated, but we plop down the PREVIOUS version!
         // For example we have versions A and B. 0:A, 1:A, 2:A, 3:B, 4:B is how the thing changes. So the map would say: {3: A}. And then B is held in the current variable.
@@ -4887,10 +4906,29 @@ public:
         for (int64_t t = initial_timestep + future_timesteps; t > initial_timestep; --t) {
             // Iterate future_timesteps times
             asteroids_pending_death_history_map[t] = *latest_version;  // Dereference to copy into result
-            auto it = asteroids_pending_death_history.find(t);
+            auto it = asteroids_pending_death_history.find(t + 1);
             if (it != asteroids_pending_death_history.end()) {
                 latest_version = &it->second;
             }
+        }
+        if constexpr (true) {
+            std::cout << "\n\n\n\nPrinting asteroids pending death map derived:\n";
+
+            for (const auto& outer_pair : asteroids_pending_death_history_map) {
+                int64_t timestep = outer_pair.first;
+                const auto& inner_map = outer_pair.second;
+                std::cout << "Timestep: " << timestep << "\n";
+                for (const auto& inner_pair : inner_map) {
+                    int64_t asteroid_id = inner_pair.first;
+                    const auto& asteroid_vec = inner_pair.second;
+                    std::cout << "  Asteroid ID: " << asteroid_id << "\n";
+                    for (const auto& asteroid : asteroid_vec) {
+                        std::cout << "    " << asteroid << "\n";
+                    }
+                }
+            }
+
+            std::cout << "\n\n\n\n";
         }
         return asteroids_pending_death_history_map;
     }
@@ -7773,7 +7811,7 @@ public:
     double current_sequence_fitness = -inf; // The fitness of the current sequence of actions we're performing
     std::unordered_map<int64_t, int64_t> last_timestep_fired_schedule = {{0, INT_NEG_INF}}; // Just pretend, to make the code simpler. If we decide to fire on frame N, it'll only show up in frame N + 1 that we fired on frame N!
     std::unordered_map<int64_t, int64_t> last_timestep_mined_schedule = {{0, INT_NEG_INF}};
-    std::unordered_set<int64_t> fire_next_timestep_schedule; // If a timestep is in the set, the bool value is True. Otherwise, it's false.
+    std::unordered_set<int64_t> fire_timesteps_schedule; // If a timestep is in the set, the bool value is True. Otherwise, it's false.
     std::unordered_map<int64_t, std::unordered_map<int64_t, std::vector<Asteroid>>> asteroids_pending_death_schedule;
     std::unordered_map<int64_t, std::vector<Asteroid>> forecasted_asteroid_splits_schedule;
     std::unordered_map<int64_t, std::unordered_set<std::pair<double, double>, pair_hash>> mine_positions_placed_schedule;
@@ -7824,7 +7862,7 @@ public:
         current_sequence_fitness = -inf;
         last_timestep_fired_schedule = {{0, INT_NEG_INF}};
         last_timestep_mined_schedule = {{0, INT_NEG_INF}};
-        fire_next_timestep_schedule.clear();
+        fire_timesteps_schedule.clear();
         asteroids_pending_death_schedule.clear();
         forecasted_asteroid_splits_schedule.clear();
         mine_positions_placed_schedule.clear();
@@ -7972,7 +8010,7 @@ public:
                 debug_print("Wipe the current move sequence and switch to the new better sequence! Current action seq fitness is " + std::to_string(current_sequence_fitness) + " but we can do " + std::to_string(best_action_fitness) + " and the crash fitness is " + std::to_string(best_action_fitness_breakdown[5]));
                 action_queue.clear();
                 actioned_timesteps.clear();
-                fire_next_timestep_schedule.clear();
+                fire_timesteps_schedule.clear();
             } else {
                 // Continue doing the maneuver we're already doing, because we didn't find a better one to jump ship to
                 this->sims_this_planning_period.clear();
@@ -8131,8 +8169,8 @@ public:
         //std::cout << last_timestep_fired << std::endl;
         if (new_fire_next_timestep_flag) {
             // Remember that we want to shoot the next frame!
-            fire_next_timestep_schedule.insert(best_move_sequence.back().timestep + 1);
-            debug_print("Just added " + std::to_string(best_move_sequence.back().timestep + 1) + " to fire_next_timestep_schedule.");
+            fire_timesteps_schedule.insert(best_move_sequence.back().timestep + 1);
+            debug_print("Just added " + std::to_string(best_move_sequence.back().timestep + 1) + " to fire_timesteps_schedule.");
         }
 
         if constexpr (ENABLE_SANITY_CHECKS) {
@@ -8172,7 +8210,7 @@ public:
             // In case we jump ship in the middle of a maneuver, and we want to fire the next frame, we still want to do that! We do that through tracking the frames we fire, in the fire next timestep.
             // Because the bullet is created before the ship updates, it doesn't matter how the ship moves. If we wanted to shoot before, then it means we're guaranteed to hit something, no matter what else the ship does!
             if (move.fire) {
-                fire_next_timestep_schedule.insert(move.timestep);
+                fire_timesteps_schedule.insert(move.timestep);
             }
             enqueue_action(move.timestep, move.thrust, move.turn_rate, move.fire, move.drop_mine);
 
@@ -8838,7 +8876,7 @@ public:
                                 (last_timestep_mined_schedule.contains(current_timestep) ? last_timestep_mined_schedule[current_timestep] : INT_NEG_INF)
                             ),
                         mine_positions_placed_schedule.contains(current_timestep) ? mine_positions_placed_schedule[current_timestep] : std::unordered_set<std::pair<double, double>, pair_hash>{},
-                        fire_next_timestep_schedule.contains(current_timestep)
+                        fire_timesteps_schedule.contains(current_timestep)
                     };
                     if (game_state_to_base_planning->respawning) {
                         this->lives_remaining_that_we_did_respawn_maneuver_for.insert(ship_state.lives_remaining);
@@ -8870,7 +8908,7 @@ public:
                                 (last_timestep_mined_schedule.contains(this->current_timestep) ? last_timestep_mined_schedule[this->current_timestep] : INT_NEG_INF)
                             ),
                         mine_positions_placed_schedule.contains(this->current_timestep) ? mine_positions_placed_schedule[this->current_timestep] : std::unordered_set<std::pair<double, double>, pair_hash>{},
-                        fire_next_timestep_schedule.contains(this->current_timestep)
+                        fire_timesteps_schedule.contains(this->current_timestep)
                     };
                 } else if (!game_state_to_base_planning.has_value()) {
                     this->game_state_to_base_planning = {
@@ -8911,7 +8949,7 @@ public:
                             std::unordered_set<std::pair<double, double>, pair_hash>{},
 
                         // fire_next_timestep_flag
-                        fire_next_timestep_schedule.contains(this->current_timestep)
+                        fire_timesteps_schedule.contains(this->current_timestep)
                     };
                     if (game_state_to_base_planning->respawning) {
                         this->lives_remaining_that_we_did_respawn_maneuver_for.insert(ship_state.lives_remaining);
@@ -8958,7 +8996,7 @@ public:
                             std::unordered_set<std::pair<double, double>, pair_hash>{},
 
                         // fire_next_timestep_flag
-                        fire_next_timestep_schedule.contains(this->current_timestep)
+                        fire_timesteps_schedule.contains(this->current_timestep)
                     };
                 }
 
@@ -9054,7 +9092,7 @@ public:
                         std::unordered_set<std::pair<double, double>, pair_hash>{},
 
                     // fire_next_timestep_flag
-                    fire_next_timestep_schedule.contains(this->current_timestep)
+                    fire_timesteps_schedule.contains(this->current_timestep)
                 };
                 if (action_queue.empty()) {
                     // Only when we're at the end of our sequence, do we run the stationary targeting sim once. Basically we just keep doing stationary targeting unless we have a better maneuver found
