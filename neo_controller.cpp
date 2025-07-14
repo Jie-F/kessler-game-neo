@@ -133,7 +133,8 @@
 //namespace py = pybind11;
 namespace nb = nanobind;
 
-constexpr double pi = std::numbers::pi;
+constexpr double PI = std::numbers::pi;
+constexpr double TAU = 2.0 * PI;
 
 constexpr double constexpr_floor(double x) {
     long long i = static_cast<long long>(x);
@@ -142,7 +143,7 @@ constexpr double constexpr_floor(double x) {
 
 constexpr inline double constexpr_cos(double x) {
     // Divide input by 2π
-    x /= 2.0 * pi;;
+    x /= TAU;
     // Range reduction: reduce x mod 1 (cos is 1-periodic when input is in cycles)
     x = x - constexpr_floor(x); // equivalent to fmod(x, 1.0) for positive x
     if (x < 0.0) {
@@ -184,7 +185,7 @@ constexpr inline double constexpr_cos(double x) {
 
 constexpr inline double constexpr_sin(double x) {
     // Divide input by 2π
-    x /= 2.0 * pi;
+    x /= TAU;
     // Range reduction: reduce x mod 1 (sin is 1-periodic when input is in cycles)
     x = x - constexpr_floor(x); // equivalent to fmod(x, 1.0) for positive x
     if (x < 0.0) {
@@ -300,16 +301,16 @@ constexpr std::array<double, 9> DEFAULT_FITNESS_WEIGHTS = normalize(UNNORMALIZED
 
 // Angle cone/culling parameters
 constexpr double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF = 45.0;
-constexpr double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF_COSINE = constexpr_cos(MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF * pi / 180.0);
+constexpr double MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF_COSINE = constexpr_cos(MANEUVER_CONVENIENT_SHOT_CHECKER_CONE_WIDTH_ANGLE_HALF * TAU / 360.0);
 
 constexpr double MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF = 60.0;
-constexpr double MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF_COSINE = constexpr_cos(MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF * pi / 180.0);
+constexpr double MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF_COSINE = constexpr_cos(MANEUVER_BULLET_SIM_CULLING_CONE_WIDTH_ANGLE_HALF * TAU / 360.0);
 
 constexpr double MAX_CRUISE_TIMESTEPS = 30.0;
 constexpr int64_t MANEUVER_TUPLE_LEARNING_ROLLING_AVG_PERIOD = 10;
 constexpr int64_t OVERALL_FITNESS_ROLLING_AVERAGE_PERIOD = 5;
 constexpr double AIMING_CONE_FITNESS_CONE_WIDTH_HALF = 18.0;
-constexpr double AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE = constexpr_cos(AIMING_CONE_FITNESS_CONE_WIDTH_HALF * pi / 180.0);
+constexpr double AIMING_CONE_FITNESS_CONE_WIDTH_HALF_COSINE = constexpr_cos(AIMING_CONE_FITNESS_CONE_WIDTH_HALF * TAU / 360.0);
 
 constexpr int64_t MANEUVER_SIM_DISALLOW_TARGETING_FOR_START_TIMESTEPS_AMOUNT = 10;
 constexpr double ASTEROID_AIM_BUFFER_PIXELS = 1.0;
@@ -417,9 +418,8 @@ constexpr double GRAIN = 0.001;
 constexpr double EPS = 1e-10;
 constexpr int64_t INT_NEG_INF = -1000000;
 constexpr int64_t INT_INF = 1000000;
-constexpr double RAD_TO_DEG = 180.0 / pi;
-constexpr double DEG_TO_RAD = pi / 180.0;
-constexpr double TAU = 2.0 * pi;
+constexpr double RAD_TO_DEG = 360.0 / TAU;
+constexpr double DEG_TO_RAD = TAU / 360.0;
 
 // Kessler game constants
 constexpr int64_t FIRE_COOLDOWN_TS = 3;
@@ -450,21 +450,21 @@ constexpr double MINE_FUSE_TIME = 3.0;
 constexpr double MINE_MASS = 25.0;
 // Asteroid radii lookup
 constexpr std::array<double, 5> ASTEROID_RADII_LOOKUP = {0, 8, 16, 24, 32};
-// Asteroid area lookup (pi * r^2)
+// Asteroid area lookup (PI * r^2)
 constexpr std::array<double, 5> ASTEROID_AREA_LOOKUP = {
-    pi * ASTEROID_RADII_LOOKUP[0] * ASTEROID_RADII_LOOKUP[0],
-    pi * ASTEROID_RADII_LOOKUP[1] * ASTEROID_RADII_LOOKUP[1],
-    pi * ASTEROID_RADII_LOOKUP[2] * ASTEROID_RADII_LOOKUP[2],
-    pi * ASTEROID_RADII_LOOKUP[3] * ASTEROID_RADII_LOOKUP[3],
-    pi * ASTEROID_RADII_LOOKUP[4] * ASTEROID_RADII_LOOKUP[4]
+    TAU / 2.0 * ASTEROID_RADII_LOOKUP[0] * ASTEROID_RADII_LOOKUP[0],
+    TAU / 2.0 * ASTEROID_RADII_LOOKUP[1] * ASTEROID_RADII_LOOKUP[1],
+    TAU / 2.0 * ASTEROID_RADII_LOOKUP[2] * ASTEROID_RADII_LOOKUP[2],
+    TAU / 2.0 * ASTEROID_RADII_LOOKUP[3] * ASTEROID_RADII_LOOKUP[3],
+    TAU / 2.0 * ASTEROID_RADII_LOOKUP[4] * ASTEROID_RADII_LOOKUP[4]
 };
-// Asteroid mass lookup (0.25 * pi * (8 * i)^2), expanded without std::pow
+// Asteroid mass lookup (0.25 * PI * (8 * i)^2), expanded without std::pow
 constexpr std::array<double, 5> ASTEROID_MASS_LOOKUP = {
-    0.25 * pi * (8 * 0) * (8 * 0),
-    0.25 * pi * (8 * 1) * (8 * 1),
-    0.25 * pi * (8 * 2) * (8 * 2),
-    0.25 * pi * (8 * 3) * (8 * 3),
-    0.25 * pi * (8 * 4) * (8 * 4)
+    0.25 * TAU / 2.0 * (8 * 0) * (8 * 0),
+    0.25 * TAU / 2.0 * (8 * 1) * (8 * 1),
+    0.25 * TAU / 2.0 * (8 * 2) * (8 * 2),
+    0.25 * TAU / 2.0 * (8 * 3) * (8 * 3),
+    0.25 * TAU / 2.0 * (8 * 4) * (8 * 4)
 };
 
 constexpr double RESPAWN_INVINCIBILITY_TIME_S = 3.0;
@@ -962,8 +962,8 @@ public:
         // Midpoint circle drawing for outline and scanline for fill
         if (!fill) {
             for (int i = 0; i < n_seg; ++i) {
-                double t0 = (i) * 2 * pi / n_seg;
-                double t1 = (i + 1) * 2 * pi / n_seg;
+                double t0 = (i) * TAU / n_seg;
+                double t1 = (i + 1) * TAU / n_seg;
                 int x0 = int(cx + cos(t0) * r + 0.5f);
                 int y0 = int(cy + sin(t0) * r + 0.5f);
                 int x1 = int(cx + cos(t1) * r + 0.5f);
@@ -1222,8 +1222,8 @@ void plot_game_state_to_bmp(
         double ship_tip  = SHIP_RADIUS;
         std::vector<std::pair<double, double>> verts = {
             { sx + ship_tip  * std::cos(angle_rad),                sy + ship_tip  * std::sin(angle_rad) },
-            { sx + ship_base * std::cos(angle_rad + 3.0 * pi / 4), sy + ship_base * std::sin(angle_rad + 3.0 * pi / 4) },
-            { sx + ship_base * std::cos(angle_rad - 3.0 * pi / 4), sy + ship_base * std::sin(angle_rad - 3.0 * pi / 4) },
+            { sx + ship_base * std::cos(angle_rad + 3.0 * TAU / 8.0), sy + ship_base * std::sin(angle_rad + 3.0 * TAU / 8.0) },
+            { sx + ship_base * std::cos(angle_rad - 3.0 * TAU / 8.0), sy + ship_base * std::sin(angle_rad - 3.0 * TAU / 8.0) },
         };
         plotter.draw_polygon(verts, Color(0, 255, 0));
         plotter.draw_circle(sx, sy, SHIP_RADIUS, Color(0, 0, 255), false);
@@ -1519,7 +1519,7 @@ inline double fast_acos(double x) {
     double negate = static_cast<double>(x < 0);
     x = std::abs(x);
     double ret = (((-0.0187293 * x + 0.0742610) * x - 0.2121144) * x + 1.5707288) * std::sqrt(1.0 - x);
-    return negate * pi + ret - 2.0 * negate * ret;
+    return negate * TAU / 2.0 + ret - 2.0 * negate * ret;
 }
 
 
@@ -1533,8 +1533,8 @@ inline double fast_asin(double x) {
     double negate = static_cast<double>(x < 0);
     x = std::abs(x);
     double ret = (((-0.0187293 * x + 0.0742610) * x - 0.2121144) * x + 1.5707288);
-    ret = 0.5 * pi - std::sqrt(1.0 - x) * ret;
-    return ret - 2.0 * negate*ret;
+    ret = 0.25 * TAU - std::sqrt(1.0 - x) * ret;
+    return ret - 2.0 * negate * ret;
 }
 
 inline double super_fast_atan2(double y, double x) {
@@ -1543,14 +1543,14 @@ inline double super_fast_atan2(double y, double x) {
         if (y == 0.0) {
             return 0.0; // atan2(0, 0) is undefined, return 0 for simplicity
         } else {
-            return (y > 0.0 ? 0.5 * pi : -0.5 * pi);
+            return (y > 0.0 ? 0.25 * TAU : -0.25 * TAU);
         }
     }
     if (y == 0.0) {
         if (x > 0.0) {
             return 0.0;
         } else {
-            return pi;
+            return TAU / 2.0;
         }
     }
     bool swap = false;
@@ -1569,17 +1569,17 @@ inline double super_fast_atan2(double y, double x) {
     // Adjust the result based on the original input quadrant
     if (swap) {
         if (atan_input >= 0.0) {
-            atan_result = 0.5 * pi - atan_result;
+            atan_result = 0.25 * TAU - atan_result;
         } else {
-            atan_result = -0.5 * pi - atan_result;
+            atan_result = -0.25 * TAU - atan_result;
         }
     }
     // Adjust for the correct quadrant
     if (x < 0.0) {
         if (y >= 0.0) {
-            atan_result += pi;
+            atan_result += TAU / 2.0;
         } else {
-            atan_result += -pi;
+            atan_result += -TAU / 2.0;
         }
     }
     return atan_result;
@@ -1591,14 +1591,14 @@ inline double fast_atan2(double y, double x) {
         if (y == 0.0) {
             return 0.0; // atan2(0, 0) is undefined, return 0
         } else {
-            return (y > 0.0 ? 0.5 * pi : -0.5 * pi);
+            return (y > 0.0 ? 0.25 * TAU : -0.25 * TAU);
         }
     }
     if (y == 0.0) {
         if (x > 0.0) {
             return 0.0;
         } else {
-            return pi;
+            return TAU / 2.0;
         }
     }
 
@@ -1621,18 +1621,18 @@ inline double fast_atan2(double y, double x) {
     // Adjust the result based on the original input quadrant
     if (swap) {
         if (atan_input >= 0.0) {
-            atan_result = 0.5 * pi - atan_result;
+            atan_result = 0.25 * TAU - atan_result;
         } else {
-            atan_result = -0.5 * pi - atan_result;
+            atan_result = -0.25 * TAU - atan_result;
         }
     }
 
     // Adjust for the correct quadrant
     if (x < 0.0) {
         if (y >= 0.0) {
-            atan_result += pi;
+            atan_result += TAU / 2.0;
         } else {
-            atan_result += -pi;
+            atan_result += -TAU / 2.0;
         }
     }
     return atan_result;
@@ -2210,10 +2210,10 @@ inline std::vector<Ship> get_other_ships(const GameState& game_state, int64_t se
     return result;
 }
 
-// Angle difference (radians): wraps to [-pi, +pi]
+// Angle difference (radians): wraps to [-PI, +PI]
 inline double angle_difference_rad(double angle1, double angle2) {
-    double diff = pymod(angle1 - angle2 + pi, TAU);
-    return diff - pi;
+    double diff = pymod(angle1 - angle2 + TAU / 2.0, TAU);
+    return diff - TAU / 2.0;
 }
 
 // Angle difference (degrees): wraps to [-180, +180]
@@ -3306,7 +3306,7 @@ std::array<double, 4> durand_kerner_real_roots_complex(double k0, double k1, dou
 std::array<double, 4> durand_kerner_real_roots(double k0, double k1, double k2, double k3, double k4) {
     constexpr int max_iter = 25;
     constexpr double eps = 1e-10;
-    constexpr bool debug_prints = true;
+    constexpr bool debug_prints = false;
 
     if (std::abs(k4) < eps) {
         return {
@@ -3398,37 +3398,6 @@ inline std::pair<double, double> interception_time_window(double ship_x, double 
     // If there is no interception, this returns NaN
 
     // First, as a rejection check, we can project the asteroid center onto both of the lines formed by the ends of the bullet travelling, with the asteroid as the reference frame
-    
-    // We just use the projection code, except without clamping to the line segment!
-    /*
-    auto project_origin_onto_line_dist_sq = [](double x1, double y1, double x2, double y2) -> double {
-        // Given a segment from (x1, y1) to (x2, y2), project the origin (0, 0)
-        // onto this segment and return the squared distance from the origin
-        // to the closest point on the segment.
-        double dx = x2 - x1;
-        double dy = y2 - y1;
-        double len_sq = dx * dx + dy * dy;
-        // If the endpoints are basically the same point,
-        // just return squared dist to the (degenerate) endpoint.
-        if (len_sq < 1e-12) {
-            return x1 * x1 + y1 * y1;
-        }
-        // Compute the projection parameter t of the origin onto the segment,
-        // where t=0 yields (x1, y1) and t=1 yields (x2, y2).
-        // Clamp t to [0, 1] to stay on the segment.
-        double t = -(x1 * dx + y1 * dy) / len_sq;
-        if (t < 0.0) {
-            t = 0.0;
-        }
-        if (t > 1.0) {
-            t = 1.0;
-        }
-        // Compute the closest point's coordinates.
-        double px = x1 + t * dx;
-        double py = y1 + t * dy;
-        // Return the squared distance from the origin to this closest point.
-        return px * px + py * py;
-    };*/
 
     constexpr double t_head_headstart = SHIP_RADIUS / BULLET_SPEED; // Head start that the bullet head got
     constexpr double t_tail_headstart = (SHIP_RADIUS - BULLET_LENGTH) / BULLET_SPEED; // Head start that the bullet tail got
@@ -3458,15 +3427,76 @@ inline std::pair<double, double> interception_time_window(double ship_x, double 
 
     double t0 = std::fmin(t0_head, t0_tail);
     double t1 = std::fmax(t1_head, t1_tail);
-    return {t0, t1};
-    /*
-    if (project_origin_onto_line_dist_sq(tail_x, tail_y, tail_x + vx, tail_y + vy) <= ast_r_sq || project_origin_onto_line_dist_sq(head_x, head_y, head_x + vx, head_y + vy) <= ast_r_sq) {
-        // The bullet and asteroid collides. Let's find the time interval of that
 
-        return;
-    } else {
-        return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    }*/
+    // So we just found the start and end times that the bullet head and tail individually collide. That's fine.
+    // But what about the case where somewhere along the middle of the bullet is when it first collides with the asteroid?
+    // Either the start, end, or both start and end could be where the bullet's middle collides first/last.
+    // To handle this case, I also need to take the line of the bullet, and find the times at which it’s tangent to the circle.
+    // In all but pathological cases, there will exist t0 and t1 where the line is tangent!
+    // To do this, I can define axis n to be the one normal to the line of the bullet. And then project everything onto this axis, including the bullet velocity!
+    // That'll turn this into a one-dimensional problem
+    // We know that (nx, ny) is such that nx * (head_x - tail_x) + ny * (head_y - tail_y) == 0
+    // We can simply use the swippity swappity of the other component and flippity floppidy
+    // And don't forget to normalize this to a unit vector! Can do that easily because we know the length of the bullet
+    assert(is_close(std::sqrt((head_x - tail_x) * (head_x - tail_x) + (head_y - tail_y) * (head_y - tail_y)), BULLET_LENGTH));
+    double nx = (head_y - tail_y) * BULLET_LENGTH_RECIPROCAL;
+    double ny = -(head_x - tail_x) * BULLET_LENGTH_RECIPROCAL;
+    // This is the relative bullet velocity projected along this 1D n-axis
+    double v_proj_n = nx * vx + ny * vy;
+    // Now we take the direction vector from either the bullet head or tail, to the bullet center. And project that along this axis, to get where the circle center is on the axis.
+    double r_bul_to_circ_x = ast_x - head_x;
+    double r_bul_to_circ_y = ast_y - head_y;
+    // Now do the dot to project
+    double ast_proj_n = r_bul_to_circ_x * nx + r_bul_to_circ_y * ny;
+    // The bullet head and tails are both located at position 0 on the n-axis
+    double t_ast_center = std::abs(ast_proj_n / v_proj_n);
+    // The time it takes for the relative bullet vel to travel the radius of the asteroid along n-axis
+    double t_diff_ast_radius = std::abs(ast_r / v_proj_n);
+    double t0_bullet_mid = t_ast_center - t_diff_ast_radius;
+    double t1_bullet_mid = t_ast_center + t_diff_ast_radius;
+    assert(t0_bullet_mid <= t1_bullet_mid);
+
+    // But just because the times exist (which they pretty much always do), doesn’t mean the bullet actually collides with the circle there (which it very rarely does)
+    // I need to project the circle center onto the two lines and clamp them to the bounds of the other two lines,
+    // and check whether those new clamped points are unchanged. AKA, the t is already between 0 and 1!
+    // If the t is outside 0 to 1, then those are invalid times.
+    auto project_point_onto_line_and_get_t = [](double x1, double y1, double x2, double y2, double px, double py) -> double {
+        // Given a segment from (x1, y1) to (x2, y2), project point (px, py)
+        // onto this segment and return the scalar parameter t
+        // such that the projection is at (1 - t)*(x1, y1) + t*(x2, y2)
+
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        double len_sq = dx * dx + dy * dy;
+
+        if (len_sq < 1e-12) {
+            // Degenerate segment; just return 0 (or could be NAN)
+            return 0.0;
+        }
+
+        // Vector from (x1, y1) to point (px, py)
+        double px_rel = px - x1;
+        double py_rel = py - y1;
+
+        // Dot product of relative vector with the segment vector
+        double t = (px_rel * dx + py_rel * dy) / len_sq;
+
+        return t;
+    };
+
+    double projected_t_for_t0_collision = project_point_onto_line_and_get_t(head_x + vx * t0_bullet_mid, head_y + vx * t0_bullet_mid, tail_x + vx * t0_bullet_mid, tail_y + vx * t0_bullet_mid, 0.0, 0.0);
+    double projected_t_for_t1_collision = project_point_onto_line_and_get_t(head_x + vx * t1_bullet_mid, head_y + vx * t1_bullet_mid, tail_x + vx * t1_bullet_mid, tail_y + vx * t1_bullet_mid, 0.0, 0.0);
+    
+    if (0.0 <= projected_t_for_t0_collision && projected_t_for_t0_collision <= 1.0) {
+        std::cout << "Woags, bullet mid start collision valid, t0: " << t0 << ", t0_bul_mid: " << t0_bullet_mid << std::endl;
+        t0 = std::fmin(t0, t0_bullet_mid);
+    }
+    if (0.0 <= projected_t_for_t1_collision && projected_t_for_t1_collision <= 1.0) {
+        std::cout << "Woags, bullet mid start collision valid, t1: " << t1 << ", t1_bul_mid: " << t1_bullet_mid << std::endl;
+        t1 = std::fmax(t1, t1_bullet_mid);
+    }
+
+    return {t0, t1};
 }
 
 inline std::tuple<
@@ -3576,7 +3606,7 @@ inline std::tuple<
     std::array<double, 4> k_roots = durand_kerner_real_roots(k0, k1, k2, k3, k4);
     std::array<double, 4> q_roots = durand_kerner_real_roots(q0, q1, q2, q3, q4);
     // Now go through the roots of x, and replace them with 2*arctan(root) to get theta
-    // The thetas will be from -pi to pi
+    // The thetas will be from -PI to PI
     for (double& root : k_roots) {
         if (!std::isnan(root)) {
             root = 2.0 * std::atan(root);
@@ -3628,13 +3658,13 @@ inline std::tuple<
             }
         }
 
-        // Handle angle wrapping: if range > pi, we assume the interval wrapped around -pi/pi
+        // Handle angle wrapping: if range > PI, we assume the interval wrapped around -PI/PI
         /*
-        if (range_high - range_low > pi) {
+        if (range_high - range_low > PI) {
             std::swap(range_high, range_low);
-            range_high += 2.0 * pi;
+            range_high += 2.0 * PI;
         }
-        assert(range_high - range_low < pi);
+        assert(range_high - range_low < PI);
         */
 
         return {num_positive_time_roots, range_low, range_high, solution_sum};
@@ -3647,10 +3677,10 @@ inline std::tuple<
     // Say k's solution pair is [a, b] and q's solution pair is [c, d].
     // The union of the ranges [a, b] and [c, d] represent the range of tan(theta/2) that we can fire at.
 
-    // Currently the ranges are from -pi to pi.
+    // Currently the ranges are from -PI to PI.
     // Check if any of the ranges need to be wrapped.
-    if (k_range_high - k_range_low > pi || q_range_high - q_range_low > pi) {
-        // If any needs to be wrapped, we wrap everything from 0 to 2*pi
+    if (k_range_high - k_range_low > TAU / 2.0 || q_range_high - q_range_low > TAU / 2.0) {
+        // If any needs to be wrapped, we wrap everything from 0 to 2*PI
         k_range_low = pymod(k_range_low, TAU);
         k_range_high = pymod(k_range_high, TAU);
         q_range_low = pymod(q_range_low, TAU);
@@ -3680,21 +3710,33 @@ inline std::tuple<
             double shot_heading_error_rad = angle_difference_rad(0.5 * (combined_range_low + combined_range_high), radians(ship_heading_deg));
             if (std::abs(shot_heading_error_rad) < 0.5 * (combined_range_high - combined_range_low)) {
                 // The ship heading is within range, so we can continue with the feasibility check
-                auto [t0, t1] = interception_time_window(ship_pos_x, ship_pos_y, ship_heading_deg, asteroid_pos_x, asteroid_pos_y, avx, avy, ar);
+                auto [t0, t1] = interception_time_window(ship_pos_x, ship_pos_y, ship_heading_deg, asteroid_pos_x + avx * DELTA_TIME, asteroid_pos_y + avy * DELTA_TIME, avx, avy, ar);
                 assert(!std::isnan(t0) && !std::isnan(t1));
-                assert(t0 <= (solution_sum_k + solution_sum_q) / (num_positive_time_k_roots + num_positive_time_q_roots) && (solution_sum_k + solution_sum_q) / (num_positive_time_k_roots + num_positive_time_q_roots) <= t1);
+                //double avg_time_s = (solution_sum_k + solution_sum_q) / (num_positive_time_k_roots + num_positive_time_q_roots);
+                //if (!(t0 <= avg_time_s && avg_time_s <= t1)) {
+                //    std::cout << "avg time s: " << avg_time_s << " t0: " << t0 << " t1 : " << t1 << std::endl;
+                //}
+                // This assertion doesn't hold. Because if we're grazing the ast, then the time range for the collision will be tiny. And the average instant for all grazes will definitely be skewed outside of this small range!
+                //assert(t0 <= avg_time_s && avg_time_s <= t1);
                 int64_t t0_frame = static_cast<int64_t>(std::ceil(FPS * t0));
                 int64_t t1_frame = static_cast<int64_t>(std::ceil(FPS * t1));
                 for (int64_t t = t0_frame; t <= t1_frame; ++t) {
                     if (t >= 0) {
                         // Simulate each frame of the collision, and return the soonest one
-                        double intercept_ast_x = ship_pos_x + ax + avx * t * DELTA_TIME;
-                        double intercept_ast_y = ship_pos_y + ay + avy * t * DELTA_TIME;
-                        if (check_coordinate_bounds(game_state, intercept_ast_x, intercept_ast_y)) {
+                        double intercept_ast_x = ship_pos_x + ax + avx * (t + 0) * DELTA_TIME;
+                        double intercept_ast_y = ship_pos_y + ay + avy * (t + 0) * DELTA_TIME;
+                        double intercept_bul_head_x = ship_pos_x + vb * std::cos(radians(ship_heading_deg)) * (t_head_headstart + t * DELTA_TIME);
+                        double intercept_bul_head_y = ship_pos_y + vb * std::sin(radians(ship_heading_deg)) * (t_head_headstart + t * DELTA_TIME);
+                        double intercept_bul_tail_x = ship_pos_x + vb * std::cos(radians(ship_heading_deg)) * (t_tail_headstart + t * DELTA_TIME);
+                        double intercept_bul_tail_y = ship_pos_y + vb * std::sin(radians(ship_heading_deg)) * (t_tail_headstart + t * DELTA_TIME);
+                        if (check_coordinate_bounds(game_state, intercept_ast_x, intercept_ast_y) && (
+                            check_coordinate_bounds(game_state, intercept_bul_head_x, intercept_bul_head_y) ||
+                            check_coordinate_bounds(game_state, intercept_bul_tail_x, intercept_bul_tail_y)
+                        )) {
                             return std::make_tuple(true,
                                 combined_range_low,
                                 combined_range_high,
-                                t * DELTA_TIME,
+                                t * DELTA_TIME - EPS,
                                 intercept_ast_x,
                                 intercept_ast_y,
                                 std::sqrt(intercept_ast_x * intercept_ast_x + intercept_ast_y * intercept_ast_y)
@@ -3803,7 +3845,7 @@ inline std::tuple<
         if (asteroid_r < asteroid_dist) {
             shot_heading_tolerance_rad = fast_asin((asteroid_r - ASTEROID_AIM_BUFFER_PIXELS) / asteroid_dist);
         } else {
-            shot_heading_tolerance_rad = 0.5 * pi;
+            shot_heading_tolerance_rad = 0.25 * TAU;
         }
         assert(shot_heading_tolerance_rad >= 0.0);
         return std::make_tuple(feasible,
@@ -4296,50 +4338,49 @@ inline std::tuple<
     auto root_function = [&](double theta) -> double {
         // Convert heading error to absolute heading
         theta += theta_0;
-        // Domain of this function is theta_0 - pi to theta_0 + pi
+        // Domain of this function is theta_0 - PI to theta_0 + PI
         // Make this function periodic by wrapping inputs outside this range, to within the range
-        if (!(theta_0 - pi <= theta && theta <= theta_0 + pi)) {
-            theta = pymod(theta - theta_0 + pi, TAU) - pi + theta_0;
+        if (!(theta_0 - TAU / 2.0 <= theta && theta <= theta_0 + TAU / 2.0)) {
+            theta = pymod(theta - theta_0 + TAU / 2.0, TAU) - TAU / 2.0 + theta_0;
         }
-        assert(theta_0 - pi <= theta && theta <= theta_0 + pi);
+        assert(theta_0 - TAU / 2.0 <= theta && theta <= theta_0 + TAU / 2.0);
         double abs_delta_theta = std::abs(theta - theta_0);
         double cos_theta = std::cos(theta);
         double sin_theta = std::sin(theta);
         double sinusoidal_component = k1 * cos_theta - k2 * sin_theta + k3;
-        double wacky_component = vb * abs_delta_theta / pi * (avy * cos_theta - avx * sin_theta);
+        double wacky_component = vb * abs_delta_theta / (TAU / 2.0) * (avy * cos_theta - avx * sin_theta);
         return sinusoidal_component + wacky_component;
     };
 
     auto root_function_derivative = [&](double theta) -> double {
         // Convert heading error to absolute heading
         theta += theta_0;
-        // Domain of this function is theta_0 - pi to theta_0 + pi
+        // Domain of this function is theta_0 - PI to theta_0 + PI
         // Make this function periodic by wrapping inputs outside this range, to within the range
-        if (!(theta_0 - pi <= theta && theta <= theta_0 + pi)) {
-            theta = pymod(theta - theta_0 + pi, TAU) - pi + theta_0;
+        if (!(theta_0 - TAU / 2.0 <= theta && theta <= theta_0 + TAU / 2.0)) {
+            theta = pymod(theta - theta_0 + TAU / 2.0, TAU) - TAU / 2.0 + theta_0;
         }
-        assert(theta_0 - pi <= theta && theta <= theta_0 + pi);
+        assert(theta_0 - TAU / 2.0 <= theta && theta <= theta_0 + TAU / 2.0);
         double cos_theta = std::cos(theta);
         double sin_theta = std::sin(theta);
         double sinusoidal_component = -k1 * sin_theta - k2 * cos_theta;
-        double wacky_component = -vb * sign(theta - theta_0) / pi *
-            (avx * sin_theta - avy * cos_theta + (theta - theta_0) * (avx * cos_theta + avy * sin_theta));
+        double wacky_component = -vb * sign(theta - theta_0) / (TAU / 2.0) * (avx * sin_theta - avy * cos_theta + (theta - theta_0) * (avx * cos_theta + avy * sin_theta));
         return sinusoidal_component + wacky_component;
     };
 
     auto root_function_second_derivative = [&](double theta) -> double {
         // Convert heading error to absolute heading
         theta += theta_0;
-        // Domain of this function is theta_0 - pi to theta_0 + pi
+        // Domain of this function is theta_0 - PI to theta_0 + PI
         // Make this function periodic by wrapping inputs outside this range, to within the range
-        if (!(theta_0 - pi <= theta && theta <= theta_0 + pi)) {
-            theta = pymod(theta - theta_0 + pi, TAU) - pi + theta_0;
+        if (!(theta_0 - TAU / 2.0 <= theta && theta <= theta_0 + TAU / 2.0)) {
+            theta = pymod(theta - theta_0 + TAU / 2.0, TAU) - TAU / 2.0 + theta_0;
         }
-        assert(theta_0 - pi <= theta && theta <= theta_0 + pi);
+        assert(theta_0 - TAU / 2.0 <= theta && theta <= theta_0 + TAU / 2.0);
         double cos_theta = std::cos(theta);
         double sin_theta = std::sin(theta);
         double sinusoidal_component = -k1 * cos_theta + k2 * sin_theta;
-        double wacky_component = -vb * sign(theta - theta_0) / pi * (2.0 * (avx * cos_theta + avy * sin_theta) - (theta - theta_0) * (avx * sin_theta - avy * cos_theta));
+        double wacky_component = -vb * sign(theta - theta_0) / (TAU / 2.0) * (2.0 * (avx * cos_theta + avy * sin_theta) - (theta - theta_0) * (avx * sin_theta - avy * cos_theta));
         return sinusoidal_component + wacky_component;
     };
 
@@ -4358,14 +4399,14 @@ inline std::tuple<
             if (denominator == 0.0) return std::numeric_limits<double>::quiet_NaN();
             theta_new = theta_old - (2.0 * func_value * derivative_value) / denominator;
             // The value has jumped past the periodic boundary. Clamp it to right past the boundary just so things don't get too crazy.
-            if (theta_new < -pi) {
-                theta_new = pi - GRAIN;
-            } else if (theta_new > pi) {
-                theta_new = -pi + GRAIN;
-            } else if (-pi <= theta_old && theta_old <= 0.0 && 0.0 <= theta_new && theta_new <= pi) {
+            if (theta_new < -TAU / 2.0) {
+                theta_new = TAU / 2.0 - GRAIN;
+            } else if (theta_new > TAU / 2.0) {
+                theta_new = -TAU / 2.0 + GRAIN;
+            } else if (-TAU / 2.0 <= theta_old && theta_old <= 0.0 && 0.0 <= theta_new && theta_new <= TAU / 2.0) {
                 // The value jumped past the kink in the middle of the graph. set it to right past the kink so the value doesn't jump around like crazy
                 theta_new = GRAIN;
-            } else if (-pi <= theta_new && theta_new <= 0.0 && 0.0 <= theta_old && theta_old <= pi) {
+            } else if (-TAU / 2.0 <= theta_new && theta_new <= 0.0 && 0.0 <= theta_old && theta_old <= TAU / 2.0) {
                 theta_new = -GRAIN;
             }
             // Check for convergence
@@ -4452,7 +4493,7 @@ inline std::tuple<
             return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), -1, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
         }
         double absolute_theta_solution = delta_theta_solution + theta_0;
-        assert(-pi <= delta_theta_solution && delta_theta_solution <= pi);
+        assert(-TAU / 2.0 <= delta_theta_solution && delta_theta_solution <= TAU / 2.0);
 
         // Check validity of solution to make sure time is positive and stuff
         double t_rot = rotation_time(delta_theta_solution);
@@ -7071,10 +7112,10 @@ public:
                                                 std::cout << "OLD shot heading tolerance (rad): " << shot_heading_tolerance_rad_OLD << std::endl;
                                                 std::cout << "New computed tolerance (rad): " << new_tolerance << std::endl;
                                                 // Assert that the new tolerance is bigger than the old tolerance, which only served as a lower bound
-                                                if (!(shot_heading_tolerance_rad_OLD < new_tolerance)) {
+                                                if (!(shot_heading_tolerance_rad_OLD < new_tolerance || is_close(shot_heading_tolerance_rad_OLD, TAU / 4.0))) {
                                                     std::cout << "Assertion failed: shot_heading_tolerance_rad_OLD < new_tolerance\n";
                                                 }
-                                                assert(shot_heading_tolerance_rad_OLD < new_tolerance);
+                                                assert(shot_heading_tolerance_rad_OLD < new_tolerance || is_close(shot_heading_tolerance_rad_OLD, TAU / 4.0));
                                                 // Assert that the old perfect shooting angle fits within the new min/max bounds
                                                 double heading_rad = radians(ship_state.heading);
                                                 double angle_diff_min = angle_difference_rad(shot_heading_min_rad, heading_rad);
@@ -7162,7 +7203,7 @@ public:
                                     culled_targets_for_simulation = game_state.asteroids;
                                 }
                                 //std::cout << "Interception time in seconds is " << max_interception_time_s << std::endl;
-                                int bullet_sim_timestep_limit = static_cast<int>(std::ceil(max_interception_time_s * FPS)) + 2;
+                                int64_t bullet_sim_timestep_limit = static_cast<int64_t>(std::ceil(max_interception_time_s * FPS)) + 1;
                                 std::optional<Asteroid> actual_asteroid_hit;
                                 int64_t timesteps_until_bullet_hit_asteroid;
                                 bool ship_was_safe;
