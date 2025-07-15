@@ -3398,35 +3398,47 @@ inline std::pair<double, double> interception_time_window(double ship_x, double 
     // If there is no interception, this returns NaN
 
     // First, as a rejection check, we can project the asteroid center onto both of the lines formed by the ends of the bullet travelling, with the asteroid as the reference frame
-
+    std::cout << "\n[DEBUG] Entering interception_time_window"<<std::endl;
+    std::cout << "ship: (" << ship_x << ", " << ship_y << "), heading: " << ship_heading_deg << std::endl;
+    std::cout << "ast: (" << ast_x << ", " << ast_y << "), v: (" << ast_vx << ", " << ast_vy << "), r: " << ast_r << std::endl;
     constexpr double t_head_headstart = SHIP_RADIUS / BULLET_SPEED; // Head start that the bullet head got
     constexpr double t_tail_headstart = (SHIP_RADIUS - BULLET_LENGTH) / BULLET_SPEED; // Head start that the bullet tail got
-
+    std::cout << "[DEBUG] t_head_headstart: " << t_head_headstart << ", t_tail_headstart: " << t_tail_headstart << std::endl;
     double ast_r_sq = ast_r * ast_r;
     double theta = radians(ship_heading_deg);
     double cos_theta = std::cos(theta);
     double sin_theta = std::sin(theta);
+    std::cout << "[DEBUG] theta: " << theta << ", cos_theta: " << cos_theta << ", sin_theta: " << sin_theta << std::endl;
     // Relative velocities and positions
     double vx = BULLET_SPEED * cos_theta - ast_vx; // Per second velocities
     double vy = BULLET_SPEED * sin_theta - ast_vy;
+    std::cout << "[DEBUG] vx: " << vx << ", vy: " << vy << std::endl;
     double tail_x = ship_x + BULLET_SPEED * cos_theta * t_tail_headstart - ast_x; // Asteroid is at the origin
     double tail_y = ship_y + BULLET_SPEED * sin_theta * t_tail_headstart  - ast_y;
     double head_x = ship_x + BULLET_SPEED * cos_theta * t_head_headstart - ast_x;
     double head_y = ship_y + BULLET_SPEED * sin_theta * t_head_headstart  - ast_y;
+    std::cout << "[DEBUG] tail_x: " << tail_x << ", tail_y: " << tail_y << std::endl;
+    std::cout << "[DEBUG] head_x: " << head_x << ", head_y: " << head_y << std::endl;
 
     // Set up quadratic equations and solve
     double k0 = head_x * head_x + head_y * head_y - ast_r_sq;
     double k1 = 2.0 * (vx * head_x + vy * head_y);
     double k2 = vx * vx + vy * vy;
+    std::cout << "[DEBUG] Bullet head quadratic k0: " << k0 << ", k1: " << k1 << ", k2: " << k2 << std::endl;
     auto [t0_head, t1_head] = solve_quadratic(k2, k1, k0);
+    std::cout << "[DEBUG] t0_head: " << t0_head << ", t1_head: " << t1_head << std::endl;
 
     double q0 = tail_x * tail_x + tail_y * tail_y - ast_r_sq;
     double q1 = 2.0 * (vx * tail_x + vy * tail_y);
     double q2 = k2;
+    std::cout << "[DEBUG] Bullet tail quadratic q0: " << q0 << ", q1: " << q1 << ", q2: " << q2 << std::endl;
     auto [t0_tail, t1_tail] = solve_quadratic(q2, q1, q0);
+    std::cout << "[DEBUG] t0_tail: " << t0_tail << ", t1_tail: " << t1_tail << std::endl;
 
     double t0 = std::fmin(t0_head, t0_tail);
     double t1 = std::fmax(t1_head, t1_tail);
+
+    std::cout << "[DEBUG] t0 (window start): " << t0 << ", t1 (window end): " << t1 << std::endl;
 
     // So we just found the start and end times that the bullet head and tail individually collide. That's fine.
     // But what about the case where somewhere along the middle of the bullet is when it first collides with the asteroid?
@@ -3441,36 +3453,46 @@ inline std::pair<double, double> interception_time_window(double ship_x, double 
     assert(is_close(std::sqrt((head_x - tail_x) * (head_x - tail_x) + (head_y - tail_y) * (head_y - tail_y)), BULLET_LENGTH));
     double nx = (head_y - tail_y) * BULLET_LENGTH_RECIPROCAL;
     double ny = -(head_x - tail_x) * BULLET_LENGTH_RECIPROCAL;
+    std::cout << "[DEBUG] nx: " << nx << ", ny: " << ny << std::endl;
     // This is the relative bullet velocity projected along this 1D n-axis
     double v_proj_n = nx * vx + ny * vy;
-    // Now we take the direction vector from either the bullet head or tail, to the bullet center. And project that along this axis, to get where the circle center is on the axis.
-    double r_bul_to_circ_x = ast_x - head_x;
-    double r_bul_to_circ_y = ast_y - head_y;
+    std::cout << "[DEBUG] v_proj_n (projected bullet velocity): " << v_proj_n << std::endl;
+    if (v_proj_n < 0.0) {
+        nx *= -1.0;
+        ny *= -1.0;
+        v_proj_n *= -1.0;
+        std::cout << "[DEBUG] v_proj_n was negative, flipped nx/ny. Now nx: " << nx << ", ny: " << ny << ", v_proj_n: " << v_proj_n << std::endl;
+    }
+    // Now we take the direction vector from either the bullet head or tail, to the asteroid center. And project that along this axis, to get where the circle center is on the axis.
+    double r_bul_to_circ_x = -head_x;
+    double r_bul_to_circ_y = -head_y;
     // Now do the dot to project
     double ast_proj_n = r_bul_to_circ_x * nx + r_bul_to_circ_y * ny;
+    std::cout << "[DEBUG] ast_proj_n: " << ast_proj_n << std::endl;
+    assert(is_close(ast_proj_n, -tail_x * nx + -tail_y * ny));
     // The bullet head and tails are both located at position 0 on the n-axis
-    double t_ast_center = std::abs(ast_proj_n / v_proj_n);
+    double t_ast_center = ast_proj_n / v_proj_n;
     // The time it takes for the relative bullet vel to travel the radius of the asteroid along n-axis
-    double t_diff_ast_radius = std::abs(ast_r / v_proj_n);
+    double t_diff_ast_radius = ast_r / v_proj_n;
+    std::cout << "[DEBUG] t_ast_center: " << t_ast_center << ", t_diff_ast_radius: " << t_diff_ast_radius << std::endl;
     double t0_bullet_mid = t_ast_center - t_diff_ast_radius;
     double t1_bullet_mid = t_ast_center + t_diff_ast_radius;
     assert(t0_bullet_mid <= t1_bullet_mid);
+    std::cout << "[DEBUG] t0_bullet_mid: " << t0_bullet_mid << ", t1_bullet_mid: " << t1_bullet_mid << std::endl;
 
     // But just because the times exist (which they pretty much always do), doesn’t mean the bullet actually collides with the circle there (which it very rarely does)
     // I need to project the circle center onto the two lines and clamp them to the bounds of the other two lines,
     // and check whether those new clamped points are unchanged. AKA, the t is already between 0 and 1!
     // If the t is outside 0 to 1, then those are invalid times.
     auto project_point_onto_line_and_get_t = [](double x1, double y1, double x2, double y2, double px, double py) -> double {
-        // Given a segment from (x1, y1) to (x2, y2), project point (px, py)
-        // onto this segment and return the scalar parameter t
-        // such that the projection is at (1 - t)*(x1, y1) + t*(x2, y2)
+        // Given a segment from (x1, y1) to (x2, y2), project point (px, py) onto this segment and return the scalar parameter t such that the projection is at (1 - t)*(x1, y1) + t*(x2, y2)
 
         double dx = x2 - x1;
         double dy = y2 - y1;
         double len_sq = dx * dx + dy * dy;
 
         if (len_sq < 1e-12) {
-            // Degenerate segment; just return 0 (or could be NAN)
+            // Degenerate segment; just return 0
             return 0.0;
         }
 
@@ -3484,18 +3506,20 @@ inline std::pair<double, double> interception_time_window(double ship_x, double 
         return t;
     };
 
-    double projected_t_for_t0_collision = project_point_onto_line_and_get_t(head_x + vx * t0_bullet_mid, head_y + vx * t0_bullet_mid, tail_x + vx * t0_bullet_mid, tail_y + vx * t0_bullet_mid, 0.0, 0.0);
-    double projected_t_for_t1_collision = project_point_onto_line_and_get_t(head_x + vx * t1_bullet_mid, head_y + vx * t1_bullet_mid, tail_x + vx * t1_bullet_mid, tail_y + vx * t1_bullet_mid, 0.0, 0.0);
-    
+    double projected_t_for_t0_collision = project_point_onto_line_and_get_t(head_x + vx * t0_bullet_mid, head_y + vy * t0_bullet_mid, tail_x + vx * t0_bullet_mid, tail_y + vy * t0_bullet_mid, 0.0, 0.0);
+    double projected_t_for_t1_collision = project_point_onto_line_and_get_t(head_x + vx * t1_bullet_mid, head_y + vy * t1_bullet_mid, tail_x + vx * t1_bullet_mid, tail_y + vy * t1_bullet_mid, 0.0, 0.0);
+    std::cout << "[DEBUG] projected_t_for_t0_collision: " << projected_t_for_t0_collision << ", projected_t_for_t1_collision: " << projected_t_for_t1_collision << std::endl;
     if (0.0 <= projected_t_for_t0_collision && projected_t_for_t0_collision <= 1.0) {
         std::cout << "Woags, bullet mid start collision valid, t0: " << t0 << ", t0_bul_mid: " << t0_bullet_mid << std::endl;
+        assert(t0_bullet_mid <= t0);
         t0 = std::fmin(t0, t0_bullet_mid);
     }
     if (0.0 <= projected_t_for_t1_collision && projected_t_for_t1_collision <= 1.0) {
         std::cout << "Woags, bullet mid start collision valid, t1: " << t1 << ", t1_bul_mid: " << t1_bullet_mid << std::endl;
+        assert(t1_bullet_mid >= t1);
         t1 = std::fmax(t1, t1_bullet_mid);
     }
-
+    std::cout << "[DEBUG] Returning pair: {" << t0 << ", " << t1 << "}\n" << std::endl;
     return {t0, t1};
 }
 
