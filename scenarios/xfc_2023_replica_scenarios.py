@@ -1,4 +1,4 @@
-from src.kesslergame import Scenario
+from kesslergame import Scenario
 
 import numpy as np
 

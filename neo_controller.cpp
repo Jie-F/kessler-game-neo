@@ -235,7 +235,7 @@ constexpr const char* BUILD_NUMBER = "2025-07-08 Neo, for Kessler v2's latest ve
 constexpr bool DEBUG_MODE = false;
 constexpr bool PRINT_EXPLANATIONS = false;
 constexpr double EXPLANATION_MESSAGE_SILENCE_INTERVAL_S = 2.0;
-constexpr bool PLOT_MISSED_BULLET_SIM = true;
+constexpr bool PLOT_MISSED_BULLET_SIM = false;
 
 // Safety and Performance Flags
 constexpr bool STATE_CONSISTENCY_CHECK_AND_RECOVERY = true;
@@ -706,7 +706,7 @@ struct GameState {
     double time = 0.0;
     double delta_time = 0.0;
     double frame_rate = 0.0;
-    int64_t sim_frame = 0;
+    int64_t frame = 0;
     double time_limit = 0.0;
     bool random_asteroid_splits = false;
 
@@ -716,11 +716,11 @@ struct GameState {
               const std::vector<Bullet>& bullets, const std::vector<Mine>& mines,
               double map_size_x, double map_size_y,
               double time, double delta_time, double frame_rate,
-              int64_t sim_frame, double time_limit, bool random_asteroid_splits)
+              int64_t frame, double time_limit, bool random_asteroid_splits)
         : asteroids(asteroids), ships(ships), bullets(bullets), mines(mines),
           map_size_x(map_size_x), map_size_y(map_size_y),
           time(time), delta_time(delta_time), frame_rate(frame_rate),
-          sim_frame(sim_frame), time_limit(time_limit),
+          frame(frame), time_limit(time_limit),
           random_asteroid_splits(random_asteroid_splits) {}
 
     std::string str() const {
@@ -742,7 +742,7 @@ struct GameState {
         result += "  time=" + std::to_string(time) + ",\n";
         result += "  delta_time=" + std::to_string(delta_time) + ",\n";
         result += "  frame_rate=" + std::to_string(frame_rate) + ",\n";
-        result += "  sim_frame=" + std::to_string(sim_frame) + ",\n";
+        result += "  frame=" + std::to_string(frame) + ",\n";
         result += "  time_limit=" + std::to_string(time_limit) + ",\n";
         result += "  random_asteroid_splits=" + std::to_string(random_asteroid_splits) + "\n";
         result += ")";
@@ -782,7 +782,7 @@ struct GameState {
             std::move(alive_mines),
             map_size_x, map_size_y,
             time, delta_time, frame_rate,
-            sim_frame, time_limit, random_asteroid_splits
+            frame, time_limit, random_asteroid_splits
         );
     }
 
@@ -804,7 +804,7 @@ struct GameState {
             && time == other.time
             && delta_time == other.delta_time
             && frame_rate == other.frame_rate
-            && sim_frame == other.sim_frame
+            && frame == other.frame
             && time_limit == other.time_limit
             && random_asteroid_splits == other.random_asteroid_splits;
     }
@@ -1393,7 +1393,7 @@ GameState create_game_state_from_dict(nb::dict game_state_dict) {
         game_state_dict.contains("time") ? nb::cast<double>(game_state_dict["time"]) : 0.0,
         game_state_dict.contains("delta_time") ? nb::cast<double>(game_state_dict["delta_time"]) : 0.0,
         game_state_dict.contains("frame_rate") ? nb::cast<double>(game_state_dict["frame_rate"]) : 0.0,
-        game_state_dict.contains("sim_frame") ? nb::cast<int64_t>(game_state_dict["sim_frame"]) : 0,
+        game_state_dict.contains("frame") ? nb::cast<int64_t>(game_state_dict["frame"]) : 0,
         game_state_dict.contains("time_limit") ? nb::cast<double>(game_state_dict["time_limit"]) : 0.0,
         game_state_dict.contains("random_asteroid_splits") ? nb::cast<bool>(game_state_dict["random_asteroid_splits"]) : false
     );
@@ -6606,7 +6606,9 @@ public:
                         if (circle_line_collision_continuous(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, b.vx, b.vy, a.x, a.y, a.vx, a.vy, a.radius, game_state.delta_time)) {
                             if (b_idx == len_bullets) {
                                 // This bullet is my bullet!
-                                std::cout << "Bullet sim: Bullet landed! Starting on timestep " << initial_timestep + future_timesteps << " Sim number: " << sim_id << std::endl;
+                                if constexpr (ENABLE_EXTRA_PRINTS) {
+                                    std::cout << "Bullet sim: Bullet landed! Starting on timestep " << initial_timestep + future_timesteps << " Sim number: " << sim_id << std::endl;
+                                }
                                 return std::optional<std::tuple<std::optional<Asteroid>, int64_t, bool>>(
                                     std::make_tuple(std::optional<Asteroid>(a), timesteps_until_bullet_hit_asteroid, ship_not_collided_with_asteroid)
                                 );
@@ -7747,7 +7749,7 @@ public:
         // Timers and simulation frame increment/postprocessing
         if (!wait_out_mines) {
             future_timesteps += 1;
-            game_state.sim_frame += 1;
+            game_state.frame += 1;
         }
 
         // Final return
@@ -8110,7 +8112,7 @@ public:
             extern std::unordered_map<int64_t, std::vector<Asteroid>> unwrap_cache;
         }
 
-        debug_print("Calling decide next action continuous on timestep " + std::to_string(game_state.sim_frame) + ", and force_decision=" + std::string(force_decision ? "true" : "false"));
+        debug_print("Calling decide next action continuous on timestep " + std::to_string(game_state.frame) + ", and force_decision=" + std::string(force_decision ? "true" : "false"));
         assert(game_state_to_base_planning.has_value());
         assert(best_fitness_this_planning_period_index != INT_NEG_INF);
 
@@ -8376,10 +8378,10 @@ public:
         assert(action_queue.empty());
         if (CONTINUOUS_LOOKAHEAD_PLANNING) {
             // Keep track of this stuff
-            if (best_move_sequence.front().timestep != game_state.sim_frame) {
-                std::cerr << "Assertion failed: best_move_sequence.front().timestep == game_state.sim_frame\n";
+            if (best_move_sequence.front().timestep != game_state.frame) {
+                std::cerr << "Assertion failed: best_move_sequence.front().timestep == game_state.frame\n";
                 std::cerr << "best_move_sequence.front().timestep = " << best_move_sequence.front().timestep << "\n";
-                std::cerr << "game_state.sim_frame = " << game_state.sim_frame << "\n";
+                std::cerr << "game_state.frame = " << game_state.frame << "\n";
                 for (const auto& m : best_move_sequence) {
                     std::cerr << m << std::endl;
                 }
@@ -8390,7 +8392,7 @@ public:
             if constexpr (ENABLE_SANITY_CHECKS) {
                 assert(actioned_timesteps.contains(move.timestep) == 0 && "DUPLICATE TIMESTEPS IN ENQUEUED MOVES");
                 actioned_timesteps.insert(move.timestep);
-                assert(move.timestep >= game_state.sim_frame);
+                assert(move.timestep >= game_state.frame);
             }
             // In case we jump ship in the middle of a maneuver, and we want to fire the next frame, we still want to do that! We do that through tracking the frames we fire, in the fire next timestep.
             // Because the bullet is created before the ship updates, it doesn't matter how the ship moves. If we wanted to shoot before, then it means we're guaranteed to hit something, no matter what else the ship does!
@@ -8597,6 +8599,7 @@ public:
                     int64_t rejection_sample_count = 0;
                     while (timesteps_this_respawn_maneuver_would_take >= timesteps_we_have_for_respawn_maneuver) {
                         ++rejection_sample_count;
+                        std::cout << rejection_sample_count << std::endl;
                         random_ship_heading_angle = (respawn_maneuver_at_max_speed) ? 0.0 : rand_uniform(-20.0, 20.0);
                         turning_time = (respawn_maneuver_at_max_speed) ? 0.0 : std::ceil(std::abs(random_ship_heading_angle) / (SHIP_MAX_TURN_RATE * DELTA_TIME));
                         if (start_of_respawn_maneuver) {
@@ -8926,7 +8929,7 @@ public:
 
         // Check for simulator/controller desync and perform state recovery/reset as in Python
         if constexpr (CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS || STATE_CONSISTENCY_CHECK_AND_RECOVERY) {
-            bool timestep_mismatch = !(game_state.sim_frame == this->current_timestep);
+            bool timestep_mismatch = !(game_state.frame == this->current_timestep);
             // Amid running the scenario, the action queue is desynced with our timestep. This may be caused by an exception that was raised in Neo which was caught by Kessler, so the actions for this timestep were never consumed.
             bool action_queue_desync = !action_queue.empty() && std::get<0>(action_queue.front()) != this->current_timestep;
             bool planning_base_state_outdated = (game_state_to_base_planning.has_value() && game_state_to_base_planning->timestep < this->current_timestep);
@@ -8936,7 +8939,7 @@ public:
                 if (timestep_mismatch && !(action_queue_desync || (planning_base_state_outdated && !CONTINUOUS_LOOKAHEAD_PLANNING))) {
                     debug_print("This was not a fresh run of the controller! I'll try cleaning up the previous run and reset the state.");
                 } else if (timestep_mismatch) {
-                    debug_print("Neo didn't start from time 0. Was there a controller exception? Setting timestep to match the passed-in game state's nonzero starting timestep of: " + std::to_string(game_state.sim_frame));
+                    debug_print("Neo didn't start from time 0. Was there a controller exception? Setting timestep to match the passed-in game state's nonzero starting timestep of: " + std::to_string(game_state.frame));
                 }
                 this->reset();
                 ++this->current_timestep;
@@ -8946,7 +8949,7 @@ public:
                     recovering_from_crash = true;
                 }
                 if (timestep_mismatch) {
-                    this->current_timestep = game_state.sim_frame;
+                    this->current_timestep = game_state.frame;
                 }
             }
         }
