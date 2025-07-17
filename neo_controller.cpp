@@ -241,6 +241,7 @@ constexpr bool PLOT_MISSED_BULLET_SIM = true;
 constexpr bool STATE_CONSISTENCY_CHECK_AND_RECOVERY = true;
 constexpr bool CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS = true;
 constexpr bool ENABLE_SANITY_CHECKS = true;
+constexpr bool ENABLE_EXTRA_PRINTS = false;
 constexpr bool PRUNE_SIM_STATE_SEQUENCE = true;
 constexpr bool BULLET_SIM_CULLING = false;
 //constexpr bool VALIDATE_SIMULATED_KEY_STATES = false;
@@ -3664,7 +3665,7 @@ inline std::tuple<
                 // Solve for time t using the derived formula for the tangency condition.
                 double interception_time = (-avx * ax - avy * ay + ax * y1 + ay * y3 - t_head_start * y0 + t_head_start * y2 + t_head_start * y4) / (avx * avx + avy * avy + y0 - 2.0 * y2 - 2.0 * y4);
                 //std::cout << sol << std::endl;
-                std::cout << "For the theta root " << theta_root << " we have a interception time of " << interception_time << std::endl;
+                //std::cout << "For the theta root " << theta_root << " we have a interception time of " << interception_time << std::endl;
                 if (interception_time >= 0.0) {
                     solution_sum += interception_time;
                     ++num_positive_time_roots;
@@ -7003,12 +7004,14 @@ public:
                 } else if (!fire.has_value()) {
                     // ----------- BEGIN BULLET "CONVENIENT FIRE" LOGIC -----------
                     // We're able to decide whether we want to fire any convenient shots we can get
-                    std::cout << "\n\nBeginning convenient fire in update() in sim id: " << sim_id << " On timestep " << initial_timestep + future_timesteps << std::endl;
-                    if (sim_id == 81917) {
-                        std::cout << "Within special sim so we print interesting things:" << std::endl;
-                        print_asteroids_pending_death(asteroids_pending_death);
-                        std::cout << "All asts:" << std::endl;
-                        print_vector(game_state.asteroids);
+                    if constexpr (ENABLE_EXTRA_PRINTS) {
+                        std::cout << "\n\nBeginning convenient fire in update() in sim id: " << sim_id << " On timestep " << initial_timestep + future_timesteps << std::endl;
+                        if (sim_id == 81917) {
+                            std::cout << "Within special sim so we print interesting things:" << std::endl;
+                            print_asteroids_pending_death(asteroids_pending_death);
+                            std::cout << "All asts:" << std::endl;
+                            print_vector(game_state.asteroids);
+                        }
                     }
                     int64_t timesteps_until_can_fire = std::max<int64_t>(0, FIRE_COOLDOWN_TS - (initial_timestep + future_timesteps - last_timestep_fired));
                     fire_this_timestep = false;
@@ -7105,7 +7108,7 @@ public:
                                         double shot_heading_min_rad, shot_heading_max_rad, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception;
                                         double interception_time_s_OLD, intercept_x_OLD, intercept_y_OLD, asteroid_dist_during_interception_OLD, shot_heading_error_rad_OLD, shot_heading_tolerance_rad_OLD;
                                         bool feasible_OLD;
-                                        if constexpr (ENABLE_SANITY_CHECKS) {
+                                        if constexpr (ENABLE_EXTRA_PRINTS) {
                                             std::tie(feasible_OLD, shot_heading_error_rad_OLD, shot_heading_tolerance_rad_OLD, interception_time_s_OLD, intercept_x_OLD, intercept_y_OLD, asteroid_dist_during_interception_OLD) =
                                                 calculate_interception(ship_state.x, ship_state.y, a.x - a.vx * DELTA_TIME, a.y - a.vy * DELTA_TIME, a.vx, a.vy, a.radius, ship_state.heading, game_state, 0);
                                             std::cout << "[OLD] feasible: " << feasible_OLD
@@ -7121,7 +7124,7 @@ public:
                                         
                                         std::tie(feasible, shot_heading_min_rad, shot_heading_max_rad, interception_time_s, intercept_x, intercept_y, asteroid_dist_during_interception) =
                                         calculate_continuous_interception(ship_state.x, ship_state.y, a.x - a.vx * DELTA_TIME, a.y - a.vy * DELTA_TIME, a.vx, a.vy, a.radius, ship_state.heading, game_state, 0);
-                                        if constexpr (ENABLE_SANITY_CHECKS) {
+                                        if constexpr (ENABLE_EXTRA_PRINTS) {
                                             std::cout << "[NEW] feasible: " << feasible
                                                     << ", shot_heading_min_rad: " << shot_heading_min_rad
                                                     << ", shot_heading_max_rad: " << shot_heading_max_rad
@@ -7175,12 +7178,14 @@ public:
                                                     min_negative_shot_heading_error_rad = shot_heading_error_rad;
                                                 }
                                             }
-                                            if constexpr (ENABLE_SANITY_CHECKS) {
+                                            if constexpr (ENABLE_EXTRA_PRINTS) {
                                                 std::cout << "Shot heading error rad: " << shot_heading_error_rad << " Tolerance rad: " << 0.5 * (shot_heading_max_rad - shot_heading_min_rad) << ", distance from ast: " << asteroid_dist_during_interception << ", ast radius: " << a.radius << ", ast speed " << std::sqrt(a.vx * a.vx + a.vy * a.vy) << std::endl;
                                             }
                                             if (std::abs(shot_heading_error_rad) < 0.5 * (shot_heading_max_rad - shot_heading_min_rad)) {
                                                 // If we shoot at our current heading, this asteroid can be hit!
-                                                std::cout << "This ast is feasible to hit: " << a << "\n" << std::endl;
+                                                if constexpr (ENABLE_EXTRA_PRINTS) {
+                                                    std::cout << "This ast is feasible to hit: " << a << "\n" << std::endl;
+                                                }
                                                 if (ast_idx < len_asteroids) {
                                                     // Only add real asteroids to the set of asteroids we simulate! Don't simulate the asteroids that don't exist yet.
                                                     //culled_targets_for_simulation.append(asteroid)
@@ -7231,8 +7236,10 @@ public:
                                 std::optional<Asteroid> actual_asteroid_hit;
                                 int64_t timesteps_until_bullet_hit_asteroid;
                                 bool ship_was_safe;
-                                std::cout << "Calling bullet sim from convenient shots in update()" << std::endl;
-                                std::cout << "Number of bullets already onscreen is: " << game_state.bullets.size() << std::endl;
+                                if constexpr (ENABLE_EXTRA_PRINTS) {
+                                    std::cout << "Calling bullet sim from convenient shots in update()" << std::endl;
+                                    std::cout << "Number of bullets already onscreen is: " << game_state.bullets.size() << std::endl;
+                                }
                                 std::tie(actual_asteroid_hit, timesteps_until_bullet_hit_asteroid, ship_was_safe)
                                     = bullet_sim(std::nullopt, false, 0, true, future_timesteps, whole_move_sequence,
                                                 bullet_sim_timestep_limit,
@@ -8903,7 +8910,7 @@ public:
         // Method processed each time step by this controller.
 
         // Optionally reseed RNG if flag enabled
-        if (RESEED_RNG) {
+        if constexpr (RESEED_RNG) {
             std::srand(static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count()));
         }
 
