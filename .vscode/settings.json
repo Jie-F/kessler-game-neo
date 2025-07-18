@@ -74,14 +74,6 @@
         "xstring": "cpp",
         "xtr1common": "cpp",
         "xtree": "cpp",
-        "xutility": "cpp",
-        "cstdarg": "cpp",
-        "variant": "cpp",
-        "codecvt": "cpp",
-        "cwctype": "cpp",
-        "queue": "cpp",
-        "semaphore": "cpp",
-        "span": "cpp",
-        "string_view": "cpp"
+        "xutility": "cpp"
     }
 }

@@ -93,9 +93,9 @@ width, height = (1000, 800)
 
 
 # Define Game Settings
-game_settings = {'perf_tracker': True,
+game_settings = {'perf_tracker': False,
                  'graphics_type': GraphicsType.NoGraphics if args.invisible else (GraphicsType.UnrealEngine if args.unreal else GraphicsType.Tkinter),#UnrealEngine,Tkinter,NoGraphics
-                 'realtime_multiplier': 0,
+                 'realtime_multiplier': 1.0,
                  'graphics_obj': None,
                  'frequency': 30.0,
                  'random_ast_splits': False,
@@ -441,7 +441,7 @@ while True:
             # [ReplayController0(), ReplayController1()] GamepadController()])#, NeoController()])#, TestController()])GamepadController NeoController Neo
         #random.seed(randseed)
         #from neo_controller import NeoController
-        controllers_used = [NeoController(), NeoController()]
+        controllers_used = [NeoController()]
         #random.setstate(state)
         #print(f"RNG State: {random.getstate()}")
         #score, perf_data = game.run(scenario=ex_adv_four_corners_pt1, controllers=controllers_used)

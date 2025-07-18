@@ -1,5 +1,7 @@
 # Neo - Kessler Controller
 
+![Neo](Neo.png)
+
 ## About
 
 Neo is a controller I made for the XFC 2024 and WCCI 2024 competitions. It's inspired by Neo from The Matrix. It uses a randomized simulation to perform random search (and a baby version of a genetic algorithm) to perform maneuvers and plan good actions. It is also capable of dodging fast-moving asteroids.

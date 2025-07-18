@@ -528,11 +528,11 @@ struct pair_hash {
 
 
 struct Asteroid {
-    double x = 0, y = 0, vx = 0, vy = 0;
-    int64_t size = 0;
-    double mass = 0, radius = 0;
-    int64_t timesteps_until_appearance = 0;
-    bool alive = true;
+    double x, y, vx, vy;
+    int64_t size;
+    double mass, radius;
+    int64_t timesteps_until_appearance;
+    bool alive;
 
     Asteroid() = default;
     Asteroid(double x, double y, double vx, double vy, int64_t size, double mass, double radius, int64_t t = 0)
@@ -568,33 +568,33 @@ struct Asteroid {
 std::unordered_map<int64_t, std::vector<Asteroid>> unwrap_cache;
 
 struct Ship {
-    double x = 0.0;
-    double y = 0.0;
-    double vx = 0.0;
-    double vy = 0.0;
-    double speed = 0.0;
-    double heading = 0.0;
-    double mass = 0.0;
-    double radius = 0.0;
-    int64_t id = 0;
+    double x;
+    double y;
+    double vx;
+    double vy;
+    double speed;
+    double heading;
+    double mass;
+    double radius;
+    int64_t id;
     int64_t team;
-    bool is_respawning = false;
-    int64_t lives_remaining = 0;
-    int64_t deaths = 0;
-    int64_t bullets_remaining = 0;
-    int64_t mines_remaining = 0;
-    bool can_fire = true;
-    double fire_cooldown = 0.0;
-    double fire_rate = 0.0;
-    bool can_deploy_mine = true;
-    double mine_cooldown = 0.0;
-    double mine_deploy_rate = 0.0;
-    double respawn_time_left = 0.0;
-    double respawn_time = 0.0;
-    std::pair<double, double> thrust_range = {-SHIP_MAX_THRUST, SHIP_MAX_THRUST};
-    std::pair<double, double> turn_rate_range = {-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE};
-    double max_speed = 0.0;
-    double drag = 0.0;
+    bool is_respawning;
+    int64_t lives_remaining;
+    int64_t deaths;
+    int64_t bullets_remaining;
+    int64_t mines_remaining;
+    bool can_fire;
+    double fire_cooldown;
+    double fire_rate;
+    bool can_deploy_mine;
+    double mine_cooldown;
+    double mine_deploy_rate;
+    double respawn_time_left;
+    double respawn_time;
+    std::pair<double, double> thrust_range;
+    std::pair<double, double> turn_rate_range;
+    double max_speed;
+    double drag;
 
     Ship() = default;
 
@@ -658,7 +658,7 @@ struct Ship {
 
 
 struct Mine {
-    double x = 0, y = 0, mass = 0, fuse_time = 0, remaining_time = 0;
+    double x, y, mass, fuse_time, remaining_time;
     bool alive = true;
 
     Mine() = default;
@@ -677,7 +677,7 @@ struct Mine {
 };
 
 struct Bullet {
-    double x = 0, y = 0, vx = 0, vy = 0, heading = 0, mass = BULLET_MASS, tail_delta_x = 0, tail_delta_y = 0;
+    double x, y, vx, vy, heading, mass, tail_delta_x, tail_delta_y;
     bool alive = true;
 
     Bullet() = default;
@@ -701,14 +701,14 @@ struct GameState {
     std::vector<Ship> ships;
     std::vector<Bullet> bullets;
     std::vector<Mine> mines;
-    double map_size_x = 0.0;
-    double map_size_y = 0.0;
-    double time = 0.0;
-    double delta_time = 0.0;
-    double frame_rate = 0.0;
-    int64_t frame = 0;
-    double time_limit = 0.0;
-    bool random_asteroid_splits = false;
+    double map_size_x;
+    double map_size_y;
+    double time;
+    double delta_time;
+    double frame_rate;
+    int64_t frame;
+    double time_limit;
+    bool random_asteroid_splits;
 
     GameState() = default;
 
@@ -965,10 +965,10 @@ public:
             for (int i = 0; i < n_seg; ++i) {
                 double t0 = (i) * TAU / n_seg;
                 double t1 = (i + 1) * TAU / n_seg;
-                int x0 = int(cx + cos(t0) * r + 0.5f);
-                int y0 = int(cy + sin(t0) * r + 0.5f);
-                int x1 = int(cx + cos(t1) * r + 0.5f);
-                int y1 = int(cy + sin(t1) * r + 0.5f);
+                int x0 = int(cx + std::cos(t0) * r + 0.5f);
+                int y0 = int(cy + std::sin(t0) * r + 0.5f);
+                int x1 = int(cx + std::cos(t1) * r + 0.5f);
+                int y1 = int(cy + std::sin(t1) * r + 0.5f);
                 draw_line(x0, y0, x1, y1, c);
             }
         } else {
@@ -1342,8 +1342,8 @@ Bullet create_bullet_from_dict(nb::dict d) {
         vel.first, vel.second,
         heading,
         nb::cast<double>(d["mass"]),
-        -BULLET_LENGTH * cos(heading_rad),
-        -BULLET_LENGTH * sin(heading_rad)
+        -BULLET_LENGTH * std::cos(heading_rad),
+        -BULLET_LENGTH * std::sin(heading_rad)
     );
 }
 
@@ -2439,6 +2439,7 @@ inline std::vector<std::pair<int64_t, int64_t>> calculate_border_crossings(
     // Step through each crossing event in order of time
     std::vector<std::pair<int64_t, int64_t>> universe_offsets;
     while (true) {
+        std::cout << "stuck in wrap" << std::endl;
         if (next_x_crossing_time < next_y_crossing_time) {
             if (next_x_crossing_time > time_horizon_seconds) break;
             universe_offset_x += x_step_direction;
@@ -4880,6 +4881,9 @@ public:
         }
 
         if constexpr (ENABLE_SANITY_CHECKS) {
+            if (!(static_cast<bool>(ship_state_.is_respawning) == (ship_state.respawn_time_left != 0.0))) {
+                std::cout << "On initial_timestep: " << initial_timestep << ", future timestep: " << future_timestep << " in sim, the ship_state_.is_respawning: " << ship_state_.is_respawning << ", and ship_state.respawn_time_left: " << ship_state.respawn_time_left << std::endl;
+            }
             assert(static_cast<bool>(ship_state_.is_respawning) == (ship_state.respawn_time_left != 0.0));
         }
 
@@ -7490,8 +7494,8 @@ public:
                     --ship_state.bullets_remaining;
                 }
                 double rad_heading = radians(ship_state.heading);
-                double cos_heading = cos(rad_heading);
-                double sin_heading = sin(rad_heading);
+                double cos_heading = std::cos(rad_heading);
+                double sin_heading = std::sin(rad_heading);
                 double bullet_x = ship_state.x + SHIP_RADIUS * cos_heading;
                 double bullet_y = ship_state.y + SHIP_RADIUS * sin_heading;
                 Bullet new_bullet(
@@ -7592,8 +7596,8 @@ public:
             ship_state.heading += turn_rate * DELTA_TIME;
             ship_state.heading = pymod(ship_state.heading, 360.0);
             double rad_heading = radians(ship_state.heading);
-            ship_state.vx = cos(rad_heading) * ship_state.speed;
-            ship_state.vy = sin(rad_heading) * ship_state.speed;
+            ship_state.vx = std::cos(rad_heading) * ship_state.speed;
+            ship_state.vy = std::sin(rad_heading) * ship_state.speed;
             ship_state.x = pymod(ship_state.x + ship_state.vx * DELTA_TIME + game_state.map_size_x, game_state.map_size_x);
             ship_state.y = pymod(ship_state.y + ship_state.vy * DELTA_TIME + game_state.map_size_y, game_state.map_size_y);
         }
