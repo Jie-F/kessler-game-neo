@@ -1,6 +1,6 @@
 # Neo - Kessler Controller
 
-![Neo](Neo.png)
+<img src="Neo.png" alt="Neo" width="512" />
 
 ## About
 
