@@ -16,7 +16,7 @@ except Exception as e:
     print(e)
 from kesslergame.controller_gamepad import GamepadController
 from examples.test_controller import TestController
-from neo_controller import NeoController
+#from neo_controller import NeoController
 #from test_controller import TestController as CPPController
 #from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
 from nova_controller import NovaController
@@ -441,7 +441,7 @@ while True:
             # [ReplayController0(), ReplayController1()] GamepadController()])#, NeoController()])#, TestController()])GamepadController NeoController Neo
         #random.seed(randseed)
         #from neo_controller import NeoController
-        controllers_used = [NeoController()]
+        controllers_used = [JamieController()]
         #random.setstate(state)
         #print(f"RNG State: {random.getstate()}")
         #score, perf_data = game.run(scenario=ex_adv_four_corners_pt1, controllers=controllers_used)

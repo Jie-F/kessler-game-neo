@@ -283,7 +283,7 @@ class JamieController(KesslerController):
         return is_closing_ring, list_of_frames_to_drop_mines
 
     def actions(self, ship_state: Dict, game_state: Dict) -> Tuple[float, float, bool, bool]:
-        if game_state["sim_frame"] == 0:
+        if game_state["frame"] == 0:
             self.first_scen_count -= 1
             self.last_frame_life = ship_state['lives_remaining']
             self.last_frame_life_lost = -1
