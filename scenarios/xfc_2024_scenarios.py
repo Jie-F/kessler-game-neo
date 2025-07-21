@@ -1,4 +1,4 @@
-from kesslergame.scenario import Scenario
+from src.kesslergame.scenario import Scenario
 import numpy as np
 
 adv_random_small_1 = Scenario(
