@@ -193,7 +193,7 @@ def prioritize_imminent_collision(ship_state: Dict, game_state: Dict, closing_ri
     shortest_time = float('inf')
 
     for asteroid in game_state['asteroids']:
-        if closing_ring and asteroid['size'] <= size_thresh_closing_ring and game_state['sim_frame'] < 5*30:
+        if closing_ring and asteroid['size'] <= size_thresh_closing_ring and game_state['frame'] < 5*30:
             continue
         t_col = time_to_collision_wrapped(ship_pos, ship_radius, asteroid['position'], asteroid['velocity'], asteroid['radius'], map_size)
         if t_col < shortest_time:
@@ -230,7 +230,7 @@ class JamieController(KesslerController):
         is_closing_ring = False
         list_of_frames_to_drop_mines = []
         # Do a for loop up to 10 seconds into the future to detect a closing ring. CLosing rings must happen within this time
-        asteroids = copy.deepcopy(game_state['asteroids'])
+        asteroids = [a.dict for a in game_state['asteroids']]
         initial_asts_count = len(asteroids)
         threshold_fraction_of_asteroids_to_signify_closing_ring = 1/3 # 1/2 is prob fine but let's just do this to be safe
         # Find pos of asteroids for each frame
@@ -254,7 +254,7 @@ class JamieController(KesslerController):
         # Now we iterate through a second time to find when to drop the mines
         if is_closing_ring:
             #print("GOING INTO DEEPER GNUKE CODE")
-            asteroids = copy.deepcopy(game_state['asteroids'])
+            asteroids = [a.dict for a in game_state['asteroids']]
             for frame in range(0, 10*30):
                 #print(frame)
                 count_of_asts_within_mine_radius = 0
@@ -297,7 +297,7 @@ class JamieController(KesslerController):
             self.is_closing_ring, self.list_of_frames_to_drop_mines = self.gnuke_mode(ship_state, game_state)
         if ship_state['lives_remaining'] < self.last_frame_life:
             log_explanation("OUCH life lost")
-            self.last_frame_life_lost = game_state['sim_frame']
+            self.last_frame_life_lost = game_state['frame']
         self.last_frame_life = ship_state['lives_remaining']
         ship_x, ship_y = ship_state['position'] #(log_explanation = [position])
         ship_heading_deg = ship_state['heading'] 
@@ -307,7 +307,7 @@ class JamieController(KesslerController):
         delta_time = game_state['delta_time']
         map_size = game_state['map_size']
         self.fire_this_fram = self.fire_next_fram
-        log_explanation(f"Frame {game_state['sim_frame']}")
+        log_explanation(f"Frame {game_state['frame']}")
         # Expire old targeting info
         self.asteroids_targeted = {
             k: v for k, v in self.asteroids_targeted.items() if v > current_time
@@ -324,7 +324,7 @@ class JamieController(KesslerController):
             # Do regular mine drop logic
             if (ship_state['can_deploy_mine'] and ship_state['mines_remaining'] > 0 and current_time - self.last_mine_time >= self.mine_cooldown):
                 if predict_imminent_collision(ship_state, game_state, delta_time):
-                    asts = copy.deepcopy(game_state['asteroids'])
+                    asts = [a.dict for a in game_state['asteroids']]
                     # MOve all asts 3 secs into future and check if any of them would get blastsed by a mine i drop right noww
                     blat_count = 0
                     for a in asts:
@@ -337,7 +337,7 @@ class JamieController(KesslerController):
                         self.last_mine_time = current_time
         else:
             # DO GNUKE MODE LOGIC FOR MINEES
-            if game_state['sim_frame'] in self.list_of_frames_to_drop_mines:
+            if game_state['frame'] in self.list_of_frames_to_drop_mines:
                 drop_mine = True
             else:
                 drop_mine = False
@@ -347,7 +347,7 @@ class JamieController(KesslerController):
         if ship_state['bullets_remaining'] != 0:
             most_imminent_ast = prioritize_imminent_collision(ship_state, game_state, self.is_closing_ring)
             for asteroid in game_state['asteroids']:
-                if self.is_closing_ring and asteroid['size'] <= size_thresh_closing_ring and game_state['sim_frame'] < 5*30:
+                if self.is_closing_ring and asteroid['size'] <= size_thresh_closing_ring and game_state['frame'] < 5*30:
                     continue
                 # Go through asterdois and foind target
                 canon_key = canonicalize_asteroid(asteroid, current_time, map_size)
@@ -448,8 +448,8 @@ class JamieController(KesslerController):
                 return 0, 0, False, False
 
         if ship_state['is_respawning']:
-            iframes_left = 3*30 - (game_state['sim_frame'] - self.last_frame_life_lost)
-            asts = copy.deepcopy(game_state['asteroids'])
+            iframes_left = 3*30 - (game_state['frame'] - self.last_frame_life_lost)
+            asts = [a.dict for a in game_state['asteroids']]
             # MOve all asts 3 secs into future and check if any of them would get blastsed by a mine i drop right noww
             freedom_flsg = False
             for m in game_state['mines']:
@@ -467,11 +467,11 @@ class JamieController(KesslerController):
                             freedom_flsg = True
                             break
         
-        if self.fire_this_fram is True and (not ship_state['is_respawning'] or not freedom_flsg):
+        if self.fire_next_fram is True and (not ship_state['is_respawning'] or not freedom_flsg):
             fire = True
         else:
             fire = False
-        if ship_state['can_fire'] and not (0 <= ship_state['bullets_remaining'] <= 35) and not self.fire_next_fram:
+        if ship_state['can_fire'] and not (0 <= ship_state['bullets_remaining'] <= 35):
             if not ship_state['is_respawning'] and not dont_spray:
                 fire = True
             else:
