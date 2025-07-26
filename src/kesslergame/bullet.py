@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-import math
+from math import radians, cos, sin
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -22,9 +22,9 @@ class Bullet:
         self.mass: float = 1.0  # kg
         self.x, self.y = position
         self.heading: float = heading
-        rad_heading: float = math.radians(heading)
-        cos_heading: float = math.cos(rad_heading)
-        sin_heading: float = math.sin(rad_heading)
+        rad_heading: float = radians(heading)
+        cos_heading: float = cos(rad_heading)
+        sin_heading: float = sin(rad_heading)
         self.tail_delta_x = -self.length * cos_heading
         self.tail_delta_y = -self.length * sin_heading
         self.vx = self.speed * cos_heading

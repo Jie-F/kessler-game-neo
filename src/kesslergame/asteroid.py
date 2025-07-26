@@ -6,8 +6,8 @@
 from __future__ import annotations
 
 import random
-import math
 
+from math import pi, cos, sin, sqrt, degrees, radians, atan2
 from typing import TYPE_CHECKING, Union
 if TYPE_CHECKING:
     from .ship import Ship
@@ -55,15 +55,15 @@ class Asteroid:
         # Set collision radius based on size
         self.radius: float = self.size * 8.0
 
-        self.mass: float = 0.25 * math.pi * self.radius * self.radius
+        self.mass: float = 0.25 * pi * self.radius * self.radius
 
         # Use optional angle and speed arguments otherwise generate random angle and speed
-        starting_angle_rad: float = math.radians(angle) if angle is not None else random.random() * 2.0 * math.pi
+        starting_angle_rad: float = radians(angle) if angle is not None else random.random() * 2.0 * pi
         starting_speed: float = speed if speed is not None else max_speed * random.random()
 
         # Set velocity based on starting angle and speed
-        self.vx = starting_speed * math.cos(starting_angle_rad)
-        self.vy = starting_speed * math.sin(starting_angle_rad)
+        self.vx = starting_speed * cos(starting_angle_rad)
+        self.vy = starting_speed * sin(starting_angle_rad)
 
         self.speed = abs(starting_speed) # This is used for early rejection in collision detection
 
@@ -101,8 +101,10 @@ class Asteroid:
         self._state[1] = self.y
         self.angle += delta_time * self.turnrate
 
-    def destruct(self, impactor: Union['Bullet', 'Mine', 'Ship'], random_ast_split: bool) -> list[Asteroid]:
-        """ Spawn child asteroids"""
+    def destruct(self, impactor: Union['Bullet', 'Mine', 'Ship'], random_ast_split: bool, delta_time: float = 0.0) -> list[Asteroid]:
+        """ Spawn child asteroids, with the time offset of delta_time (usually negative, for rewinding)"""
+        if delta_time != 0.0:
+            self.update(delta_time)
         # Split angle is the angle off of the new velocity vector for the two asteroids to the sides, the center child
         # asteroid continues on the new velocity path
         # If random_ast_split, the bound is the range within which uniform random angles will be selected, otherwise the
@@ -112,7 +114,7 @@ class Asteroid:
             if isinstance(impactor, Mine):
                 delta_x = impactor.x - self.x
                 delta_y = impactor.y - self.y
-                dist = math.sqrt(delta_x * delta_x + delta_y * delta_y)
+                dist = sqrt(delta_x * delta_x + delta_y * delta_y)
                 force = impactor.calculate_blast_force(dist=dist, obj=self)
                 a = force / self.mass
                 # calculate "impulse" based on acc
@@ -123,14 +125,14 @@ class Asteroid:
                     vfy = self.vy + a * sin_theta
 
                     # Calculate speed of resultant asteroid(s) based on velocity vector
-                    v = math.sqrt(vfx * vfx + vfy * vfy)
+                    v = sqrt(vfx * vfx + vfy * vfy)
                 else:
                     vfx = self.vx
                     vfy = self.vy
                     
                     # Calculate speed of resultant asteroid(s) based on velocity vector
                     # This v calculation matches the speed you would get in the nonzero dist case, if you take the limit as dist -> 0
-                    v = math.sqrt(vfx * vfx + vfy * vfy + a * a)
+                    v = sqrt(vfx * vfx + vfy * vfy + a * a)
                     # Split angle is the angle off of the new velocity vector for the two asteroids to the sides, the center child
                     # asteroid continues on the new velocity path
                     split_angle_bound *= 8.0
@@ -145,10 +147,10 @@ class Asteroid:
                 vfy = (1.0 / (impactor.mass + self.mass)) * (impactor.mass * impactor.vy + self.mass * self.vy)
 
                 # Calculate speed of resultant asteroid(s) based on velocity vector
-                v = math.sqrt(vfx * vfx + vfy * vfy)
+                v = sqrt(vfx * vfx + vfy * vfy)
 
             # Calculate angle of center asteroid for split (degrees)
-            theta = math.degrees(math.atan2(vfy, vfx))
+            theta = degrees(atan2(vfy, vfx))
 
             if random_ast_split:
                 # Use random angle offsets

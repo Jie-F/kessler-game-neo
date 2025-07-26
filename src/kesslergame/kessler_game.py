@@ -3,11 +3,13 @@
 # NOTICE: This file is subject to the license agreement defined in file 'LICENSE', which is part of
 # this source code package.
 
+from __future__ import annotations
+
 import time
 
 from math import inf, nan, isfinite, isnan
 from typing import Any, TypedDict, cast
-from enum import Enum
+from enum import Enum, IntEnum
 
 from .scenario import Scenario
 from .score import Score
@@ -38,6 +40,49 @@ class PerfDict(TypedDict, total=False):
     score_update: float
     graphics_draw: float
     total_frame_time: float
+
+
+class CollisionType(IntEnum):
+    BULLET_ASTEROID = 0
+    MINE_ASTEROID = 1
+    MINE_SHIP = 2
+    SHIP_ASTEROID = 3
+    SHIP_SHIP = 4
+
+
+class CollisionEvent:
+    def __init__(self, time_offset: float, object_a: Ship | Asteroid | Bullet | Mine, object_b: Ship | Asteroid | Bullet | Mine, collision_type: CollisionType):
+        """
+        Represents a collision event between two game objects at a specific time.
+
+        :param time_offset: Time (in seconds) relative to the end of the frame. Must be in [-dt, 0.0].
+        :param object_a: First object involved in the collision.
+        :param object_b: Second object involved in the collision.
+        :param collision_type: Type of collision as defined in CollisionType enum.
+        """
+        self.time_offset = time_offset  # Time offset in seconds relative to frame end, e.g., -0.001
+        # Time offset should be in range [-delta_time, 0.0]
+        self.object_a = object_a
+        self.object_b = object_b
+        self.collision_type = collision_type
+        self.validate_type()
+
+    def validate_type(self) -> None:
+        """Ensures that object_a and object_b match the collision_type."""
+        match self.collision_type:
+            case CollisionType.BULLET_ASTEROID: assert isinstance(self.object_a, Bullet) and isinstance(self.object_b, Asteroid)
+            case CollisionType.MINE_ASTEROID: assert isinstance(self.object_a, Mine) and isinstance(self.object_b, Asteroid)
+            case CollisionType.MINE_SHIP: assert isinstance(self.object_a, Mine) and isinstance(self.object_b, Ship)
+            case CollisionType.SHIP_ASTEROID: assert isinstance(self.object_a, Ship) and isinstance(self.object_b, Asteroid)
+            case CollisionType.SHIP_SHIP: assert isinstance(self.object_a, Ship) and isinstance(self.object_b, Ship)
+            case _: raise ValueError(f"Unknown collision_type: {self.collision_type}")
+
+    def __lt__(self, other: CollisionEvent) -> bool:
+        """Allow sorting events by time offset (earlier events come first)."""
+        return self.time_offset < other.time_offset
+
+    def __repr__(self):
+        return f"<CollisionEvent time_offset={self.time_offset:.4f}s type={self.collision_type} obj_a={type(self.object_a).__name__} obj_b={type(self.object_b).__name__}>"
 
 
 class KesslerGame:
