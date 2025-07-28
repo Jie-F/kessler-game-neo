@@ -179,7 +179,7 @@ class KesslerGame:
                 else:
                     ast_y_centered = asteroid.y
 
-                # Compute virtual bullet path (fully unclamped, as if bullet passes through the map)
+                # Compute unclamped bullet path (as if bullet passes through the map edge)
                 bullet_head_x = bullet.x
                 bullet_head_y = bullet.y
                 bullet_tail_x = bullet.x + bullet.tail_delta_x
@@ -195,8 +195,8 @@ class KesslerGame:
                 assert t_clamp_start <= t_clamp_end
 
                 if t_clamp_start > 0.0:
-                    # This means that the bullet hasn't begun clipping on the map border yet! This is the simplest case to handle.
-                    # Do the normal collision check
+                    # This means that the bullet hasn't begun clipping on the map border yet!
+                    # This is the simplest case to handle. Do the normal collision check:
                     if circle_line_collision_continuous(
                         bullet_head_x, bullet_head_y,
                         bullet_tail_x, bullet_tail_y,
@@ -215,6 +215,9 @@ class KesslerGame:
                             asteroid.radius
                         )
                         if isnan(collision_start_time):
+                            # This case should NEVER happen, but maybe due to some pathological numeric instability,
+                            # it might be that the first function detected a barely collision, and then the second function
+                            # missed it and the discriminant was -0.0000000000000001, and returns nan for collision time ¯\_(ツ)_/¯
                             continue
                         collision_time = max(-self.delta_time, collision_start_time)
                         assert -self.delta_time <= collision_time <= 0.0
@@ -228,7 +231,7 @@ class KesslerGame:
                     # During the time interval we're checking, either the whole time or a part of the time,
                     # the bullet is at least partially out of bounds and has to have its hitbox clipped at the edge
                     
-                    # Virtual bullet 1: normal moving bullet
+                    # Virtual bullet 1: normal moving bullet that is unclamped as it goes beyond the border
                     hit1 = circle_line_collision_continuous(
                         bullet_head_x, bullet_head_y,
                         bullet_tail_x, bullet_tail_y,
@@ -249,22 +252,25 @@ class KesslerGame:
                         asteroid.radius
                     )
                     if isnan(t1_start) or isnan(t1_end):
+                        # This should never happen, but is here in case of numeric instability in a barely collision
                         continue
 
-                    # Virtual bullet 2: bullet head pinned at boundary, tail sticking into map, stationary!
+                    # Virtual bullet 2: bullet head pinned at boundary, tail sticking FAR into map, stationary!
+                    # Remember that the t_clamp_start is a negative number. The bullet head at the end of the frame is already past bound.
                     pinned_head_x = bullet_head_x + bullet.vx * t_clamp_start
                     pinned_head_y = bullet_head_y + bullet.vy * t_clamp_start
-                    pinned_tail_x = bullet_tail_x + bullet.vx * t_clamp_start
-                    pinned_tail_y = bullet_tail_y + bullet.vy * t_clamp_start
+                    # Just stick the tail of the bullet waaaaaay into the map to make sure we don't clamp on that end at all!
+                    pinned_tail_x = bullet_tail_x + bullet.vx * (t_clamp_start - self.delta_time)
+                    pinned_tail_y = bullet_tail_y + bullet.vy * (t_clamp_start - self.delta_time)
 
                     hit2 = circle_line_collision_continuous(
                         pinned_head_x, pinned_head_y,
                         pinned_tail_x, pinned_tail_y,
-                        0.0, 0.0,
+                        0.0, 0.0, # Stationary bullet for clamping to bound!
                         ast_x_centered, ast_y_centered,
                         asteroid.vx, asteroid.vy,
                         asteroid.radius,
-                        t_clamp_end - t_clamp_start
+                        self.delta_time
                     )
                     if not hit2:
                         continue
@@ -277,17 +283,16 @@ class KesslerGame:
                         asteroid.radius
                     )
                     if isnan(t2_start) or isnan(t2_end):
+                        # This should never happen, but is here in case of numeric instability in a barely collision
                         continue
 
-                    # Adjust t2 times into global time frame
-                    t2_start += t_clamp_start
-                    t2_end += t_clamp_start
-
                     # Take the intersection of the intervals
-                    t_start = max(t1_start, t2_start, -self.delta_time)
-                    t_end = min(t1_end, t2_end, 0.0)
+                    # Use nested min/max instead of 3-arg min/max, because this is much faster for MyPyC compilation
+                    t_start = max(-self.delta_time, max(t1_start, t2_start))
+                    t_end = min(0.0, min(t1_end, t2_end))
 
                     if t_start <= t_end:
+                        # The interval actually exists
                         collision_time = t_start
                         assert -self.delta_time <= collision_time <= 0.0
                         collision_event = CollisionEvent(collision_time, 0.0, bul_idx, ast_idx, CollisionType.BULLET_ASTEROID)
