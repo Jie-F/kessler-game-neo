@@ -640,6 +640,9 @@ class KesslerGame:
                             # This is a forward update, from the time of collision to the end of the frame!
                             a.update(-dt, scenario.map_size)
                         asteroids.extend(new_asteroids)
+                        if not self.competition_safe_mode:
+                            assert game_state is not None
+                            game_state.add_asteroids([a.state for a in new_asteroids])
                         # Take care of possible collision events from these children asteroids this frame
                         self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids)
                         self.enqueue_mine_asteroid_collisions(mines, new_asteroids)
@@ -669,7 +672,9 @@ class KesslerGame:
                             # This is a forward update, from the time of collision to the end of the frame!
                         #    a.update(-dt)
                         asteroids.extend(new_asteroids)
-                        
+                        if not self.competition_safe_mode:
+                            assert game_state is not None
+                            game_state.add_asteroids([a.state for a in new_asteroids])
                         self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids)
                         self.enqueue_mine_asteroid_collisions(mines, new_asteroids)
                         self.enqueue_ship_asteroid_collisions(ships, new_asteroids)
@@ -720,7 +725,9 @@ class KesslerGame:
                             # This is a forward update, from the time of collision to the end of the frame!
                             a.update(-dt, scenario.map_size)
                         asteroids.extend(new_asteroids)
-                        
+                        if not self.competition_safe_mode:
+                            assert game_state is not None
+                            game_state.add_asteroids([a.state for a in new_asteroids])
                         self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids)
                         self.enqueue_mine_asteroid_collisions(mines, new_asteroids)
                         self.enqueue_ship_asteroid_collisions(ships, new_asteroids)
