@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 
-from math import inf, nan, isfinite, isnan, ceil
+from math import inf, nan, isfinite, isnan, ceil, sqrt
 from typing import Any, TypedDict, cast
 from enum import Enum, IntEnum
 
@@ -134,7 +134,7 @@ class KesslerGame:
                                 'controller_name': True, 'scale': 1.0}
         self.UI_settings = cast(UISettingsDict, UI_settings)
 
-    def enqueue_bullet_asteroid_collisions(self, bullets: list[Bullet], asteroids: list[Asteroid]) -> None:
+    def enqueue_bullet_asteroid_collisions(self, bullets: list[Bullet], asteroids: list[Asteroid], asteroid_list_idx_offset: int = 0) -> None:
         # Collect all potential bullet-asteroid collisions
         # Since bullets do not wrap, we treat the bullet hitbox as being clamped at the map edge.
         # The way to calculate the collision time interval is elegant. It considers two virtual bullets,
@@ -222,7 +222,7 @@ class KesslerGame:
                         collision_time = max(-self.delta_time, collision_start_time)
                         assert -self.delta_time <= collision_time <= 0.0
 
-                        collision_event = CollisionEvent(collision_time, 0.0, bul_idx, ast_idx, CollisionType.BULLET_ASTEROID)
+                        collision_event = CollisionEvent(collision_time, 0.0, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID)
                         i = len(self.collision_queue)
                         while i > 0 and self.collision_queue[i - 1] > collision_event:
                             i -= 1
@@ -295,13 +295,13 @@ class KesslerGame:
                         # The interval actually exists
                         collision_time = t_start
                         assert -self.delta_time <= collision_time <= 0.0
-                        collision_event = CollisionEvent(collision_time, 0.0, bul_idx, ast_idx, CollisionType.BULLET_ASTEROID)
+                        collision_event = CollisionEvent(collision_time, 0.0, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID)
                         i = len(self.collision_queue)
                         while i > 0 and self.collision_queue[i - 1] > collision_event:
                             i -= 1
                         self.collision_queue.insert(i, collision_event)
 
-    def enqueue_mine_asteroid_collisions(self, mines: list[Mine], asteroids: list[Asteroid]) -> None:
+    def enqueue_mine_asteroid_collisions(self, mines: list[Mine], asteroids: list[Asteroid], asteroid_list_idx_offset: int = 0) -> None:
         for mine_idx, mine in enumerate(mines):
             if mine.detonating:
                 for ast_idx, asteroid in enumerate(asteroids):
@@ -316,7 +316,7 @@ class KesslerGame:
                     sq_dist = dx * dx + dy * dy
                     if sq_dist <= radius_sum * radius_sum:
                         collision_time = 0.0
-                        collision_event = CollisionEvent(collision_time, sq_dist, mine_idx, ast_idx, CollisionType.MINE_ASTEROID)
+                        collision_event = CollisionEvent(collision_time, sq_dist, mine_idx, ast_idx + asteroid_list_idx_offset, CollisionType.MINE_ASTEROID)
                         i = len(self.collision_queue)
                         while i > 0 and self.collision_queue[i - 1] > collision_event:
                             i -= 1
@@ -346,7 +346,7 @@ class KesslerGame:
                             i -= 1
                         self.collision_queue.insert(i, collision_event)
 
-    def enqueue_ship_asteroid_collisions(self, ships: list[Ship], asteroids: list[Asteroid]) -> None:
+    def enqueue_ship_asteroid_collisions(self, ships: list[Ship], asteroids: list[Asteroid], asteroid_list_idx_offset: int = 0) -> None:
         for ship_idx, ship in enumerate(ships):
             if ship.is_respawning or not ship.alive:
                 continue
@@ -373,7 +373,7 @@ class KesslerGame:
                 )
                 if not isnan(collision_start_time):
                     assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
-                    collision_event = CollisionEvent(collision_start_time, 0.0, ship_idx, ast_idx, CollisionType.SHIP_ASTEROID)
+                    collision_event = CollisionEvent(collision_start_time, 0.0, ship_idx, ast_idx + asteroid_list_idx_offset, CollisionType.SHIP_ASTEROID)
                     i = len(self.collision_queue)
                     while i > 0 and self.collision_queue[i - 1] > collision_event:
                         i -= 1
@@ -569,6 +569,7 @@ class KesslerGame:
             # Because the game_state stores a mutable reference to the internal states of the ship/asteroid/bullet/mine,
             # these updates automatically reflect in the game_state
             for ship in liveships:
+                # The ships shoot at the start of the frame
                 new_bullet, new_mine = ship.update(self.delta_time, scenario.map_size, True)
                 if new_bullet is not None:
                     bullets.append(new_bullet)
@@ -580,6 +581,7 @@ class KesslerGame:
                     if not self.competition_safe_mode:
                         assert game_state is not None
                         game_state.add_mine(new_mine.state)
+            # The bullet and mine that the ship shot will get updated from the start of the frame to the end
             for asteroid in asteroids:
                 asteroid.update(self.delta_time, scenario.map_size)
             for bullet in bullets:
@@ -639,14 +641,15 @@ class KesslerGame:
                         for a in new_asteroids:
                             # This is a forward update, from the time of collision to the end of the frame!
                             a.update(-dt, scenario.map_size)
+                        ast_idx_offset = len(asteroids)
                         asteroids.extend(new_asteroids)
                         if not self.competition_safe_mode:
                             assert game_state is not None
                             game_state.add_asteroids([a.state for a in new_asteroids])
                         # Take care of possible collision events from these children asteroids this frame
-                        self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids)
-                        self.enqueue_mine_asteroid_collisions(mines, new_asteroids)
-                        self.enqueue_ship_asteroid_collisions(ships, new_asteroids)
+                        self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, ast_idx_offset)
+                        self.enqueue_mine_asteroid_collisions(mines, new_asteroids, ast_idx_offset)
+                        self.enqueue_ship_asteroid_collisions(ships, new_asteroids, ast_idx_offset)
                     case CollisionType.MINE_ASTEROID:
                         mine_idx = event.object_a_idx
                         ast_idx = event.object_b_idx
@@ -675,9 +678,11 @@ class KesslerGame:
                         if not self.competition_safe_mode:
                             assert game_state is not None
                             game_state.add_asteroids([a.state for a in new_asteroids])
-                        self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids)
-                        self.enqueue_mine_asteroid_collisions(mines, new_asteroids)
-                        self.enqueue_ship_asteroid_collisions(ships, new_asteroids)
+                        # We do NOT enqueue new collisions, because we treat the mine explosions as basically the last thing that can happen
+                        # If we enqueued this further, then the same mine would hit the asteroid, along with all of their children!
+                        #self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids)
+                        #self.enqueue_mine_asteroid_collisions(mines, new_asteroids)
+                        #self.enqueue_ship_asteroid_collisions(ships, new_asteroids)
                     case CollisionType.MINE_SHIP:
                         mine_idx = event.object_a_idx
                         ship_idx = event.object_b_idx
@@ -726,13 +731,14 @@ class KesslerGame:
                         for a in new_asteroids:
                             # This is a forward update, from the time of collision to the end of the frame!
                             a.update(-dt, scenario.map_size)
+                        ast_idx_offset = len(asteroids)
                         asteroids.extend(new_asteroids)
                         if not self.competition_safe_mode:
                             assert game_state is not None
                             game_state.add_asteroids([a.state for a in new_asteroids])
-                        self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids)
-                        self.enqueue_mine_asteroid_collisions(mines, new_asteroids)
-                        self.enqueue_ship_asteroid_collisions(ships, new_asteroids)
+                        self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, ast_idx_offset)
+                        self.enqueue_mine_asteroid_collisions(mines, new_asteroids, ast_idx_offset)
+                        self.enqueue_ship_asteroid_collisions(ships, new_asteroids, ast_idx_offset)
 
                         if ship.alive:
                             ship.update(-dt, scenario.map_size, False)
