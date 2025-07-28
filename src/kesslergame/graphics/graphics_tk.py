@@ -7,6 +7,7 @@ import os
 import sys
 from tkinter import Tk, Canvas, NW
 from PIL import Image, ImageTk
+from typing import Callable
 
 from .graphics_base import KesslerGraphics
 from ..ship import Ship
@@ -115,7 +116,6 @@ class GraphicsTK(KesslerGraphics):
         self.window.destroy()
 
     def update_score(self, score: Score, ships: list[Ship]) -> None:
-
         # offsets to deal with cleanliness and window borders covering data
         x_offset = round(5 * self.scale)
         y_offset = round(5 * self.scale)
@@ -164,10 +164,8 @@ class GraphicsTK(KesslerGraphics):
             # determine output location based off order in team list
             if (team_num % 2) == 0:
                 output_location_x = int(self.game_width + x_offset)
-
                 # y location is based off the number of lines in the previous teams row
                 output_location_y = output_location_y + (round(17 * self.scale) * max_lines) + y_offset
-
                 # line separating team rows
                 self.game_canvas.create_line(
                     self.game_width, output_location_y - round(10 * self.scale),
@@ -176,11 +174,9 @@ class GraphicsTK(KesslerGraphics):
                 max_lines = score_board.count("\n")
             else:
                 output_location_x = int(self.window_width + x_offset - self.score_width / 2)
-
                 # change max lines in the row if odd team has more lines then even
                 if score_board.count("\n") > max_lines:
                     max_lines = score_board.count("\n")
-
             # display of team information
             team_font_size = -round(16 * self.scale)
             self.game_canvas.create_text(
@@ -213,8 +209,48 @@ class GraphicsTK(KesslerGraphics):
             team_info += "Bullets Left: " + str(team.bullets_remaining) + "\n"
         if self.show_mines_remaining:
             team_info += "Mines Left: " + str(team.mines_remaining) + "\n"
-
         return team_info
+
+    def draw_wrapped(self, draw_func: Callable[[float, float], None], x: float, y: float, radius: float) -> None:
+        """
+        Calls draw_func for the original and wrapped positions when the object overlaps screen edges.
+        
+        All coordinates and radius are in **unscaled game units**.
+
+        Parameters:
+        - draw_func: a function that draws the object at (x, y)
+        - x, y: position of the object in game coordinates
+        - radius: radius of the object
+        """
+        map_width = self.game_width / self.scale
+        map_height = self.game_height / self.scale
+
+        positions = [(x, y)]
+
+        # Horizontal wraps
+        if x - radius < 0:
+            positions.append((x + map_width, y))
+        if x + radius > map_width:
+            positions.append((x - map_width, y))
+
+        # Vertical wraps
+        if y - radius < 0:
+            positions.append((x, y + map_height))
+        if y + radius > map_height:
+            positions.append((x, y - map_height))
+
+        # Corner wraps (diagonals)
+        if x - radius < 0 and y - radius < 0:
+            positions.append((x + map_width, y + map_height))
+        if x - radius < 0 and y + radius > map_height:
+            positions.append((x + map_width, y - map_height))
+        if x + radius > map_width and y - radius < 0:
+            positions.append((x - map_width, y + map_height))
+        if x + radius > map_width and y + radius > map_height:
+            positions.append((x - map_width, y - map_height))
+
+        for px, py in positions:
+            draw_func(px, py)
 
     def plot_ships(self, ships: list[Ship]) -> None:
         """
@@ -228,20 +264,22 @@ class GraphicsTK(KesslerGraphics):
                     sprite_idx = self.image_paths.index(os.path.join(self.img_dir, ship.custom_sprite_path))
                 else:
                     sprite_idx = idx % self.num_images
-                rotated_ship_sprite = ImageTk.PhotoImage(self.ship_images[sprite_idx].rotate(180 - (-ship.heading - 90)))
-                self._per_frame_images.append(rotated_ship_sprite)  # Storing a reference to this image will prevent Python from garbage collecting it
-                self.game_canvas.create_image(
-                    ship.position[0] * self.scale,
-                    self.game_height - ship.position[1] * self.scale,
-                    image=rotated_ship_sprite
-                )
-                self.game_canvas.create_text(
-                    (ship.position[0] + ship.radius) * self.scale,
-                    self.game_height - ((ship.position[1] + ship.radius) * self.scale),
-                    text=str(ship.id),
-                    fill="white",
-                    font=("Courier New", ship_id_font_size)
-                )
+                rotated_sprite = self.ship_images[sprite_idx].rotate(180 - (-ship.heading - 90))
+                rotated_ship_sprite = ImageTk.PhotoImage(rotated_sprite)
+                # Storing a reference to this image will prevent Python from garbage collecting it
+                self._per_frame_images.append(rotated_ship_sprite)
+
+                def draw_ship(x: float, y: float) -> None:
+                    self.game_canvas.create_image(x * self.scale, self.game_height - y * self.scale, image=rotated_ship_sprite)
+                    self.game_canvas.create_text(
+                        (x + ship.radius) * self.scale,
+                        self.game_height - ((y + ship.radius) * self.scale),
+                        text=str(ship.id),
+                        fill="white",
+                        font=("Courier New", ship_id_font_size)
+                    )
+
+                self.draw_wrapped(draw_ship, ship.position[0], ship.position[1], ship.radius)
 
     def plot_shields(self, ships: list[Ship]) -> None:
         """
@@ -257,13 +295,16 @@ class GraphicsTK(KesslerGraphics):
                 b = int(255 + (respawn_scaler * (0 - 255)))
                 color = "#%02x%02x%02x" % (r, g, b)
                 # Plot shield ring
-                self.game_canvas.create_oval(
-                    (ship.position[0] - ship.radius) * self.scale,
-                    self.game_height - (ship.position[1] + ship.radius) * self.scale,
-                    (ship.position[0] + ship.radius) * self.scale,
-                    self.game_height - (ship.position[1] - ship.radius) * self.scale,
-                    fill="black", outline=color
-                )
+                def draw_shield(x: float, y: float) -> None:
+                    self.game_canvas.create_oval(
+                        (x - ship.radius) * self.scale,
+                        self.game_height - (y + ship.radius) * self.scale,
+                        (x + ship.radius) * self.scale,
+                        self.game_height - (y - ship.radius) * self.scale,
+                        fill="black", outline=color
+                    )
+
+                self.draw_wrapped(draw_shield, ship.position[0], ship.position[1], ship.radius)
 
     def plot_bullets(self, bullets: list[Bullet]) -> None:
         """
@@ -283,44 +324,45 @@ class GraphicsTK(KesslerGraphics):
         Plots each asteroid object on the game screen
         """
         for asteroid in asteroids:
-            self.game_canvas.create_oval(
-                (asteroid.position[0] - asteroid.radius) * self.scale,
-                self.game_height - (asteroid.position[1] + asteroid.radius) * self.scale,
-                (asteroid.position[0] + asteroid.radius) * self.scale,
-                self.game_height - (asteroid.position[1] - asteroid.radius) * self.scale,
-                fill="grey"
-            )
+            def draw_asteroid(x: float, y: float) -> None:
+                self.game_canvas.create_oval(
+                    (x - asteroid.radius) * self.scale,
+                    self.game_height - (y + asteroid.radius) * self.scale,
+                    (x + asteroid.radius) * self.scale,
+                    self.game_height - (y - asteroid.radius) * self.scale,
+                    fill="grey"
+                )
+            self.draw_wrapped(draw_asteroid, asteroid.position[0], asteroid.position[1], asteroid.radius)
 
     def plot_mines(self, mines: list[Mine]) -> None:
         """
         Plots and animates each mine object on the game screen and their detonations
         """
         for mine in mines:
-            self.game_canvas.create_oval(
-                (mine.position[0] - mine.radius) * self.scale,
-                self.game_height - (mine.position[1] + mine.radius) * self.scale,
-                (mine.position[0] + mine.radius) * self.scale,
-                self.game_height - (mine.position[1] - mine.radius) * self.scale,
-                fill="yellow"
-            )
-
-            light_fill = "red" if mine.countdown_timer - int(mine.countdown_timer) > 0.5 else "orange"
-            self.game_canvas.create_oval(
-                (mine.position[0] - mine.radius * 0.3) * self.scale,
-                self.game_height - (mine.position[1] + mine.radius * 0.3) * self.scale,
-                (mine.position[0] + mine.radius * 0.3) * self.scale,
-                self.game_height - (mine.position[1] - mine.radius * 0.3) * self.scale,
-                fill=light_fill
-            )
-
-            # Detonations
-            if mine.countdown_timer < mine.detonation_time:
-                explosion_radius = mine.blast_radius * (1 - mine.countdown_timer / mine.detonation_time) ** 2
+            def draw_mine(x: float, y: float) -> None:
                 self.game_canvas.create_oval(
-                    (mine.position[0] - explosion_radius) * self.scale,
-                    self.game_height - (mine.position[1] + explosion_radius) * self.scale,
-                    (mine.position[0] + explosion_radius) * self.scale,
-                    self.game_height - (mine.position[1] - explosion_radius) * self.scale,
-                    # fill="#fa441b",
-                    fill="", outline="white", width=round(10 * self.scale)
+                    (x - mine.radius) * self.scale,
+                    self.game_height - (y + mine.radius) * self.scale,
+                    (x + mine.radius) * self.scale,
+                    self.game_height - (y - mine.radius) * self.scale,
+                    fill="yellow"
                 )
+                light_fill = "red" if mine.countdown_timer - int(mine.countdown_timer) > 0.5 else "orange"
+                self.game_canvas.create_oval(
+                    (x - mine.radius * 0.3) * self.scale,
+                    self.game_height - (y + mine.radius * 0.3) * self.scale,
+                    (x + mine.radius * 0.3) * self.scale,
+                    self.game_height - (y - mine.radius * 0.3) * self.scale,
+                    fill=light_fill
+                )
+                if mine.countdown_timer < mine.detonation_time:
+                    explosion_radius = mine.blast_radius * (1 - mine.countdown_timer / mine.detonation_time) ** 2
+                    self.game_canvas.create_oval(
+                        (x - explosion_radius) * self.scale,
+                        self.game_height - (y + explosion_radius) * self.scale,
+                        (x + explosion_radius) * self.scale,
+                        self.game_height - (y - explosion_radius) * self.scale,
+                        fill="", outline="white", width=round(10 * self.scale)
+                    )
+
+            self.draw_wrapped(draw_mine, mine.position[0], mine.position[1], mine.blast_radius)

@@ -416,6 +416,10 @@ class Ship:
             sx = self.x + dx_sum
             sy = self.y + dy_sum
             self.integration_initial_states.clear() # Clear the state so that we don't attempt to do a second rollback which would be invalid
+            
+            # We never shoot/drop mine when doing rollback
+            new_bullet = None
+            new_mine = None
 
         # Decrement respawn timer (if necessary)
         if self._respawning != 0.0:

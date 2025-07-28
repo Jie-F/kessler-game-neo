@@ -101,10 +101,8 @@ class Asteroid:
         self._state[1] = self.y
         self.angle += delta_time * self.turnrate
 
-    def destruct(self, impactor: Union['Bullet', 'Mine', 'Ship'], random_ast_split: bool, delta_time: float = 0.0) -> list[Asteroid]:
-        """ Spawn child asteroids, with the time offset of delta_time (usually negative, for rewinding)"""
-        if delta_time != 0.0:
-            self.update(delta_time)
+    def destruct(self, impactor: Union['Bullet', 'Mine', 'Ship'], random_ast_split: bool) -> list[Asteroid]:
+        """ Spawn child asteroids"""
         # Split angle is the angle off of the new velocity vector for the two asteroids to the sides, the center child
         # asteroid continues on the new velocity path
         # If random_ast_split, the bound is the range within which uniform random angles will be selected, otherwise the
