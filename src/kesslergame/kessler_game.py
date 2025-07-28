@@ -144,48 +144,157 @@ class KesslerGame:
         # The intersection of these two form the clamped bullet hitbox we're interested in, during the time
         # interval from when the bullet head first hits the edge, until the tail also leaves. This construction
         # is invalid before this time interval!
+
+        def time_until_exit(x: float, y: float, vx: float, vy: float) -> float:
+            """Returns the time when a point moving at (vx, vy) will fully exit the map."""
+            tx = inf
+            ty = inf
+
+            if vx > 0.0:
+                tx = (self.map_width - x) / vx
+            elif vx < 0.0:
+                tx = -x / vx
+
+            if vy > 0.0:
+                ty = (self.map_height - y) / vy
+            elif vy < 0.0:
+                ty = -y / vy
+
+            return min(tx, ty)
+
         for bul_idx, bullet in enumerate(bullets):
             for ast_idx, asteroid in enumerate(asteroids):
-                # TODO: Make it so offscreen bullets can't hit! Hitbox needs to clip at map edge!
+                # Center the asteroid position relative to the bullet, accounting for wrapping of asteroids.
                 if asteroid.x - bullet.x > 0.5 * self.map_width:
-                    ast_x_centered_around_bullet = asteroid.x - self.map_width
+                    ast_x_centered = asteroid.x - self.map_width
                 elif asteroid.x - bullet.x < -0.5 * self.map_width:
-                    ast_x_centered_around_bullet = asteroid.x + self.map_width
+                    ast_x_centered = asteroid.x + self.map_width
                 else:
-                    ast_x_centered_around_bullet = asteroid.x
+                    ast_x_centered = asteroid.x
 
                 if asteroid.y - bullet.y > 0.5 * self.map_height:
-                    ast_y_centered_around_bullet = asteroid.y - self.map_height
+                    ast_y_centered = asteroid.y - self.map_height
                 elif asteroid.y - bullet.y < -0.5 * self.map_height:
-                    ast_y_centered_around_bullet = asteroid.y + self.map_height
+                    ast_y_centered = asteroid.y + self.map_height
                 else:
-                    ast_y_centered_around_bullet = asteroid.y
-                
-                if circle_line_collision_continuous(
-                    bullet.x, bullet.y, bullet.x + bullet.tail_delta_x, bullet.y + bullet.tail_delta_y, bullet.vx, bullet.vy,
-                    ast_x_centered_around_bullet, ast_y_centered_around_bullet, asteroid.vx, asteroid.vy, asteroid.radius, self.delta_time
-                ):
-                    collision_start_time, _ = collision_time_interval(
-                        bullet.x, bullet.y,
-                        bullet.x + bullet.tail_delta_x, bullet.y + bullet.tail_delta_y,
+                    ast_y_centered = asteroid.y
+
+                # Compute virtual bullet path (fully unclamped, as if bullet passes through the map)
+                bullet_head_x = bullet.x
+                bullet_head_y = bullet.y
+                bullet_tail_x = bullet.x + bullet.tail_delta_x
+                bullet_tail_y = bullet.y + bullet.tail_delta_y
+
+                # Compute when head and tail leave the visible map
+                t_head_exit = time_until_exit(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy)
+                t_tail_exit = time_until_exit(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy)
+
+                # Determine valid time window for clamped bullet
+                t_clamp_start = t_head_exit
+                t_clamp_end = t_tail_exit
+                assert t_clamp_start <= t_clamp_end
+
+                if t_clamp_start > 0.0:
+                    # This means that the bullet hasn't begun clipping on the map border yet! This is the simplest case to handle.
+                    # Do the normal collision check
+                    if circle_line_collision_continuous(
+                        bullet_head_x, bullet_head_y,
+                        bullet_tail_x, bullet_tail_y,
                         bullet.vx, bullet.vy,
-                        ast_x_centered_around_bullet, ast_y_centered_around_bullet,
+                        ast_x_centered, ast_y_centered,
+                        asteroid.vx, asteroid.vy,
+                        asteroid.radius,
+                        self.delta_time
+                    ):
+                        collision_start_time, _ = collision_time_interval(
+                            bullet_head_x, bullet_head_y,
+                            bullet_tail_x, bullet_tail_y,
+                            bullet.vx, bullet.vy,
+                            ast_x_centered, ast_y_centered,
+                            asteroid.vx, asteroid.vy,
+                            asteroid.radius
+                        )
+                        if isnan(collision_start_time):
+                            continue
+                        collision_time = max(-self.delta_time, collision_start_time)
+                        assert -self.delta_time <= collision_time <= 0.0
+
+                        collision_event = CollisionEvent(collision_time, 0.0, bul_idx, ast_idx, CollisionType.BULLET_ASTEROID)
+                        i = len(self.collision_queue)
+                        while i > 0 and self.collision_queue[i - 1] > collision_event:
+                            i -= 1
+                        self.collision_queue.insert(i, collision_event)
+                else:
+                    # During the time interval we're checking, either the whole time or a part of the time,
+                    # the bullet is at least partially out of bounds and has to have its hitbox clipped at the edge
+                    
+                    # Virtual bullet 1: normal moving bullet
+                    hit1 = circle_line_collision_continuous(
+                        bullet_head_x, bullet_head_y,
+                        bullet_tail_x, bullet_tail_y,
+                        bullet.vx, bullet.vy,
+                        ast_x_centered, ast_y_centered,
+                        asteroid.vx, asteroid.vy,
+                        asteroid.radius,
+                        self.delta_time
+                    )
+                    if not hit1:
+                        continue
+                    t1_start, t1_end = collision_time_interval(
+                        bullet_head_x, bullet_head_y,
+                        bullet_tail_x, bullet_tail_y,
+                        bullet.vx, bullet.vy,
+                        ast_x_centered, ast_y_centered,
                         asteroid.vx, asteroid.vy,
                         asteroid.radius
                     )
-                    if isnan(collision_start_time):
-                        # This case should NEVER get hit since the circle_line_collision_continuous function
-                        # already found that there would be a collision. But just in case of numerical instability causing
-                        # these to return different results, this will prevent a crash
+                    if isnan(t1_start) or isnan(t1_end):
                         continue
-                    collision_time = max(-self.delta_time, collision_start_time)
-                    assert -self.delta_time <= collision_time <= 0.0
-                    # Inline insertion to keep collisions sorted by time
-                    collision_event = CollisionEvent(collision_time, 0.0, bul_idx, ast_idx, CollisionType.BULLET_ASTEROID)
-                    i = len(self.collision_queue)
-                    while i > 0 and self.collision_queue[i - 1] > collision_event:
-                        i -= 1
-                    self.collision_queue.insert(i, collision_event)
+
+                    # Virtual bullet 2: bullet head pinned at boundary, tail sticking into map, stationary!
+                    pinned_head_x = bullet_head_x + bullet.vx * t_clamp_start
+                    pinned_head_y = bullet_head_y + bullet.vy * t_clamp_start
+                    pinned_tail_x = bullet_tail_x + bullet.vx * t_clamp_start
+                    pinned_tail_y = bullet_tail_y + bullet.vy * t_clamp_start
+
+                    hit2 = circle_line_collision_continuous(
+                        pinned_head_x, pinned_head_y,
+                        pinned_tail_x, pinned_tail_y,
+                        0.0, 0.0,
+                        ast_x_centered, ast_y_centered,
+                        asteroid.vx, asteroid.vy,
+                        asteroid.radius,
+                        t_clamp_end - t_clamp_start
+                    )
+                    if not hit2:
+                        continue
+                    t2_start, t2_end = collision_time_interval(
+                        pinned_head_x, pinned_head_y,
+                        pinned_tail_x, pinned_tail_y,
+                        0.0, 0.0,
+                        ast_x_centered, ast_y_centered,
+                        asteroid.vx, asteroid.vy,
+                        asteroid.radius
+                    )
+                    if isnan(t2_start) or isnan(t2_end):
+                        continue
+
+                    # Adjust t2 times into global time frame
+                    t2_start += t_clamp_start
+                    t2_end += t_clamp_start
+
+                    # Take the intersection of the intervals
+                    t_start = max(t1_start, t2_start, -self.delta_time)
+                    t_end = min(t1_end, t2_end, 0.0)
+
+                    if t_start <= t_end:
+                        collision_time = t_start
+                        assert -self.delta_time <= collision_time <= 0.0
+                        collision_event = CollisionEvent(collision_time, 0.0, bul_idx, ast_idx, CollisionType.BULLET_ASTEROID)
+                        i = len(self.collision_queue)
+                        while i > 0 and self.collision_queue[i - 1] > collision_event:
+                            i -= 1
+                        self.collision_queue.insert(i, collision_event)
 
     def enqueue_mine_asteroid_collisions(self, mines: list[Mine], asteroids: list[Asteroid]) -> None:
         for mine_idx, mine in enumerate(mines):
