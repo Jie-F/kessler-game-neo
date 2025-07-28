@@ -196,6 +196,9 @@ class Ship:
 
     @property
     def respawn_time(self) -> float:
+        # This can go negative! This internally tracks when the ship got out of respawn,
+        # so it's important this keeps getting subtracted into the negatives.
+        # This, despite being a internal "private" variable, is accessed from an outside class
         return self._respawn_time
 
     @property

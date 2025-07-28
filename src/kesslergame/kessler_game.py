@@ -136,6 +136,14 @@ class KesslerGame:
 
     def enqueue_bullet_asteroid_collisions(self, bullets: list[Bullet], asteroids: list[Asteroid]) -> None:
         # Collect all potential bullet-asteroid collisions
+        # Since bullets do not wrap, we treat the bullet hitbox as being clamped at the map edge.
+        # The way to calculate the collision time interval is elegant. It considers two virtual bullets,
+        # the intersection of the two being the true bullet's position:
+        # 1. The bullet that passes right through without getting clamped
+        # 2. The bullet that is stationary, with its head right on the border, and the tail sticking into the map
+        # The intersection of these two form the clamped bullet hitbox we're interested in, during the time
+        # interval from when the bullet head first hits the edge, until the tail also leaves. This construction
+        # is invalid before this time interval!
         for bul_idx, bullet in enumerate(bullets):
             for ast_idx, asteroid in enumerate(asteroids):
                 # TODO: Make it so offscreen bullets can't hit! Hitbox needs to clip at map edge!
@@ -265,7 +273,7 @@ class KesslerGame:
                     ship2 = ships[ship2_idx]
                     if ship2.alive and not ship2.is_respawning:
                         # Check for collisions in time interval [t - delta_time, t]
-                        # TODO: Check for respawn invinc end to determine interval start
+                        # But clamp the start time to when both ships are out of respawn
                         if ship2.x - ship1.x > 0.5 * self.map_width:
                             ship2_x_centered_around_ship1 = ship2.x - self.map_width
                         elif ship2.x - ship1.x < -0.5 * self.map_width:
