@@ -569,7 +569,7 @@ class KesslerGame:
             # Because the game_state stores a mutable reference to the internal states of the ship/asteroid/bullet/mine,
             # these updates automatically reflect in the game_state
             for ship in liveships:
-                new_bullet, new_mine = ship.update(self.delta_time, scenario.map_size)
+                new_bullet, new_mine = ship.update(self.delta_time, scenario.map_size, True)
                 if new_bullet is not None:
                     bullets.append(new_bullet)
                     if not self.competition_safe_mode:
@@ -691,15 +691,17 @@ class KesslerGame:
                         assert ship.alive
                         if ship.is_respawning:
                             continue
-
-                        mine.update(dt)
-                        ship.update(dt, scenario.map_size)
+                        
+                        assert dt == 0.0
+                        #if dt != 0.0:
+                        #    mine.update(dt)
+                        #    ship.update(dt, scenario.map_size, False)
 
                         ship.destruct(map_size=scenario.map_size)
                         if not ship.alive:
                             ships_to_cull.append(ship_idx)
-                        else:
-                            ship.update(-dt, scenario.map_size)
+                        #elif dt != 0.0:
+                        #    ship.update(-dt, scenario.map_size, False)
                     case CollisionType.SHIP_ASTEROID:
                         ship_idx = event.object_a_idx
                         ast_idx = event.object_b_idx
@@ -713,7 +715,7 @@ class KesslerGame:
                             continue
                         asteroid = asteroids[ast_idx]
                         # Rewind
-                        ship.update(dt, scenario.map_size)
+                        ship.update(dt, scenario.map_size, False)
                         asteroid.update(dt, scenario.map_size)
                         # Handle collision
                         ship.asteroids_hit += 1
@@ -733,7 +735,7 @@ class KesslerGame:
                         self.enqueue_ship_asteroid_collisions(ships, new_asteroids)
 
                         if ship.alive:
-                            ship.update(-dt, scenario.map_size)
+                            ship.update(-dt, scenario.map_size, False)
                         else:
                             ships_to_cull.append(ship_idx)
                         asteroids_to_cull.append(ast_idx)

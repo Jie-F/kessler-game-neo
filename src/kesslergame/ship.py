@@ -228,10 +228,13 @@ class Ship:
     def shoot(self) -> None:
         self.fire = True
 
-    def update(self, delta_time: float, map_size: tuple[int, int]) -> tuple[Bullet | None, Mine | None]:
+    def update(self, delta_time: float, map_size: tuple[int, int], allow_shooting: bool) -> tuple[Bullet | None, Mine | None]:
         """
         Update our position and other particulars.
         """
+
+        new_bullet: Bullet | None = None
+        new_mine: Mine | None = None
 
         # Bounds check the thrust
         if self.thrust < self.thrust_range[0] or self.thrust > self.thrust_range[1]:
@@ -250,8 +253,9 @@ class Ship:
         # the ship undergoes INFINITELY many periods of integration, because drag will cause it to infinitely oscillate
         # around 0 speed. But of course we will just treat this as having zero net acceleration, and the ship stays at 0 speed.
         # This is a special case we have to detect, so we don't oscillate the ship, or cause it to bypass the zero boundary.
-
-        if delta_time >= 0.0:
+        if delta_time == 0.0:
+            return
+        elif delta_time > 0.0:
             # Store speed and heading BEFORE acceleration/thrust for integration
             initial_speed = self.speed
             theta0 = radians(self.heading)  # convert to radians
@@ -316,11 +320,10 @@ class Ship:
             else:
                 # Case 2: acceleration would exceed max speed
                 max_speed = copysign(self.max_speed, initial_speed + net_acc * delta_time)
-                if net_acc != 0.0:
+                if net_acc != 0.0 and delta_time != 0.0:
                     to_max = (max_speed - initial_speed) / net_acc
                     assert to_max >= 0.0
-                    # If we'll achieve and exceed max speed within this frame,
-                    # or 
+                    # If we'll achieve and exceed max speed within this frame
                     if 0.0 <= to_max < delta_time:
                         assert ((net_acc > 0.0 and initial_speed <= max_speed) or (net_acc < 0.0 and initial_speed >= max_speed))
                         # The starting point for the second integration phase is starting at max speed,
@@ -391,8 +394,9 @@ class Ship:
 
             # Handle firing and mining
             # This is done after the ship has moved, so the projectiles are from the current ship position and not the last
-            new_bullet = self.fire_bullet(map_size) if self.fire else None
-            new_mine = self.deploy_mine() if self.drop_mine else None
+            if allow_shooting:
+                new_bullet = self.fire_bullet(map_size) if self.fire else None
+                new_mine = self.deploy_mine() if self.drop_mine else None
         else:
             # This is a negative-time update, which rolls-back a portion of the frame we last updated forward.
             # We have recorded how we did the forward integration, so we use that history to do the backward integration.
@@ -425,8 +429,6 @@ class Ship:
             self.integration_initial_states.clear() # Clear the state so that we don't attempt to do a second rollback which would be invalid
             
             # We never shoot/drop mine when doing rollback
-            new_bullet = None
-            new_mine = None
 
         # Decrement respawn timer unconditionally, and allow it to go negative
         # This helps the continuous simulation know when the respawn time wore off mid-frame

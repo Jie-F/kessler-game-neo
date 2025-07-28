@@ -53,3 +53,21 @@ class Score:
         self.sim_time = sim_time
         self.stop_reason = stop_reason
         self.final_controllers = [ship.controller for ship in ships]
+
+    def __repr__(self) -> str:
+        team_summaries = []
+        for team in self.teams:
+            summary = (
+                f"Team {team.team_id} ({team.team_name}): "
+                f"Asteroids Hit={team.asteroids_hit}, Bullets Hit={team.bullets_hit}, "
+                f"Shots Fired={team.shots_fired}, Bullets Remaining={team.bullets_remaining}, "
+                f"Mines Remaining={team.mines_remaining}, Deaths={team.deaths}, "
+                f"Lives Remaining={team.lives_remaining}"
+            )
+            team_summaries.append(summary)
+        
+        stop = self.stop_reason.name if self.stop_reason else "None"
+        return (
+            f"<Score(sim_time={self.sim_time:.2f}, stop_reason={stop},\n"
+            f" Teams:\n  " + "\n  ".join(team_summaries) + ")>"
+        )
