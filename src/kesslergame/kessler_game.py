@@ -438,7 +438,8 @@ class KesslerGame:
         sim_time: float = 0.0
         sim_frame: int = 0
         time_limit = scenario.time_limit if scenario.time_limit else self.time_limit
-        self.map_width, self.map_height = scenario.map_size
+        self.map_width = float(scenario.map_size[0])
+        self.map_height = float(scenario.map_size[1])
 
         # Assign controllers to each ship
         assert len(controllers) >= len(ships), f"There are not enough controllers ({len(controllers)}) to assign to the {len(ships)} ships!"
@@ -821,8 +822,8 @@ class KesslerGame:
                     prev = time.perf_counter()
 
             # --- CHECK STOP CONDITIONS --------------------------------------------------------------------------------
-            sim_time += self.delta_time
             sim_frame += 1
+            sim_time = sim_frame / self.frequency # Derive time from frames, to avoid accumulated floating point errors
             if not self.competition_safe_mode:
                 assert game_state is not None
                 game_state.time = sim_time
