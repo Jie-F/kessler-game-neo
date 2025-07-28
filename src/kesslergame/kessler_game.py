@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 
-from math import inf, nan, isfinite, isnan
+from math import inf, nan, isfinite, isnan, ceil
 from typing import Any, TypedDict, cast
 from enum import Enum, IntEnum
 
@@ -855,7 +855,7 @@ class KesslerGame:
                     and scenario.stop_if_no_ammo:
                 # All live ships are out of bullets and no bullets are on map
                 stop_reason = StopReason.out_of_bullets
-            elif sim_time > time_limit:
+            elif sim_frame >= ceil(time_limit * self.frequency):
                 # Out of time
                 stop_reason = StopReason.time_expired
 

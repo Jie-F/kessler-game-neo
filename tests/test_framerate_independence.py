@@ -2,7 +2,7 @@ import random
 from kesslergame import Scenario, KesslerGame, GraphicsType, KesslerController
 
 TRIALS = 1
-GRAPHICS = False
+GRAPHICS = True
 COMPETITION_SAFE_MODE = True
 WIDTH = 1000
 HEIGHT = 800
@@ -57,10 +57,10 @@ def random_ship_states(number: int) -> list[dict]:
     for i in range(number):
         state = {"position": (random.uniform(0.0, WIDTH), random.uniform(0.0, HEIGHT)),
                  "angle": random.uniform(0.0, 360.0),
-                 "lives": random.randint(1, 30),
+                 "lives": random.randint(30, 1000),
                  "team": random.randint(1, 2),
                  #"bullets_remaining": random.randint(1, 5000),
-                 "mines_remaining": random.randint(0, 30)}
+                 "mines_remaining": random.randint(10, 100)}
         ship_states.append(state)
     return ship_states
 
@@ -76,6 +76,7 @@ def randomly_initialized_controllers(number: int) -> list[FramerateIndependentCo
 
 for i in range(TRIALS):
     seed = random.randint(0, 1_000_000)
+    seed = 56761
     random.seed(seed)
     framerate1 = random.randint(2, 60)
     framerate2 = framerate1
@@ -84,17 +85,17 @@ for i in range(TRIALS):
     print(f"Trial={i}, seed={seed}, framerates: {framerate1} and {framerate2}")
     num_ships = random.randint(1, 1)
     scenario = Scenario(name=f"Trial {i}",
-                        num_asteroids=random.randint(10, 20),
+                        num_asteroids=random.randint(1, 10),
                         ship_states=random_ship_states(num_ships),
                         map_size=(WIDTH, HEIGHT),
                         seed=seed,
                         ammo_limit_multiplier=random.uniform(0.0, 2.0),
-                        time_limit=random.uniform(30.0, 1000.0))
+                        time_limit=float(random.randint(5, 15)))
     controllers = randomly_initialized_controllers(num_ships)
 
     game_settings_1 = {'perf_tracker': True,
                     'graphics_type': GraphicsType.NoGraphics if not GRAPHICS else GraphicsType.Tkinter,
-                    'realtime_multiplier': 0.0,
+                    'realtime_multiplier': 1.0,
                     'graphics_obj': None,
                     'frequency': framerate1,
                     "competition_safe_mode": COMPETITION_SAFE_MODE,
@@ -106,7 +107,7 @@ for i in range(TRIALS):
 
     game_settings_2 = {'perf_tracker': True,
                     'graphics_type': GraphicsType.NoGraphics if not GRAPHICS else GraphicsType.Tkinter,
-                    'realtime_multiplier': 0.0,
+                    'realtime_multiplier': 1.0,
                     'graphics_obj': None,
                     'frequency': framerate2,
                     "competition_safe_mode": COMPETITION_SAFE_MODE,
