@@ -228,7 +228,7 @@ class Ship:
     def shoot(self) -> None:
         self.fire = True
 
-    def update(self, delta_time: float = 1 / 30, map_size: tuple[int, int] = (1000, 800)) -> tuple[Bullet | None, Mine | None]:
+    def update(self, delta_time: float, map_size: tuple[int, int]) -> tuple[Bullet | None, Mine | None]:
         """
         Update our position and other particulars.
         """
@@ -391,7 +391,7 @@ class Ship:
 
             # Handle firing and mining
             # This is done after the ship has moved, so the projectiles are from the current ship position and not the last
-            new_bullet = self.fire_bullet() if self.fire else None
+            new_bullet = self.fire_bullet(map_size) if self.fire else None
             new_mine = self.deploy_mine() if self.drop_mine else None
         else:
             # This is a negative-time update, which rolls-back a portion of the frame we last updated forward.
@@ -490,7 +490,7 @@ class Ship:
         else:
             return None
 
-    def fire_bullet(self) -> Bullet | None:
+    def fire_bullet(self, map_size: tuple[int, int]) -> Bullet | None:
         # if self.bullets_remaining != 0 and not self._fire_limiter:
         if self.can_fire:
             # Remove respawn invincibility. Trigger fire limiter
@@ -505,8 +505,11 @@ class Ship:
 
             # Return the bullet object that was fired
             rad_heading = radians(self.heading)
-            bullet_x = self.x + self.radius * cos(rad_heading)
-            bullet_y = self.y + self.radius * sin(rad_heading)
+            # We wrap the start point of the bullet, since the ship could be peeking through a boundary
+            # and the bullet should end up on the other side.
+            # From here on out, the bullet does NOT get wrapped past map bounds!
+            bullet_x = (self.x + self.radius * cos(rad_heading)) % map_size[0]
+            bullet_y = (self.y + self.radius * sin(rad_heading)) % map_size[1]
             return Bullet((bullet_x, bullet_y), self.heading, owner=self)
 
         # Return nothing if we can't fire a bullet right now

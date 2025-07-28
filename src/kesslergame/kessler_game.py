@@ -626,7 +626,7 @@ class KesslerGame:
                         asteroid = asteroids[ast_idx]
                         # Rewind
                         bullet.update(dt)
-                        asteroid.update(dt)
+                        asteroid.update(dt, scenario.map_size)
                         # Handle collision
                         bullets_to_cull.append(bul_idx)
                         asteroids_to_cull.append(ast_idx)
@@ -638,7 +638,7 @@ class KesslerGame:
                         bullet.destruct()
                         for a in new_asteroids:
                             # This is a forward update, from the time of collision to the end of the frame!
-                            a.update(-dt)
+                            a.update(-dt, scenario.map_size)
                         asteroids.extend(new_asteroids)
                         # Take care of possible collision events from these children asteroids this frame
                         self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids)
@@ -688,13 +688,13 @@ class KesslerGame:
                             continue
 
                         mine.update(dt)
-                        ship.update(dt)
+                        ship.update(dt, scenario.map_size)
 
                         ship.destruct(map_size=scenario.map_size)
                         if not ship.alive:
                             ships_to_cull.append(ship_idx)
                         else:
-                            ship.update(-dt)
+                            ship.update(-dt, scenario.map_size)
                     case CollisionType.SHIP_ASTEROID:
                         ship_idx = event.object_a_idx
                         ast_idx = event.object_b_idx
@@ -708,8 +708,8 @@ class KesslerGame:
                             continue
                         asteroid = asteroids[ast_idx]
                         # Rewind
-                        ship.update(dt)
-                        asteroid.update(dt)
+                        ship.update(dt, scenario.map_size)
+                        asteroid.update(dt, scenario.map_size)
                         # Handle collision
                         ship.asteroids_hit += 1
 
@@ -718,7 +718,7 @@ class KesslerGame:
 
                         for a in new_asteroids:
                             # This is a forward update, from the time of collision to the end of the frame!
-                            a.update(-dt)
+                            a.update(-dt, scenario.map_size)
                         asteroids.extend(new_asteroids)
                         
                         self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids)
@@ -726,7 +726,7 @@ class KesslerGame:
                         self.enqueue_ship_asteroid_collisions(ships, new_asteroids)
 
                         if ship.alive:
-                            ship.update(-dt)
+                            ship.update(-dt, scenario.map_size)
                         else:
                             ships_to_cull.append(ship_idx)
                         asteroids_to_cull.append(ast_idx)
@@ -744,23 +744,24 @@ class KesslerGame:
                         if ship1.is_respawning or ship2.is_respawning:
                             continue
                         # Rollback
-                        ship1.update(dt)
-                        ship2.update(dt)
+                        ship1.update(dt, scenario.map_size)
+                        ship2.update(dt, scenario.map_size)
                         # Handle collision
                         ship1.destruct(map_size=scenario.map_size)
                         ship2.destruct(map_size=scenario.map_size)
                         # Roll forward to the end of the frame again if alive
                         if ship1.alive:
-                            ship1.update(-dt)
+                            ship1.update(-dt, scenario.map_size)
                         else:
                             ships_to_cull.append(ship1_idx)
                         if ship2.alive:
-                            ship2.update(-dt)
+                            ship2.update(-dt, scenario.map_size)
                         else:
                             ships_to_cull.append(ship2_idx)
 
             # Now that all collisions are handled and resolved, the final step is to cull the removed objects
             # TODO: Sort as we go instead of at the end here. Probably faster.
+            assert len(asteroids_to_cull) == len(set(asteroids_to_cull))
             for ast_idx in sorted(asteroids_to_cull, reverse=True):
                 asteroids[ast_idx] = asteroids[-1]
                 asteroids.pop()
@@ -768,6 +769,7 @@ class KesslerGame:
                     assert game_state is not None
                     game_state.remove_asteroid(ast_idx)
             
+            assert len(bullets_to_cull) == len(set(bullets_to_cull))
             for bul_idx in sorted(bullets_to_cull, reverse=True):
                 bullets[bul_idx] = bullets[-1]
                 bullets.pop()

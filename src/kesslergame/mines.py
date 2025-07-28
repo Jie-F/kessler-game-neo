@@ -35,7 +35,7 @@ class Mine:
             self.countdown_timer
         ]
 
-    def update(self, delta_time: float = 1 / 30) -> None:
+    def update(self, delta_time: float) -> None:
         self.countdown_timer -= delta_time
         # Sync the mutable state
         self._state[4] = self.countdown_timer

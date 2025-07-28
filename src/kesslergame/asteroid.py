@@ -92,7 +92,7 @@ class Asteroid:
     def velocity(self) -> tuple[float, float]:
         return (self.vx, self.vy)
 
-    def update(self, delta_time: float = 1 / 30, map_size: tuple[int, int] = (1000, 800)) -> None:
+    def update(self, delta_time: float, map_size: tuple[int, int]) -> None:
         """ Move the asteroid based on velocity"""
         self.x = (self.x + self.vx * delta_time) % map_size[0]
         self.y = (self.y + self.vy * delta_time) % map_size[1]
