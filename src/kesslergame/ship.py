@@ -18,7 +18,7 @@ class Ship:
         'controller', 'thrust', 'turn_rate', 'id', 'speed', 'x', 'y',
         'vx', 'vy', 'heading', 'lives', 'deaths', 'team', 'team_name',
         'fire', 'drop_mine', 'thrust_range', 'turn_rate_range', 'max_speed',
-        'drag', 'radius', 'mass', '_respawning', 'was_respawning_until_this_frame', '_respawn_time',
+        'drag', 'radius', 'mass', '_respawning', '_respawn_time',
         '_fire_limiter', '_fire_time', '_mine_limiter', '_mine_deploy_time', 'mines_remaining',
         'bullets_remaining', 'bullets_shot', 'mines_dropped', 'bullets_hit',
         'mines_hit', 'asteroids_hit', 'custom_sprite_path', 'integration_initial_states',
@@ -81,8 +81,6 @@ class Ship:
         self._fire_time: float = 1.0 / 10.0 # seconds
         self._mine_limiter: float = 0.0 # second
         self._mine_deploy_time: float = 1.0 # seconds
-        # Track whether the respawn invulnerability came off on just this frame
-        self.was_respawning_until_this_frame = False
 
         # Track bullet/mine statistics
         self.mines_remaining: int = mines_remaining
@@ -246,156 +244,184 @@ class Ship:
         # around 0 speed. But of course we will just treat this as having zero net acceleration, and the ship stays at 0 speed.
         # This is a special case we have to detect, so we don't oscillate the ship, or cause it to bypass the zero boundary.
 
-        # Store speed and heading BEFORE acceleration/thrust for integration
-        initial_speed = self.speed
-        theta0 = radians(self.heading)  # convert to radians
-        self.integration_initial_states.clear()
+        if delta_time >= 0.0:
+            # Store speed and heading BEFORE acceleration/thrust for integration
+            initial_speed = self.speed
+            theta0 = radians(self.heading)  # convert to radians
+            self.integration_initial_states.clear()
 
-        is_moving: bool = abs(initial_speed) > 1e-12
+            is_moving: bool = abs(initial_speed) > 1e-12
 
-        # Get direction of motion for drag
-        if is_moving:
-            motion_sign = copysign(1.0, initial_speed)
+            # Get direction of motion for drag
+            if is_moving:
+                motion_sign = copysign(1.0, initial_speed)
+            else:
+                motion_sign = copysign(1.0, self.thrust) if abs(self.thrust) > 1e-12 else 0.0
+
+            # Drag will always oppose the direction of motion
+            # If the ship is not moving, then drag will be zero.
+            drag_acc = -self.drag * motion_sign
+
+            # NOTE: When testing this, there was identical behavior of framerates down to 2 FPS, but 1 FPS gave different behavior.
+            # Took a while to realize the issue is that at a delta_time of 1 second, the ship can both cross the 0 boundary, AND accelerate to hit the speed cap in the same frame!
+            # This does NOT handle that case robustly. It doesn't check for that. Please do not run the game at lower than 2 FPS!
+
+            # Combine thrust and drag into one net acceleration
+            # This constant acceleration will apply for the entire duration of this frame, unless we hit the speed cap or hit 0
+            # If we hit the speed cap, we do 0 acceleration after that time for the rest of the frame
+            # If we hit speed 0, the direction of drag will change right after. We consider two cases:
+            # 1. Net acc doesn't change sign change, so the ship will continue accelerating in the same direction, just with 2*drag less acceleration
+            #    To handle, we split up the integration into period 1 with thrust + drag, and period 2 with thrust - drag, where these two quantities have the same sign
+            # 2. Net acc changes sign, meaning the ship will infinitely oscillate across the 0 boundary every infinitesimal timestep forward.
+            #    To handle this, we split up the integration into period 1 with net_acc, and period 2 with 0 acceleration to simulate the infinite oscillations
+            net_acc = self.thrust + drag_acc  # m/s²
+            
+            # We perform analytic position integration, which is framerate independent
+            # The shape that the ship traces out with a constant turn rate and thrust over the previous frame is a type of spiral
+            # This spiral can be analytically integrated! Yay!
+
+            x0: float = self.x
+            y0: float = self.y
+            omega = radians(self.turn_rate)
+
+            # Determine if we need to break the frame into two parts
+            t1: float | None = None
+            v1: float = 0.0
+            accel_phase2 = 0.0  # default to coasting at max speed, or stopped in second phase
+
+            # Case 1: drag will bring us to a stop
+            if is_moving and net_acc * initial_speed < 0.0: # Net accel is opposite sign from direction of movement
+                assert net_acc != 0.0
+                t_to_stop = -initial_speed / net_acc # This is a positive number, and net_acc is nonzero
+                assert t_to_stop >= 0.0
+                if 0.0 <= t_to_stop < delta_time:
+                    t1 = t_to_stop
+                    v1 = 0.0  # Fully stopped
+                    # Drag now goes the other way, since our speed has crossed the zero boundary and drag will oppose our new speed
+                    # if sign(self.thrust + drag_acc) == sign(self.thrust - drag_acc)
+                    # This statement is logically equivalent to the faster-to-evaluate:
+                    if abs(drag_acc) <= abs(self.thrust):
+                        # The thrust is enough to carry us through the "zero valley" without falling back into it and infinitely oscillating
+                        accel_phase2 = self.thrust - drag_acc
+                    else:
+                        # Thrust too weak. We fall into zero valley and infinitely oscillate!
+                        accel_phase2 = 0.0 # Infinite oscillations around 0. Essentially simulate that with 0 acceleration to bypass oscillations.
+            else:
+                # Case 2: acceleration would exceed max speed
+                max_speed = copysign(self.max_speed, initial_speed + net_acc * delta_time)
+                if net_acc != 0.0:
+                    to_max = (max_speed - initial_speed) / net_acc
+                    assert to_max >= 0.0
+                    # If we'll achieve and exceed max speed within this frame,
+                    # or 
+                    if 0.0 <= to_max < delta_time:
+                        assert ((net_acc > 0.0 and initial_speed <= max_speed) or (net_acc < 0.0 and initial_speed >= max_speed))
+                        # The starting point for the second integration phase is starting at max speed,
+                        # at the time when we will achieve max speed from the first phase
+                        t1 = to_max
+                        v1 = max_speed
+                        accel_phase2 = 0.0
+
+            if t1 is None or abs(t1 - delta_time) < 1e-12:
+                # No exceeding limit within this step, use normal single-phase analytic integration
+                dx, dy = analytic_ship_movement_integration(initial_speed, net_acc, theta0, omega, delta_time)
+                self.x = (x0 + dx) % map_size[0]
+                self.y = (y0 + dy) % map_size[1]
+                self.speed = initial_speed + net_acc * delta_time
+                # Append the end state, so we can reverse-integrate later by plugging in a negative time
+                self.integration_initial_states.append((0.0, -delta_time, self.speed, net_acc, theta0 + omega * delta_time, omega, -dx, -dy))
+            elif abs(t1) < 1e-12:
+                assert v1 is not None
+                # The first period is just zero length, so just skip it
+                # This happens a lot when the ship is gunning it at full throttle, so handle it separately
+                # Constant speed or stopped in this second phase, no acceleration
+                dx, dy = analytic_ship_movement_integration(v1, accel_phase2, theta0, omega, delta_time)
+
+                self.x = (x0 + dx) % map_size[0]
+                self.y = (y0 + dy) % map_size[1]
+                self.speed = v1  # Either stopped or clamped
+
+                # Append the end state, so we can reverse-integrate later by plugging in a negative time
+                self.integration_initial_states.append((0.0, -delta_time, self.speed, accel_phase2, theta0 + omega * delta_time, omega, -dx, -dy))
+            else:
+                assert v1 is not None
+                # 2-phase integration splitting frame into two periods. 1: accelerate to speed limit or zero, 2: coasting or stationary
+                # Phase 1: accelerating from v0 to v1 over t1
+                dx1, dy1 = analytic_ship_movement_integration(initial_speed, net_acc, theta0, omega, t1)
+                theta1 = theta0 + omega * t1
+                self.speed = v1  # Either stopped or clamped
+
+                # Phase 2: constant speed or stopped, no acceleration
+                t2 = delta_time - t1
+                dx2, dy2 = analytic_ship_movement_integration(v1, accel_phase2, theta1, omega, t2)
+
+                self.x = (x0 + dx1 + dx2) % map_size[0]
+                self.y = (y0 + dy1 + dy2) % map_size[1]
+                self.speed += accel_phase2 * t2
+
+                # Append the end state, so we can reverse-integrate later by plugging in a negative time
+                self.integration_initial_states.append((0.0, -t2, self.speed, accel_phase2, theta1 + omega * t2, omega, -dx2, -dy2))
+                # And append the midpoint of the integration
+                self.integration_initial_states.append((-t2, -delta_time, self.speed, net_acc, theta1, omega, -dx1, -dy1))
+
+            # Clamp speed after acceleration (This is only needed in case of floating point error, but is otherwise unnecessary)
+            if abs(self.speed) > self.max_speed:
+                self.speed = copysign(self.max_speed, self.speed)
+            elif abs(self.speed) <= 1e-12:
+                # Let's be nice and just make it 0.0. Because I just tripped myself up with a ship_state.speed == 0.0 comparison when testing XD
+                self.speed = 0.0
+
+            # Update the angle based on turning rate
+            self.heading += self.turn_rate * delta_time
+
+            # Keep the angle within [0, 360.0)
+            self.heading %= 360.0
+
+            # Use speed magnitude to get velocity vector
+            rad_heading = radians(self.heading)
+            self.vx = cos(rad_heading) * self.speed
+            self.vy = sin(rad_heading) * self.speed
+
+            # Handle firing and mining
+            # This is done after the ship has moved, so the projectiles are from the current ship position and not the last
+            new_bullet = self.fire_bullet() if self.fire else None
+            new_mine = self.deploy_mine() if self.drop_mine else None
         else:
-            motion_sign = copysign(1.0, self.thrust) if abs(self.thrust) > 1e-12 else 0.0
+            # This is a negative-time update, which rolls-back a portion of the frame we last updated forward.
+            # We have recorded how we did the forward integration, so we use that history to do the backward integration.
+            assert self.integration_initial_states, "Trying to rollback without a preceding forward update!"
+            # Accumulate the pieces of the integral
+            dx_sum = 0.0
+            dy_sum = 0.0
+            # To get the position of the ship in the past, we integrate its position backward
+            # using the integration intervals we stored in the ship state when it was integrating it forward in time.
+            # If the integral is split into multiple time segments, add them all up going backward in time,
+            # until we hit delta_time, the end point of the integration
 
-        # Drag will always oppose the direction of motion
-        # If the ship is not moving, then drag will be zero.
-        drag_acc = -self.drag * motion_sign
-
-        # NOTE: When testing this, there was identical behavior of framerates down to 2 FPS, but 1 FPS gave different behavior.
-        # Took a while to realize the issue is that at a delta_time of 1 second, the ship can both cross the 0 boundary, AND accelerate to hit the speed cap in the same frame!
-        # This does NOT handle that case robustly. It doesn't check for that. Please do not run the game at lower than 2 FPS!
-
-        # Combine thrust and drag into one net acceleration
-        # This constant acceleration will apply for the entire duration of this frame, unless we hit the speed cap or hit 0
-        # If we hit the speed cap, we do 0 acceleration after that time for the rest of the frame
-        # If we hit speed 0, the direction of drag will change right after. We consider two cases:
-        # 1. Net acc doesn't change sign change, so the ship will continue accelerating in the same direction, just with 2*drag less acceleration
-        #    To handle, we split up the integration into period 1 with thrust + drag, and period 2 with thrust - drag, where these two quantities have the same sign
-        # 2. Net acc changes sign, meaning the ship will infinitely oscillate across the 0 boundary every infinitesimal timestep forward.
-        #    To handle this, we split up the integration into period 1 with net_acc, and period 2 with 0 acceleration to simulate the infinite oscillations
-        net_acc = self.thrust + drag_acc  # m/s²
-        
-        # We perform analytic position integration, which is framerate independent
-        # The shape that the ship traces out with a constant turn rate and thrust over the previous frame is a type of spiral
-        # This spiral can be analytically integrated! Yay!
-
-        x0: float = self.x
-        y0: float = self.y
-        omega = radians(self.turn_rate)
-
-        # Determine if we need to break the frame into two parts
-        t1: float | None = None
-        v1: float = 0.0
-        accel_phase2 = 0.0  # default to coasting at max speed, or stopped in second phase
-
-        # Case 1: drag will bring us to a stop
-        if is_moving and net_acc * initial_speed < 0.0: # Net accel is opposite sign from direction of movement
-            assert net_acc != 0.0
-            t_to_stop = -initial_speed / net_acc # This is a positive number, and net_acc is nonzero
-            assert t_to_stop >= 0.0
-            if 0.0 <= t_to_stop < delta_time:
-                t1 = t_to_stop
-                v1 = 0.0  # Fully stopped
-                # Drag now goes the other way, since our speed has crossed the zero boundary and drag will oppose our new speed
-                # if sign(self.thrust + drag_acc) == sign(self.thrust - drag_acc)
-                # This statement is logically equivalent to the faster-to-evaluate:
-                if abs(drag_acc) <= abs(self.thrust):
-                    # The thrust is enough to carry us through the "zero valley" without falling back into it and infinitely oscillating
-                    accel_phase2 = self.thrust - drag_acc
+            # Keep in mind that the start_t and end_t are reverse chronological! So it starts in the future, and ends in the past!
+            for ship_initial_state in self.integration_initial_states:
+                start_t, end_t, v0, a, theta0, omega, dx, dy = ship_initial_state
+                assert end_t - start_t <= 0.0
+                if end_t < delta_time <= start_t:
+                    # We need to include this interval since t lies in the middle of it
+                    dx, dy = analytic_ship_movement_integration(v0, a, theta0, omega, delta_time - start_t)
+                    dx_sum += dx
+                    dy_sum += dy
+                    break # Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
                 else:
-                    # Thrust too weak. We fall into zero valley and infinitely oscillate!
-                    accel_phase2 = 0.0 # Infinite oscillations around 0. Essentially simulate that with 0 acceleration to bypass oscillations.
-        else:
-            # Case 2: acceleration would exceed max speed
-            max_speed = copysign(self.max_speed, initial_speed + net_acc * delta_time)
-            if net_acc != 0.0:
-                to_max = (max_speed - initial_speed) / net_acc
-                assert to_max >= 0.0
-                # If we'll achieve and exceed max speed within this frame,
-                # or 
-                if 0.0 <= to_max < delta_time:
-                    assert ((net_acc > 0.0 and initial_speed <= max_speed) or (net_acc < 0.0 and initial_speed >= max_speed))
-                    # The starting point for the second integration phase is starting at max speed,
-                    # at the time when we will achieve max speed from the first phase
-                    t1 = to_max
-                    v1 = max_speed
-                    accel_phase2 = 0.0
-
-        if t1 is None or abs(t1 - delta_time) < 1e-12:
-            # No exceeding limit within this step, use normal single-phase analytic integration
-            dx, dy = analytic_ship_movement_integration(initial_speed, net_acc, theta0, omega, delta_time)
-            self.x = (x0 + dx) % map_size[0]
-            self.y = (y0 + dy) % map_size[1]
-            self.speed = initial_speed + net_acc * delta_time
-            # Append the end state, so we can reverse-integrate later by plugging in a negative time
-            self.integration_initial_states.append((0.0, -delta_time, self.speed, net_acc, theta0 + omega * delta_time, omega, -dx, -dy))
-        elif abs(t1) < 1e-12:
-            assert v1 is not None
-            # The first period is just zero length, so just skip it
-            # This happens a lot when the ship is gunning it at full throttle, so handle it separately
-            # Constant speed or stopped in this second phase, no acceleration
-            dx, dy = analytic_ship_movement_integration(v1, accel_phase2, theta0, omega, delta_time)
-
-            self.x = (x0 + dx) % map_size[0]
-            self.y = (y0 + dy) % map_size[1]
-            self.speed = v1  # Either stopped or clamped
-
-            # Append the end state, so we can reverse-integrate later by plugging in a negative time
-            self.integration_initial_states.append((0.0, -delta_time, self.speed, accel_phase2, theta0 + omega * delta_time, omega, -dx, -dy))
-        else:
-            assert v1 is not None
-            # 2-phase integration splitting frame into two periods. 1: accelerate to speed limit or zero, 2: coasting or stationary
-            # Phase 1: accelerating from v0 to v1 over t1
-            dx1, dy1 = analytic_ship_movement_integration(initial_speed, net_acc, theta0, omega, t1)
-            theta1 = theta0 + omega * t1
-            self.speed = v1  # Either stopped or clamped
-
-            # Phase 2: constant speed or stopped, no acceleration
-            t2 = delta_time - t1
-            dx2, dy2 = analytic_ship_movement_integration(v1, accel_phase2, theta1, omega, t2)
-
-            self.x = (x0 + dx1 + dx2) % map_size[0]
-            self.y = (y0 + dy1 + dy2) % map_size[1]
-            self.speed += accel_phase2 * t2
-
-            # Append the end state, so we can reverse-integrate later by plugging in a negative time
-            self.integration_initial_states.append((0.0, -t2, self.speed, accel_phase2, theta1 + omega * t2, omega, -dx2, -dy2))
-            # And append the midpoint of the integration
-            self.integration_initial_states.append((-t2, -delta_time, self.speed, net_acc, theta1, omega, -dx1, -dy1))
-
-        # Clamp speed after acceleration (This is only needed in case of floating point error, but is otherwise unnecessary)
-        if abs(self.speed) > self.max_speed:
-            self.speed = copysign(self.max_speed, self.speed)
-        elif abs(self.speed) <= 1e-12:
-            # Let's be nice and just make it 0.0. Because I just tripped myself up with a ship_state.speed == 0.0 comparison when testing XD
-            self.speed = 0.0
-
-        # Update the angle based on turning rate
-        self.heading += self.turn_rate * delta_time
-
-        # Keep the angle within [0, 360.0)
-        self.heading %= 360.0
-
-        # Use speed magnitude to get velocity vector
-        rad_heading = radians(self.heading)
-        self.vx = cos(rad_heading) * self.speed
-        self.vy = sin(rad_heading) * self.speed
-
-        # Handle firing and mining
-        # This is done after the ship has moved, so the projectiles are from the current ship position and not the last
-        new_bullet = self.fire_bullet() if self.fire else None
-        new_mine = self.deploy_mine() if self.drop_mine else None
+                    # This interval is fully included within t. Add the full integral amount
+                    assert delta_time <= end_t
+                    dx_sum += dx
+                    dy_sum += dy
+            sx = self.x + dx_sum
+            sy = self.y + dy_sum
+            self.integration_initial_states.clear() # Clear the state so that we don't attempt to do a second rollback which would be invalid
 
         # Decrement respawn timer (if necessary)
-        self.was_respawning_until_this_frame = False
         if self._respawning != 0.0:
             self._respawning -= delta_time
             if self._respawning <= 1e-12:
                 self._respawning = 0.0
-            if self._respawning == 0.0:
-                self.was_respawning_until_this_frame = True
 
         # Decrement fire limit timer (if necessary)
         if self._fire_limiter != 0.0:
@@ -443,7 +469,6 @@ class Ship:
         if self.can_deploy_mine:
             # Remove respawn invincibility. Mine deployment limiter
             self._respawning = 0.0
-            self.was_respawning_until_this_frame = True
             self._mine_limiter = self._mine_deploy_time
 
             if self.mines_remaining != -1:
@@ -461,7 +486,6 @@ class Ship:
         if self.can_fire:
             # Remove respawn invincibility. Trigger fire limiter
             self._respawning = 0.0
-            self.was_respawning_until_this_frame = True
             self._fire_limiter = self._fire_time
 
             # Bullet counters
