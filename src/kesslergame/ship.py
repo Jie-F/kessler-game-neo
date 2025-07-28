@@ -184,11 +184,15 @@ class Ship:
 
     @property
     def is_respawning(self) -> bool:
-        return bool(self._respawning)
+        return self._respawning > 1e-12
 
     @property
     def respawn_time_left(self) -> float:
-        return self._respawning
+        clamped_to_zero = max(0.0, self._respawning)
+        if clamped_to_zero <= 1e-12:
+            return 0.0
+        else:
+            return clamped_to_zero
 
     @property
     def respawn_time(self) -> float:
@@ -413,19 +417,17 @@ class Ship:
                     assert delta_time <= end_t
                     dx_sum += dx
                     dy_sum += dy
-            sx = self.x + dx_sum
-            sy = self.y + dy_sum
+            self.x += dx_sum
+            self.y += dy_sum
             self.integration_initial_states.clear() # Clear the state so that we don't attempt to do a second rollback which would be invalid
             
             # We never shoot/drop mine when doing rollback
             new_bullet = None
             new_mine = None
 
-        # Decrement respawn timer (if necessary)
-        if self._respawning != 0.0:
-            self._respawning -= delta_time
-            if self._respawning <= 1e-12:
-                self._respawning = 0.0
+        # Decrement respawn timer unconditionally, and allow it to go negative
+        # This helps the continuous simulation know when the respawn time wore off mid-frame
+        self._respawning -= delta_time
 
         # Decrement fire limit timer (if necessary)
         if self._fire_limiter != 0.0:

@@ -230,7 +230,6 @@ class KesslerGame:
                 continue
             for ast_idx, asteroid in enumerate(asteroids):
                 # Check for collisions in time interval [t - delta_time, t]
-                # TODO: Change interval to when the ship got out of respawn, until t.
                 if asteroid.x - ship.x > 0.5 * self.map_width:
                     ast_x_centered_around_ship = asteroid.x - self.map_width
                 elif asteroid.x - ship.x < -0.5 * self.map_width:
@@ -248,7 +247,7 @@ class KesslerGame:
                 collision_start_time = ship_asteroid_continuous_collision_time(
                     ship.x, ship.y, ship.radius, ship.speed, ship.integration_initial_states,
                     ast_x_centered_around_ship, ast_y_centered_around_ship, asteroid.vx, asteroid.vy, asteroid.radius, asteroid.speed,
-                    self.delta_time
+                    max(self.delta_time, ship._respawning) # Only check collisions starting from when the ship's respawn invincibility wore off
                 )
                 if not isnan(collision_start_time):
                     assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
@@ -284,7 +283,7 @@ class KesslerGame:
                         collision_start_time = ship_ship_continuous_collision_time(
                             ship1.x, ship1.y, ship1.radius, ship1.speed, ship1.integration_initial_states,
                             ship2_x_centered_around_ship1, ship2_y_centered_around_ship1, ship2.radius, ship2.speed, ship2.integration_initial_states,
-                            self.delta_time
+                            max(self.delta_time, max(ship1._respawning, ship2._respawning)) # Clamp to when ships are out of respawn. Double max calls is MUCH faster than calling max with 3 args, in MyPyC compiled code!
                         )
                         if not isnan(collision_start_time):
                             assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
