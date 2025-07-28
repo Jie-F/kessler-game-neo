@@ -400,10 +400,11 @@ class Ship:
         else:
             # This is a negative-time update, which rolls-back a portion of the frame we last updated forward.
             # We have recorded how we did the forward integration, so we use that history to do the backward integration.
-            assert self.integration_initial_states, "Trying to rollback without a preceding forward update!"
+            assert self.integration_initial_states, "Cannot rollback ship state without a preceding forward update!"
             # Accumulate the pieces of the integral
             dx_sum = 0.0
             dy_sum = 0.0
+            speed_sum = 0.0
             # To get the position of the ship in the past, we integrate its position backward
             # using the integration intervals we stored in the ship state when it was integrating it forward in time.
             # If the integral is split into multiple time segments, add them all up going backward in time,
@@ -418,14 +419,40 @@ class Ship:
                     dx, dy = analytic_ship_movement_integration(v0, a, theta0, omega, delta_time - start_t)
                     dx_sum += dx
                     dy_sum += dy
+                    speed_sum += a * (delta_time - start_t) # This time diff results in a negative number
                     break # Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
                 else:
                     # This interval is fully included within t. Add the full integral amount
                     assert delta_time <= end_t
                     dx_sum += dx
                     dy_sum += dy
+                    speed_sum += a * (end_t - start_t) # This time diff results in a negative number
+            
             self.x += dx_sum
             self.y += dy_sum
+            self.x %= map_size[0]
+            self.y %= map_size[1]
+            self.speed += speed_sum
+
+            # Don't forget to reverse-integrate the other quantities too!
+            # Clamp speed after acceleration (This is only needed in case of floating point error, but is otherwise unnecessary)
+            if abs(self.speed) > self.max_speed:
+                self.speed = copysign(self.max_speed, self.speed)
+            elif abs(self.speed) <= 1e-12:
+                # Let's be nice and just make it 0.0. Because I just tripped myself up with a ship_state.speed == 0.0 comparison when testing XD
+                self.speed = 0.0
+
+            # Update the angle based on turning rate
+            self.heading += self.turn_rate * delta_time
+
+            # Keep the angle within [0, 360.0)
+            self.heading %= 360.0
+
+            # Use speed magnitude to get velocity vector
+            rad_heading = radians(self.heading)
+            self.vx = cos(rad_heading) * self.speed
+            self.vy = sin(rad_heading) * self.speed
+
             self.integration_initial_states.clear() # Clear the state so that we don't attempt to do a second rollback which would be invalid
             
             # We never shoot/drop mine when doing rollback
