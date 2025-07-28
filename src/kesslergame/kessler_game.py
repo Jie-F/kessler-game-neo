@@ -51,24 +51,53 @@ class CollisionType(IntEnum):
 
 
 class CollisionEvent:
-    def __init__(self, time_offset: float, object_a_idx: int, object_b_idx: int, collision_type: CollisionType):
+    __slots__ = ("time_offset", "distance", "object_a_idx", "object_b_idx", "collision_type")
+
+    def __init__(self, time_offset: float, distance: float, object_a_idx: int, object_b_idx: int, collision_type: CollisionType):
         """
         Represents a collision event between two game objects at a specific time.
 
         :param time_offset: Time (in seconds) relative to the end of the frame. Must be in [-dt, 0.0].
+        :param distance: Squared wrapped distance between the colliding objects. Used to break ties
         :param object_a_idx: Index of first object involved in the collision.
         :param object_b_idx: Index of second object involved in the collision.
         :param collision_type: Type of collision as defined in CollisionType enum.
         """
         self.time_offset = time_offset  # Time offset in seconds relative to frame end, e.g., -0.001
+        self.distance = distance
         # Time offset should be in range [-delta_time, 0.0]
         self.object_a_idx = object_a_idx
         self.object_b_idx = object_b_idx
         self.collision_type = collision_type
 
     def __lt__(self, other: CollisionEvent) -> bool:
-        """Allow sorting events by time offset (earlier events come first)."""
-        return self.time_offset < other.time_offset
+        """Allow sorting events by time offset, using distance as a tiebreaker."""
+        if self.time_offset != other.time_offset:
+            return self.time_offset < other.time_offset
+        return self.distance < other.distance
+
+    def __le__(self, other: CollisionEvent) -> bool:
+        return self < other or self == other
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CollisionEvent):
+            return NotImplemented
+        return (
+            self.time_offset == other.time_offset and
+            self.distance == other.distance
+        )
+
+    def __ne__(self, other: object) -> bool:
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return NotImplemented
+        return not result
+
+    def __gt__(self, other: CollisionEvent) -> bool:
+        return not self <= other
+
+    def __ge__(self, other: CollisionEvent) -> bool:
+        return not self < other
 
     def __repr__(self) -> str:
         return f"<CollisionEvent time_offset={self.time_offset:.4f}s type={self.collision_type} obj_a_idx={self.object_a_idx} obj_b_idx={self.object_b_idx}>"
@@ -90,6 +119,8 @@ class KesslerGame:
         self.time_limit: float = settings.get("time_limit", inf)
         self.random_ast_splits: bool = settings.get("random_ast_splits", False)
         self.competition_safe_mode: bool = settings.get("competition_safe_mode", True)
+        self.map_width: float = 0.0 # To be set later
+        self.map_height: float = 0.0
 
         self.collision_queue: list[CollisionEvent] = []
 
@@ -107,15 +138,30 @@ class KesslerGame:
         # Collect all potential bullet-asteroid collisions
         for bul_idx, bullet in enumerate(bullets):
             for ast_idx, asteroid in enumerate(asteroids):
+                # TODO: Make it so offscreen bullets can't hit! Hitbox needs to clip at map edge!
+                if asteroid.x - bullet.x > 0.5 * self.map_width:
+                    ast_x_centered_around_bullet = asteroid.x - self.map_width
+                elif asteroid.x - bullet.x < -0.5 * self.map_width:
+                    ast_x_centered_around_bullet = asteroid.x + self.map_width
+                else:
+                    ast_x_centered_around_bullet = asteroid.x
+
+                if asteroid.y - bullet.y > 0.5 * self.map_height:
+                    ast_y_centered_around_bullet = asteroid.y - self.map_height
+                elif asteroid.y - bullet.y < -0.5 * self.map_height:
+                    ast_y_centered_around_bullet = asteroid.y + self.map_height
+                else:
+                    ast_y_centered_around_bullet = asteroid.y
+                
                 if circle_line_collision_continuous(
                     bullet.x, bullet.y, bullet.x + bullet.tail_delta_x, bullet.y + bullet.tail_delta_y, bullet.vx, bullet.vy,
-                    asteroid.x, asteroid.y, asteroid.vx, asteroid.vy, asteroid.radius, self.delta_time
+                    ast_x_centered_around_bullet, ast_y_centered_around_bullet, asteroid.vx, asteroid.vy, asteroid.radius, self.delta_time
                 ):
                     collision_start_time, _ = collision_time_interval(
                         bullet.x, bullet.y,
                         bullet.x + bullet.tail_delta_x, bullet.y + bullet.tail_delta_y,
                         bullet.vx, bullet.vy,
-                        asteroid.x, asteroid.y,
+                        ast_x_centered_around_bullet, ast_y_centered_around_bullet,
                         asteroid.vx, asteroid.vy,
                         asteroid.radius
                     )
@@ -127,25 +173,32 @@ class KesslerGame:
                     collision_time = max(-self.delta_time, collision_start_time)
                     assert -self.delta_time <= collision_time <= 0.0
                     # Inline insertion to keep collisions sorted by time
+                    collision_event = CollisionEvent(collision_time, 0.0, bul_idx, ast_idx, CollisionType.BULLET_ASTEROID)
                     i = len(self.collision_queue)
-                    while i > 0 and self.collision_queue[i - 1].time_offset > collision_time:
+                    while i > 0 and self.collision_queue[i - 1] > collision_event:
                         i -= 1
-                    self.collision_queue.insert(i, CollisionEvent(collision_time, bul_idx, ast_idx, CollisionType.BULLET_ASTEROID))
+                    self.collision_queue.insert(i, collision_event)
 
     def enqueue_mine_asteroid_collisions(self, mines: list[Mine], asteroids: list[Asteroid]) -> None:
         for mine_idx, mine in enumerate(mines):
             if mine.detonating:
                 for ast_idx, asteroid in enumerate(asteroids):
-                    dx = asteroid.x - mine.x
-                    dy = asteroid.y - mine.y
+                    dx = abs(asteroid.x - mine.x)
+                    dy = abs(asteroid.y - mine.y)
+                    if dx > 0.5 * self.map_width:
+                        dx = self.map_width - dx
+                    if dy > 0.5 * self.map_height:
+                        dy = self.map_height - dy
+                    
                     radius_sum = mine.blast_radius + asteroid.radius
                     sq_dist = dx * dx + dy * dy
                     if sq_dist <= radius_sum * radius_sum:
-                        i = len(self.collision_queue)
                         collision_time = 0.0
-                        while i > 0 and self.collision_queue[i - 1].time_offset > collision_time:
+                        collision_event = CollisionEvent(collision_time, sq_dist, mine_idx, ast_idx, CollisionType.MINE_ASTEROID)
+                        i = len(self.collision_queue)
+                        while i > 0 and self.collision_queue[i - 1] > collision_event:
                             i -= 1
-                        self.collision_queue.insert(i, CollisionEvent(collision_time, mine_idx, ast_idx, CollisionType.MINE_ASTEROID))
+                        self.collision_queue.insert(i, collision_event)
 
     def enqueue_mine_ship_collisions(self, mines: list[Mine], ships: list[Ship]) -> None:
         for mine_idx, mine in enumerate(mines):
@@ -154,16 +207,22 @@ class KesslerGame:
                 for ship_idx, ship in enumerate(ships):
                     if ship.is_respawning or not ship.alive:
                         continue
-                    dx = ship.x - mine.x
-                    dy = ship.y - mine.y
+                    dx = abs(ship.x - mine.x)
+                    dy = abs(ship.y - mine.y)
+                    if dx > 0.5 * self.map_width:
+                        dx = self.map_width - dx
+                    if dy > 0.5 * self.map_height:
+                        dy = self.map_height - dy
+                    
                     radius_sum = mine.blast_radius + ship.radius
                     sq_dist = dx * dx + dy * dy
                     if sq_dist <= radius_sum * radius_sum:
-                        i = len(self.collision_queue)
                         collision_time = 0.0
-                        while i > 0 and self.collision_queue[i - 1].time_offset > collision_time:
+                        collision_event = CollisionEvent(collision_time, sq_dist, mine_idx, ship_idx, CollisionType.MINE_SHIP)
+                        i = len(self.collision_queue)
+                        while i > 0 and self.collision_queue[i - 1] > collision_event:
                             i -= 1
-                        self.collision_queue.insert(i, CollisionEvent(collision_time, mine_idx, ship_idx, CollisionType.MINE_SHIP))
+                        self.collision_queue.insert(i, collision_event)
 
     def enqueue_ship_asteroid_collisions(self, ships: list[Ship], asteroids: list[Asteroid]) -> None:
         for ship_idx, ship in enumerate(ships):
@@ -172,17 +231,32 @@ class KesslerGame:
             for ast_idx, asteroid in enumerate(asteroids):
                 # Check for collisions in time interval [t - delta_time, t]
                 # TODO: Change interval to when the ship got out of respawn, until t.
+                if asteroid.x - ship.x > 0.5 * self.map_width:
+                    ast_x_centered_around_ship = asteroid.x - self.map_width
+                elif asteroid.x - ship.x < -0.5 * self.map_width:
+                    ast_x_centered_around_ship = asteroid.x + self.map_width
+                else:
+                    ast_x_centered_around_ship = asteroid.x
+                
+                if asteroid.y - ship.y > 0.5 * self.map_height:
+                    ast_y_centered_around_ship = asteroid.y - self.map_height
+                elif asteroid.y - ship.y < -0.5 * self.map_height:
+                    ast_y_centered_around_ship = asteroid.y + self.map_height
+                else:
+                    ast_y_centered_around_ship = asteroid.y
+                
                 collision_start_time = ship_asteroid_continuous_collision_time(
                     ship.x, ship.y, ship.radius, ship.speed, ship.integration_initial_states,
-                    asteroid.x, asteroid.y, asteroid.vx, asteroid.vy, asteroid.radius, asteroid.speed,
+                    ast_x_centered_around_ship, ast_y_centered_around_ship, asteroid.vx, asteroid.vy, asteroid.radius, asteroid.speed,
                     self.delta_time
                 )
                 if not isnan(collision_start_time):
                     assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
+                    collision_event = CollisionEvent(collision_start_time, 0.0, ship_idx, ast_idx, CollisionType.SHIP_ASTEROID)
                     i = len(self.collision_queue)
-                    while i > 0 and self.collision_queue[i - 1].time_offset > collision_start_time:
+                    while i > 0 and self.collision_queue[i - 1] > collision_event:
                         i -= 1
-                    self.collision_queue.insert(i, CollisionEvent(collision_start_time, ship_idx, ast_idx, CollisionType.SHIP_ASTEROID))
+                    self.collision_queue.insert(i, collision_event)
 
     def enqueue_ship_ship_collisions(self, ships: list[Ship]) -> None:
         num_ships = len(ships)
@@ -193,18 +267,33 @@ class KesslerGame:
                     if ship2.alive and not ship2.is_respawning:
                         # Check for collisions in time interval [t - delta_time, t]
                         # TODO: Check for respawn invinc end to determine interval start
+                        if ship2.x - ship1.x > 0.5 * self.map_width:
+                            ship2_x_centered_around_ship1 = ship2.x - self.map_width
+                        elif ship2.x - ship1.x < -0.5 * self.map_width:
+                            ship2_x_centered_around_ship1 = ship2.x + self.map_width
+                        else:
+                            ship2_x_centered_around_ship1 = ship2.x
+
+                        if ship2.y - ship1.y > 0.5 * self.map_height:
+                            ship2_y_centered_around_ship1 = ship2.y - self.map_height
+                        elif ship2.y - ship1.y < -0.5 * self.map_height:
+                            ship2_y_centered_around_ship1 = ship2.y + self.map_height
+                        else:
+                            ship2_y_centered_around_ship1 = ship2.y
+
                         collision_start_time = ship_ship_continuous_collision_time(
                             ship1.x, ship1.y, ship1.radius, ship1.speed, ship1.integration_initial_states,
-                            ship2.x, ship2.y, ship2.radius, ship2.speed, ship2.integration_initial_states,
+                            ship2_x_centered_around_ship1, ship2_y_centered_around_ship1, ship2.radius, ship2.speed, ship2.integration_initial_states,
                             self.delta_time
                         )
                         if not isnan(collision_start_time):
                             assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
                             # Insert chronologically
+                            collision_event = CollisionEvent(collision_start_time, 0.0, ship1_idx, ship2_idx, CollisionType.SHIP_SHIP)
                             i = len(self.collision_queue)
-                            while i > 0 and self.collision_queue[i - 1].time_offset > collision_start_time:
+                            while i > 0 and self.collision_queue[i - 1] > collision_event:
                                 i -= 1
-                            self.collision_queue.insert(i, CollisionEvent(collision_start_time, ship1_idx, ship2_idx, CollisionType.SHIP_SHIP))
+                            self.collision_queue.insert(i, collision_event)
 
     def run(self, scenario: Scenario, controllers: list[KesslerController]) -> tuple[Score, PerfDict]:
         """
@@ -228,7 +317,7 @@ class KesslerGame:
         sim_time: float = 0.0
         sim_frame: int = 0
         time_limit = scenario.time_limit if scenario.time_limit else self.time_limit
-        map_width, map_height = scenario.map_size
+        self.map_width, self.map_height = scenario.map_size
 
         # Assign controllers to each ship
         assert len(controllers) >= len(ships), f"There are not enough controllers ({len(controllers)}) to assign to the {len(ships)} ships!"
@@ -423,7 +512,7 @@ class KesslerGame:
                         bullet.owner.bullets_hit += 1
                         bullet.owner.asteroids_hit += 1
 
-                        new_asteroids = asteroid.destruct(impactor=bullet, random_ast_split=self.random_ast_splits)
+                        new_asteroids = asteroid.destruct(impactor=bullet, map_size=scenario.map_size, random_ast_split=self.random_ast_splits)
                         bullet.destruct()
                         for a in new_asteroids:
                             # This is a forward update, from the time of collision to the end of the frame!
@@ -452,7 +541,7 @@ class KesslerGame:
 
                         asteroids_to_cull.append(ast_idx)
 
-                        new_asteroids = asteroid.destruct(impactor=mine, random_ast_split=self.random_ast_splits)
+                        new_asteroids = asteroid.destruct(impactor=mine, map_size=scenario.map_size, random_ast_split=self.random_ast_splits)
                         
                         #for a in new_asteroids:
                             # This is a forward update, from the time of collision to the end of the frame!
@@ -502,7 +591,7 @@ class KesslerGame:
                         # Handle collision
                         ship.asteroids_hit += 1
 
-                        new_asteroids = asteroid.destruct(impactor=ship, random_ast_split=self.random_ast_splits)
+                        new_asteroids = asteroid.destruct(impactor=ship, map_size=scenario.map_size, random_ast_split=self.random_ast_splits)
                         ship.destruct(map_size=scenario.map_size)
 
                         for a in new_asteroids:

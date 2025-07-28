@@ -101,7 +101,7 @@ class Asteroid:
         self._state[1] = self.y
         self.angle += delta_time * self.turnrate
 
-    def destruct(self, impactor: Union['Bullet', 'Mine', 'Ship'], random_ast_split: bool) -> list[Asteroid]:
+    def destruct(self, impactor: Union['Bullet', 'Mine', 'Ship'], map_size: tuple[int, int], random_ast_split: bool) -> list[Asteroid]:
         """ Spawn child asteroids"""
         # Split angle is the angle off of the new velocity vector for the two asteroids to the sides, the center child
         # asteroid continues on the new velocity path
@@ -110,15 +110,34 @@ class Asteroid:
         split_angle_bound: float = 30.0
         if self.size != 1:
             if isinstance(impactor, Mine):
-                delta_x = impactor.x - self.x
-                delta_y = impactor.y - self.y
+                if impactor.x - self.x > 0.5 * map_size[0]:
+                    mine_x_wrapped = impactor.x - map_size[0]
+                elif impactor.x - self.x < -0.5 * map_size[0]:
+                    mine_x_wrapped = impactor.x + map_size[0]
+                else:
+                    mine_x_wrapped = impactor.x
+
+                if impactor.y - self.y > 0.5 * map_size[1]:
+                    mine_y_wrapped = impactor.y - map_size[1]
+                elif impactor.y - self.y < -0.5 * map_size[1]:
+                    mine_y_wrapped = impactor.y + map_size[1]
+                else:
+                    mine_y_wrapped = impactor.y
+
+                delta_x = mine_x_wrapped - self.x
+                delta_y = mine_y_wrapped - self.y
+                if delta_x > 0.5 * map_size[0]:
+                    delta_x = map_size[0] - delta_x
+                if delta_y > 0.5 * map_size[1]:
+                    delta_y = map_size[1] - delta_y
+                
                 dist = sqrt(delta_x * delta_x + delta_y * delta_y)
                 force = impactor.calculate_blast_force(dist=dist, obj=self)
                 a = force / self.mass
                 # calculate "impulse" based on acc
                 if dist != 0.0:
-                    cos_theta = (self.x - impactor.x) / dist
-                    sin_theta = (self.y - impactor.y) / dist
+                    cos_theta = (self.x - mine_x_wrapped) / dist
+                    sin_theta = (self.y - mine_y_wrapped) / dist
                     vfx = self.vx + a * cos_theta
                     vfy = self.vy + a * sin_theta
 
