@@ -641,9 +641,6 @@ class KesslerGame:
             # and handles them. If new children asteroids get created, we advance those children to the end of the frame
             # and check for collisions, handling them recursively.
             # This way, all chain-reaction collisions get handled, and no events are missed.
-            if len(self.collision_queue) > 1:
-                print()
-                print(self.collision_queue)
             ships_to_cull.clear()
             asteroids_to_cull.clear()
             bullets_to_cull.clear()

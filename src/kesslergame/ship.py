@@ -383,7 +383,7 @@ class Ship:
 
                 self.x = (x0 + dx) % map_size[0]
                 self.y = (y0 + dy) % map_size[1]
-                self.speed = v1  # Either stopped or clamped
+                self.speed += accel_phase2 * delta_time # Skip the first phase of speed integration, and just do the second phase
 
                 # Append the end state, so we can reverse-integrate later by plugging in a negative time
                 self.integration_initial_states.append((0.0, -delta_time, self.speed, accel_phase2, theta0 + omega * delta_time, omega, -dx, -dy))

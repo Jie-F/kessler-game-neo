@@ -79,10 +79,10 @@ def randomly_initialized_controllers(number: int) -> list[FramerateIndependentCo
 random.seed()
 for i in range(TRIALS):
     seed = random.randint(0, 100_000_000)
-    #seed = 28419281
+    #seed = 32243433
     random.seed(seed)
-    framerate1 = 20#random.randint(2, 60)
-    framerate2 = 40#framerate1
+    framerate1 = random.randint(2, 60)
+    framerate2 = framerate1
     while framerate1 == framerate2:
         framerate2 = random.randint(2, 60)
     print(f"Trial={i}, seed={seed}, framerates: {framerate1} and {framerate2}")
