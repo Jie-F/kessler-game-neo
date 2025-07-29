@@ -35,7 +35,7 @@ class Score:
     def update(self, ships: list[Ship], sim_time: float, controller_perf: list[float] | None = None) -> None:
         self.sim_time = sim_time
         for team in self.teams:
-            ast_hit, bul_hit, shots, bullets, mines, deaths, lives = (0, 0, 0, 0, 0, 0, 0)
+            ast_hit, bul_hit, shots, bullets, mine_hit, mines_dropped, mines, deaths, lives = (0, 0, 0, 0, 0, 0, 0, 0, 0)
             for idx, ship in enumerate(ships):
                 if team.team_id == ship.team:
                     ast_hit += ship.asteroids_hit

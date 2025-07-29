@@ -262,9 +262,14 @@ class Ship:
         """
         Update our position and other particulars.
         """
-
-        new_bullet: Bullet | None = None
-        new_mine: Mine | None = None
+        #if self.id == 3:
+        #    print(f"ID is 3 and we're doing actions: {self.fire=} {self.drop_mine=}")
+        if allow_shooting:
+            new_bullet = self.fire_bullet(map_size) if self.fire else None
+            new_mine = self.deploy_mine() if self.drop_mine else None
+        else:
+            new_bullet: Bullet | None = None
+            new_mine: Mine | None = None
 
         # Bounds check the thrust
         if self.thrust < self.thrust_range[0] or self.thrust > self.thrust_range[1]:
@@ -425,12 +430,6 @@ class Ship:
             rad_heading = radians(self.heading)
             self.vx = cos(rad_heading) * self.speed
             self.vy = sin(rad_heading) * self.speed
-
-            # Handle firing and mining
-            # This is done after the ship has moved, so the projectiles are from the current ship position and not the last
-            if allow_shooting:
-                new_bullet = self.fire_bullet(map_size) if self.fire else None
-                new_mine = self.deploy_mine() if self.drop_mine else None
         else:
             # This is a negative-time update, which rolls-back a portion of the frame we last updated forward.
             # We have recorded how we did the forward integration, so we use that history to do the backward integration.
@@ -490,8 +489,6 @@ class Ship:
             self.vy = sin(rad_heading) * self.speed
 
             self.integration_initial_states.clear() # Clear the state so that we don't attempt to do a second rollback which would be invalid
-            
-            # We never shoot/drop mine when doing rollback
 
         # Decrement respawn timer unconditionally, and allow it to go negative
         # This helps the continuous simulation know when the respawn time wore off mid-frame
