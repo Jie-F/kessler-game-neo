@@ -596,8 +596,16 @@ class KesslerGame:
                 perf_dict['total_controller_time'] += time.perf_counter() - step_start
                 prev = time.perf_counter()
 
+            # --- UPDATE TIME TO THE TIME AT THE END OF THIS FRAME
+            sim_frame += 1
+            sim_time = sim_frame / self.frequency # Derive time from integer frames, to avoid accumulated floating point errors
+            if not self.competition_safe_mode:
+                assert game_state is not None
+                game_state.time = sim_time
+                game_state.frame = sim_frame
+            
             # --- UPDATE STATE INFORMATION OF EACH OBJECT --------------------------------------------------------------
-
+            
             # Update each Asteroid, Bullet, and Ship
             # Because the game_state stores a mutable reference to the internal states of the ship/asteroid/bullet/mine,
             # these updates automatically reflect in the game_state
@@ -864,13 +872,6 @@ class KesslerGame:
             else:
                 score.update(ships, sim_time)
 
-            # --- UPDATE TIME
-            sim_frame += 1
-            sim_time = sim_frame / self.frequency # Derive time from integer frames, to avoid accumulated floating point errors
-            if not self.competition_safe_mode:
-                assert game_state is not None
-                game_state.time = sim_time
-                game_state.frame = sim_frame
 
             # --- UPDATE GRAPHICS --------------------------------------------------------------------------------------
             if sim_frame % self.frame_skip == 0:

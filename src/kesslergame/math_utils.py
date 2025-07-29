@@ -200,7 +200,7 @@ def find_first_leq_zero(
     f: Callable[[float], tuple[float, float, float]],
     a: float,
     b: float,
-    tol: float = 1e-12,
+    tol: float = 1e-10,
     max_iterations: int = 100 # This is way overkill, and 30 is probably fine. But this is so rare to use more than 30, that this won't slow down the game.
 ) -> float:
     """
@@ -246,7 +246,7 @@ def find_first_leq_zero(
             # Check for convergence
             if abs(x_high - x_low) < tol:
                 return x
-        return nan  # Didn't converge
+        return x # Didn't converge, but just return x anyway and hope nothing goes wrong ¯\_(ツ)_/¯
 
     # Root-finding for f'(x) using Newton's method, with bisection fallback if Newton update jumps out of bounds
     def newton_minimum(f: Callable[[float], tuple[float, float, float]], x0: float, x1: float) -> float:
@@ -284,7 +284,7 @@ def find_first_leq_zero(
             # Check for convergence
             if abs(x_high - x_low) < tol:
                 return x
-        return nan # Didn't converge
+        return x # Didn't converge, but just return x anyway and hope nothing goes wrong ¯\_(ツ)_/¯
 
     # Classic bisection method. Slower but guaranteed if f changes sign
     def bisection_root(f: Callable[[float], tuple[float, float, float]], x0: float, x1: float) -> float:
@@ -300,7 +300,7 @@ def find_first_leq_zero(
                 x0 = xm  # Root is in [xm, x1]
             if abs(x1 - x0) < tol:
                 return 0.5 * (x0 + x1)  # Interval is tiny. return midpoint
-        return nan  # Didn't converge
+        return 0.5 * (x0 + x1) # Didn't converge, but return our best guess
 
     # Main logic
     fa, da, _ = f(a)

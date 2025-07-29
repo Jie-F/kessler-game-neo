@@ -90,8 +90,8 @@ def ship_asteroid_continuous_collision_time(ship_x: float, ship_y: float, ship_r
             # Differentiating along the edge is a bit wacky, so we want to find the diff in the large interval, and not like an interval of zero width!
             if end_t - 1e-12 <= t <= start_t + 1e-12:
                 # Found the interval we differentiate in
-                theta_t = theta0 + omega * t
-                v_t = v0 + a * t
+                theta_t = theta0 + omega * (t - start_t)
+                v_t = v0 + a * (t - start_t)
                 sin_theta_t = sin(theta_t)
                 cos_theta_t = cos(theta_t)
                 ddt_sx = v_t * cos_theta_t
@@ -210,8 +210,8 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
             # Differentiating along the edge is a bit wacky, so we want to find the diff in the large interval, and not like an interval of zero width!
             if end_t - 1e-12 <= t <= start_t + 1e-12:
                 # Found the interval we differentiate in
-                theta_t = theta0 + omega * t
-                v_t = v0 + a * t
+                theta_t = theta0 + omega * (t - start_t)
+                v_t = v0 + a * (t - start_t)
                 sin_theta_t = sin(theta_t)
                 cos_theta_t = cos(theta_t)
                 ddt_sx1 = v_t * cos_theta_t
@@ -231,8 +231,8 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
             # Differentiating along the edge is a bit wacky, so we want to find the diff in the large interval, and not like an interval of zero width!
             if end_t - 1e-12 <= t <= start_t + 1e-12:
                 # Found the interval we differentiate in
-                theta_t = theta0 + omega * t
-                v_t = v0 + a * t
+                theta_t = theta0 + omega * (t - start_t)
+                v_t = v0 + a * (t - start_t)
                 sin_theta_t = sin(theta_t)
                 cos_theta_t = cos(theta_t)
                 ddt_sx2 = v_t * cos_theta_t
