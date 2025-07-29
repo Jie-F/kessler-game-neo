@@ -254,7 +254,7 @@ class Ship:
         # around 0 speed. But of course we will just treat this as having zero net acceleration, and the ship stays at 0 speed.
         # This is a special case we have to detect, so we don't oscillate the ship, or cause it to bypass the zero boundary.
         if delta_time == 0.0:
-            return
+            return new_bullet, new_mine
         elif delta_time > 0.0:
             # Store speed and heading BEFORE acceleration/thrust for integration
             initial_speed = self.speed

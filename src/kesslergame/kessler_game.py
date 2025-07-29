@@ -70,14 +70,18 @@ class CollisionEvent:
         self.object_b_idx = object_b_idx
         self.collision_type = collision_type
 
+    # Hand-implement each of the comparison dunders for speed, instead of using one for the others
     def __lt__(self, other: CollisionEvent) -> bool:
-        """Allow sorting events by time offset, using distance as a tiebreaker."""
-        if self.time_offset != other.time_offset:
-            return self.time_offset < other.time_offset
-        return self.distance < other.distance
+        return (
+            self.time_offset < other.time_offset or
+            (self.time_offset == other.time_offset and self.distance < other.distance)
+        )
 
     def __le__(self, other: CollisionEvent) -> bool:
-        return self < other or self == other
+        return (
+            self.time_offset < other.time_offset or
+            (self.time_offset == other.time_offset and self.distance <= other.distance)
+        )
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, CollisionEvent):
@@ -88,16 +92,24 @@ class CollisionEvent:
         )
 
     def __ne__(self, other: object) -> bool:
-        result = self.__eq__(other)
-        if result is NotImplemented:
+        if not isinstance(other, CollisionEvent):
             return NotImplemented
-        return not result
+        return (
+            self.time_offset != other.time_offset or
+            self.distance != other.distance
+        )
 
     def __gt__(self, other: CollisionEvent) -> bool:
-        return not self <= other
+        return (
+            self.time_offset > other.time_offset or
+            (self.time_offset == other.time_offset and self.distance > other.distance)
+        )
 
     def __ge__(self, other: CollisionEvent) -> bool:
-        return not self < other
+        return (
+            self.time_offset > other.time_offset or
+            (self.time_offset == other.time_offset and self.distance >= other.distance)
+        )
 
     def __repr__(self) -> str:
         return f"<CollisionEvent time_offset={self.time_offset:.4f}s type={self.collision_type} obj_a_idx={self.object_a_idx} obj_b_idx={self.object_b_idx}>"
@@ -373,7 +385,10 @@ class KesslerGame:
                 )
                 if not isnan(collision_start_time):
                     assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
-                    collision_event = CollisionEvent(collision_start_time, 0.0, ship_idx, ast_idx + asteroid_list_idx_offset, CollisionType.SHIP_ASTEROID)
+                    dx = ast_x_centered_around_ship - ship.x
+                    dy = ast_y_centered_around_ship - ship.y
+                    sq_dist = dx * dx + dy * dy
+                    collision_event = CollisionEvent(collision_start_time, sq_dist, ship_idx, ast_idx + asteroid_list_idx_offset, CollisionType.SHIP_ASTEROID)
                     i = len(self.collision_queue)
                     while i > 0 and self.collision_queue[i - 1] > collision_event:
                         i -= 1
@@ -410,7 +425,10 @@ class KesslerGame:
                         if not isnan(collision_start_time):
                             assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
                             # Insert chronologically
-                            collision_event = CollisionEvent(collision_start_time, 0.0, ship1_idx, ship2_idx, CollisionType.SHIP_SHIP)
+                            dx = ship2_x_centered_around_ship1 - ship1.x
+                            dy = ship2_y_centered_around_ship1 - ship2.y
+                            sq_dist = dx * dx + dy * dy
+                            collision_event = CollisionEvent(collision_start_time, sq_dist, ship1_idx, ship2_idx, CollisionType.SHIP_SHIP)
                             i = len(self.collision_queue)
                             while i > 0 and self.collision_queue[i - 1] > collision_event:
                                 i -= 1
@@ -722,7 +740,7 @@ class KesslerGame:
                         # Rewind
                         assert abs(dt) <= self.delta_time
                         assert dt <= 0.0
-                        #print(f"{dt=} {sim_time=} {(dt + sim_time + self.delta_time)=}")
+                        print(f"{dt=} {sim_time=} {(dt + sim_time + self.delta_time)=}")
                         ship.update(dt, scenario.map_size, False)
                         asteroid.update(dt, scenario.map_size)
                         # Handle collision
