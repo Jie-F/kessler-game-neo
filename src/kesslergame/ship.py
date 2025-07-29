@@ -228,6 +228,36 @@ class Ship:
     def shoot(self) -> None:
         self.fire = True
 
+    def get_past_position(self, delta_time: float, map_size: tuple[float, float]) -> tuple[float, float]:
+        # We have recorded how we did the forward integration, so we use that history to do the backward integration.
+        assert self.integration_initial_states, "Cannot rollback ship state without a preceding forward update!"
+        # Accumulate the pieces of the integral
+        dx_sum = 0.0
+        dy_sum = 0.0
+        # To get the position of the ship in the past, we integrate its position backward
+        # using the integration intervals we stored in the ship state when it was integrating it forward in time.
+        # If the integral is split into multiple time segments, add them all up going backward in time,
+        # until we hit delta_time, the end point of the integration
+
+        # Keep in mind that the start_t and end_t are reverse chronological! So it starts in the future, and ends in the past!
+        for ship_initial_state in self.integration_initial_states:
+            start_t, end_t, v0, a, theta0, omega, dx, dy = ship_initial_state
+            assert end_t - start_t <= 0.0
+            if end_t < delta_time <= start_t:
+                # We need to include this interval since t lies in the middle of it
+                dx, dy = analytic_ship_movement_integration(v0, a, theta0, omega, delta_time - start_t)
+                dx_sum += dx
+                dy_sum += dy
+                assert delta_time - start_t <= 0.0
+                break # Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
+            else:
+                # This interval is fully included within t. Add the full integral amount
+                assert delta_time <= end_t
+                dx_sum += dx
+                dy_sum += dy
+                assert end_t - start_t <= 0.0
+        return ((self.x + dx_sum) % map_size[0], (self.y + dy_sum) % map_size[1])
+
     def update(self, delta_time: float, map_size: tuple[int, int], allow_shooting: bool) -> tuple[Bullet | None, Mine | None]:
         """
         Update our position and other particulars.
@@ -402,7 +432,6 @@ class Ship:
                 new_bullet = self.fire_bullet(map_size) if self.fire else None
                 new_mine = self.deploy_mine() if self.drop_mine else None
         else:
-            #print('SHIP ROLLBACK')
             # This is a negative-time update, which rolls-back a portion of the frame we last updated forward.
             # We have recorded how we did the forward integration, so we use that history to do the backward integration.
             assert self.integration_initial_states, "Cannot rollback ship state without a preceding forward update!"

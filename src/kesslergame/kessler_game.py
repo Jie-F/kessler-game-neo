@@ -112,7 +112,7 @@ class CollisionEvent:
         )
 
     def __repr__(self) -> str:
-        return f"<CollisionEvent time_offset={self.time_offset:.4f}s type={self.collision_type} obj_a_idx={self.object_a_idx} obj_b_idx={self.object_b_idx}>"
+        return f"<CollisionEvent time_offset={self.time_offset}s distance={self.distance} type={self.collision_type} obj_a_idx={self.object_a_idx} obj_b_idx={self.object_b_idx}>"
 
 
 class KesslerGame:
@@ -385,8 +385,17 @@ class KesslerGame:
                 )
                 if not isnan(collision_start_time):
                     assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
-                    dx = ast_x_centered_around_ship - ship.x
-                    dy = ast_y_centered_around_ship - ship.y
+                    # As a tiebreaker, we need to get the positions of the objects during the collision, which is at offset collision_start_time
+                    # This is VERY IMPORTANT because if a ship was respawning and suddenly it wears off while the ship is inside multiple asteroids,
+                    # the tiebreaker will be used, and the ship will collide with whatever is closer. Otherwise, framerate-dependent behavior will leak in,
+                    # and asteroid order will then decide how it ends up in the queue and subsequently gets resolved.
+                    ship_past_x, ship_past_y = ship.get_past_position(collision_start_time, (self.map_width, self.map_height))
+                    dx = abs((asteroid.x + asteroid.vx * collision_start_time) - ship_past_x)
+                    dy = abs((asteroid.y + asteroid.vy * collision_start_time) - ship_past_y)
+                    if dx > 0.5 * self.map_width:
+                        dx = self.map_width - dx
+                    if dy > 0.5 * self.map_height:
+                        dy = self.map_height - dy
                     sq_dist = dx * dx + dy * dy
                     collision_event = CollisionEvent(collision_start_time, sq_dist, ship_idx, ast_idx + asteroid_list_idx_offset, CollisionType.SHIP_ASTEROID)
                     i = len(self.collision_queue)
@@ -425,8 +434,14 @@ class KesslerGame:
                         if not isnan(collision_start_time):
                             assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
                             # Insert chronologically
-                            dx = ship2_x_centered_around_ship1 - ship1.x
-                            dy = ship2_y_centered_around_ship1 - ship2.y
+                            ship1_past_x, ship1_past_y = ship1.get_past_position(collision_start_time, (self.map_width, self.map_height))
+                            ship2_past_x, ship2_past_y = ship2.get_past_position(collision_start_time, (self.map_width, self.map_height))
+                            dx = abs(ship1_past_x - ship2_past_x)
+                            dy = abs(ship1_past_y - ship2_past_y)
+                            if dx > 0.5 * self.map_width:
+                                dx = self.map_width - dx
+                            if dy > 0.5 * self.map_height:
+                                dy = self.map_height - dy
                             sq_dist = dx * dx + dy * dy
                             collision_event = CollisionEvent(collision_start_time, sq_dist, ship1_idx, ship2_idx, CollisionType.SHIP_SHIP)
                             i = len(self.collision_queue)
@@ -626,6 +641,9 @@ class KesslerGame:
             # and handles them. If new children asteroids get created, we advance those children to the end of the frame
             # and check for collisions, handling them recursively.
             # This way, all chain-reaction collisions get handled, and no events are missed.
+            if len(self.collision_queue) > 1:
+                print()
+                print(self.collision_queue)
             ships_to_cull.clear()
             asteroids_to_cull.clear()
             bullets_to_cull.clear()
@@ -740,7 +758,7 @@ class KesslerGame:
                         # Rewind
                         assert abs(dt) <= self.delta_time
                         assert dt <= 0.0
-                        print(f"{dt=} {sim_time=} {(dt + sim_time + self.delta_time)=}")
+                        #print(f"{dt=} {sim_time=} {(dt + sim_time + self.delta_time)=}")
                         ship.update(dt, scenario.map_size, False)
                         asteroid.update(dt, scenario.map_size)
                         # Handle collision
