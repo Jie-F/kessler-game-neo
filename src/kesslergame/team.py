@@ -18,6 +18,8 @@ class Team:
         self.bullets_hit: int = 0
         self.shots_fired: int = 0
         self.bullets_remaining: int = 0
+        self.mines_hit: int = 0
+        self.mines_dropped: int = 0
         self.mines_remaining: int = 0
         self.deaths: int = 0
         self.eval_times: list[float] = []
@@ -72,6 +74,7 @@ class Team:
             f"Team {self.team_id} ({self.team_name}): "
             f"Asteroids Hit={self.asteroids_hit}, Bullets Hit={self.bullets_hit}, "
             f"Shots Fired={self.shots_fired}, Bullets Remaining={self.bullets_remaining}, "
+            f"Mines Hit={self.mines_hit}, Mines Dropped={self.mines_dropped}, "
             f"Mines Remaining={self.mines_remaining}, Deaths={self.deaths}, "
             f"Lives Remaining={self.lives_remaining}, "
             f"Eval Times={self.eval_times}"

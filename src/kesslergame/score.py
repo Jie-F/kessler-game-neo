@@ -42,12 +42,14 @@ class Score:
                     bul_hit += ship.bullets_hit
                     shots += ship.bullets_shot
                     bullets += ship.bullets_remaining
+                    mine_hit += ship.mines_hit
+                    mines_dropped += ship.mines_dropped
                     mines += ship.mines_remaining
                     deaths += ship.deaths
                     lives += ship.lives
                     if controller_perf is not None and controller_perf[idx] > 0:
                         team.eval_times.append(controller_perf[idx])
-            team.asteroids_hit, team.bullets_hit, team.shots_fired, team.bullets_remaining, team.mines_remaining, team.deaths, team.lives_remaining = (ast_hit, bul_hit, shots, bullets, mines, deaths, lives)
+            team.asteroids_hit, team.bullets_hit, team.shots_fired, team.bullets_remaining, team.mines_hit, team.mines_dropped, team.mines_remaining, team.deaths, team.lives_remaining = (ast_hit, bul_hit, shots, bullets, mine_hit, mines_dropped, mines, deaths, lives)
 
     def finalize(self, sim_time: float, stop_reason: 'StopReason', ships: list[Ship]) -> None:
         self.sim_time = sim_time
@@ -61,6 +63,7 @@ class Score:
                 f"Team {team.team_id} ({team.team_name}): "
                 f"Asteroids Hit={team.asteroids_hit}, Bullets Hit={team.bullets_hit}, "
                 f"Shots Fired={team.shots_fired}, Bullets Remaining={team.bullets_remaining}, "
+                f"Mines Hit={team.mines_hit}, Mines Dropped={team.mines_dropped}, "
                 f"Mines Remaining={team.mines_remaining}, Deaths={team.deaths}, "
                 f"Lives Remaining={team.lives_remaining}"
             )
