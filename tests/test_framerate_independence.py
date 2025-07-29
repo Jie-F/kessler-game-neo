@@ -1,8 +1,8 @@
 import random
 from kesslergame import Scenario, KesslerGame, GraphicsType, KesslerController
 
-TRIALS = 10000
-GRAPHICS = False
+TRIALS = 1
+GRAPHICS = True
 COMPETITION_SAFE_MODE = True
 WIDTH = 1000
 HEIGHT = 800
@@ -79,7 +79,7 @@ def randomly_initialized_controllers(number: int) -> list[FramerateIndependentCo
 
 for i in range(TRIALS):
     seed = random.randint(0, 1_000_000)
-    #seed = 16
+    seed = 373426
     random.seed(seed)
     framerate1 = 20#random.randint(2, 60)
     framerate2 = 40#framerate1
@@ -98,7 +98,7 @@ for i in range(TRIALS):
 
     game_settings_1 = {'perf_tracker': True,
                     'graphics_type': GraphicsType.NoGraphics if not GRAPHICS else GraphicsType.Tkinter,
-                    'realtime_multiplier': 0.0,
+                    'realtime_multiplier': 1.0,
                     'frame_skip': 2,
                     'graphics_obj': None,
                     'frequency': framerate1,
@@ -111,7 +111,7 @@ for i in range(TRIALS):
 
     game_settings_2 = {'perf_tracker': True,
                     'graphics_type': GraphicsType.NoGraphics if not GRAPHICS else GraphicsType.Tkinter,
-                    'realtime_multiplier': 0.0,
+                    'realtime_multiplier': 1.0,
                     'frame_skip': 2,
                     'graphics_obj': None,
                     'frequency': framerate2,

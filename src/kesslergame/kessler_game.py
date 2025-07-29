@@ -831,6 +831,13 @@ class KesslerGame:
             else:
                 score.update(ships, sim_time)
 
+            # --- UPDATE TIME
+            sim_frame += 1
+            sim_time = sim_frame / self.frequency # Derive time from integer frames, to avoid accumulated floating point errors
+            if not self.competition_safe_mode:
+                assert game_state is not None
+                game_state.time = sim_time
+                game_state.frame = sim_frame
 
             # --- UPDATE GRAPHICS --------------------------------------------------------------------------------------
             if sim_frame % self.frame_skip == 0:
@@ -840,15 +847,8 @@ class KesslerGame:
                 if self.perf_tracker:
                     perf_dict['graphics_draw'] += time.perf_counter() - prev
                     prev = time.perf_counter()
-
+            
             # --- CHECK STOP CONDITIONS --------------------------------------------------------------------------------
-            sim_frame += 1
-            sim_time = sim_frame / self.frequency # Derive time from frames, to avoid accumulated floating point errors
-            if not self.competition_safe_mode:
-                assert game_state is not None
-                game_state.time = sim_time
-                game_state.frame = sim_frame
-
             if not asteroids:
                 # No asteroids remain
                 stop_reason = StopReason.no_asteroids

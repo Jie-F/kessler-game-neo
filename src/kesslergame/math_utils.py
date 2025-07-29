@@ -201,7 +201,7 @@ def find_first_leq_zero(
     a: float,
     b: float,
     tol: float = 1e-12,
-    max_iter: int = 20
+    max_iterations: int = 100 # This is way overkill, and 30 is probably fine. But this is so rare to use more than 30, that this won't slow down the game.
 ) -> float:
     """
     Finds the smallest t in [a, b] such that f(t) <= 0, using analytic derivatives.
@@ -210,8 +210,10 @@ def find_first_leq_zero(
 
     # Newton's method for root-finding: f(x) == 0
     def newton_root(f: Callable[[float], tuple[float, float, float]], x0: float, x1: float) -> float:
+        # It's assumed that the input function is a decreasing function, where f(x0) > 0 and f(x1) < 0
+        # This will find the point where f(x) == 0
         x = x0
-        for _ in range(max_iter):
+        for _ in range(max_iterations):
             fx, dfx, _ = f(x)
             if abs(fx) < tol:
                 return x
@@ -221,7 +223,14 @@ def find_first_leq_zero(
             x_new = x - fx / dfx
             # Clamp to [x0, x1]
             if not (x0 <= x_new <= x1):
-                x_new = 0.5 * (x + x1 if fx > 0 else x0 + x)
+                # The next x value is outside the range.
+                # We'll just perform a pseudo-bisection step, to keep things progressing!
+                if fx > 0.0:
+                    # Bisect right
+                    x_new = 0.5 * (x + x1)
+                else:
+                    # Bisect left
+                    x_new = 0.5 * (x0 + x)
             if abs(x_new - x) < tol:
                 return x_new
             x = x_new
@@ -235,7 +244,7 @@ def find_first_leq_zero(
     # Newton's method for finding minimum: f'(x) == 0
     def newton_minimum(f: Callable[[float], tuple[float, float, float]], a: float, b: float) -> float:
         x = 0.5 * (a + b)
-        for _ in range(max_iter):
+        for _ in range(max_iterations):
             _, dfx, ddfx = f(x)
             if abs(dfx) < tol:
                 return x
