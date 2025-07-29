@@ -1,9 +1,9 @@
 import random
 from kesslergame import Scenario, KesslerGame, GraphicsType, KesslerController
 
-TRIALS = 1000000
-GRAPHICS = False
-COMPETITION_SAFE_MODE = True
+TRIALS = 1
+GRAPHICS = True
+COMPETITION_SAFE_MODE = False
 WIDTH = 1000
 HEIGHT = 800
 
@@ -32,8 +32,8 @@ class FramerateIndependentController(KesslerController):
         for second, action in enumerate(self.actions_list):
             # second is an integer, where if the floor of the time in seconds is equal to it, it will do that action
             if time_f == second * int(framerate):
-                if float(time_f + framerate) + 1e-6 >= framerate*game_state.time_limit:
-                    print(f"Frame {time_f}, pos=({ship_state.x}, {ship_state.y}), heading={ship_state.heading}, speed={ship_state.speed}")
+                #if float(time_f + framerate) + 1e-6 >= framerate*game_state.time_limit:
+                print(f"Frame {time_f}, pos=({ship_state.x}, {ship_state.y}), heading={ship_state.heading}, speed={ship_state.speed}")
                 fire = action[2]
                 drop_mine = action[3]
             if second * int(framerate) <= time_f < (second + 1) * int(framerate):
@@ -76,24 +76,24 @@ def randomly_initialized_controllers(number: int) -> list[FramerateIndependentCo
                         random.choice([False, False])) for _ in range(1000)]
         controllers.append(FramerateIndependentController(actions_list))
     return controllers
-
+random.seed()
 for i in range(TRIALS):
-    seed = random.randint(0, 1_000_000)
-    #seed = 944786
+    seed = random.randint(0, 100_000_000)
+    seed = 28419281
     random.seed(seed)
     framerate1 = 20#random.randint(2, 60)
     framerate2 = 40#framerate1
     while framerate1 == framerate2:
         framerate2 = random.randint(2, 60)
     print(f"Trial={i}, seed={seed}, framerates: {framerate1} and {framerate2}")
-    num_ships = random.randint(3, 3)
+    num_ships = random.randint(1, 3)
     scenario = Scenario(name=f"Trial {i}",
-                        num_asteroids=random.randint(5, 15),
+                        num_asteroids=random.randint(5, 10),
                         ship_states=random_ship_states(num_ships),
                         map_size=(WIDTH, HEIGHT),
                         seed=seed,
                         ammo_limit_multiplier=random.uniform(0.0, 2.0),
-                        time_limit=float(random.randint(10, 30)))
+                        time_limit=float(random.randint(5, 10)))
     controllers = randomly_initialized_controllers(num_ships)
 
     game_settings_1 = {'perf_tracker': True,

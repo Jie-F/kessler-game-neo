@@ -204,76 +204,116 @@ def find_first_leq_zero(
     max_iterations: int = 100 # This is way overkill, and 30 is probably fine. But this is so rare to use more than 30, that this won't slow down the game.
 ) -> float:
     """
-    Finds the smallest t in [a, b] such that f(t) <= 0, using analytic derivatives.
-    f must return (f(t), f'(t), f''(t))
+    Finds the smallest t in [a, b] such that f(t) <= 0,
+    using Newton's method with a bisection fallback for robustness.
+    This can handle discontinuities and jumps in the derivatives.
+    
+    The function f must return a triple: (f(t), f'(t), f''(t))
     """
 
-    # Newton's method for root-finding: f(x) == 0
+    # Root-finding using Newton's method, with bisection fallback if Newton update jumps out of bounds
     def newton_root(f: Callable[[float], tuple[float, float, float]], x0: float, x1: float) -> float:
         # It's assumed that the input function is a decreasing function, where f(x0) > 0 and f(x1) < 0
         # This will find the point where f(x) == 0
-        x = x0
+        x_low, x_high = x0, x1
+        x = 0.5 * (x0 + x1)  # Start in the middle
         for _ in range(max_iterations):
             fx, dfx, _ = f(x)
             if abs(fx) < tol:
-                return x
-            if dfx == 0.0 or isnan(dfx):
-                x = 0.5 * (x + x1)
-                continue
-            x_new = x - fx / dfx
-            # Clamp to [x0, x1]
-            if not (x0 <= x_new <= x1):
-                # The next x value is outside the range.
-                # We'll just perform a pseudo-bisection step, to keep things progressing!
-                if fx > 0.0:
-                    # Bisect right
-                    x_new = 0.5 * (x + x1)
-                else:
-                    # Bisect left
-                    x_new = 0.5 * (x0 + x)
-            if abs(x_new - x) < tol:
-                return x_new
-            x = x_new
-        # Fallback, check both ends
-        for t in [x, x0, x1]:
-            fx, _, _ = f(t)
-            if abs(fx) < tol or fx <= 0:
-                return t
-        return nan
+                return x  # Found a root!
 
-    # Newton's method for finding minimum: f'(x) == 0
+            # If the slope is 0 or NaN, just do a bisection step
+            if dfx == 0.0 or isnan(dfx):
+                x = 0.5 * (x_low + x_high)
+            else:
+                x_new = x - fx / dfx  # Newton update!
+                # Make sure it's still in [x0, x1]; if not, fallback to bisection
+                if not (x0 <= x_new <= x1):
+                    x_new = 0.5 * (x_low + x_high)
+                x = x_new
+
+            # Update bounds based on sign of f(x)
+            fx, _, _ = f(x)
+            if fx > 0.0:
+                x_low = x
+            else:
+                x_high = x
+
+            # Check for convergence
+            if abs(x_high - x_low) < tol:
+                return x
+        return nan  # Didn't converge
+
+    # Tries to find a local minimum (i.e., zero of f') using Newton's method
     def newton_minimum(f: Callable[[float], tuple[float, float, float]], a: float, b: float) -> float:
         x = 0.5 * (a + b)
         for _ in range(max_iterations):
             _, dfx, ddfx = f(x)
             if abs(dfx) < tol:
-                return x
-            if ddfx == 0.0 or isnan(ddfx):
-                x = 0.5 * (x + b)
+                return x  # Gradient is close to zero, possible min
+
+            # Avoid dividing by zero or near-zero second derivative
+            if abs(ddfx) < 1e-8 or isnan(ddfx):
+                x = 0.5 * (a + b)
                 continue
+
             x_new = x - dfx / ddfx
+            # If Newton jumps out of bounds, just bisect instead
             if not (a <= x_new <= b):
-                x_new = 0.5 * (a + x)
+                x_new = 0.5 * (a + b)
+
+            # Check for convergence
             if abs(x_new - x) < tol:
                 return x_new
             x = x_new
-        return x
+        return x  # Return last guess even if not fully converged
 
+    # Classic bisection method. Slower but guaranteed if f changes sign
+    def bisection_root(f: Callable[[float], tuple[float, float, float]], x0: float, x1: float) -> float:
+        for _ in range(max_iterations):
+            xm = 0.5 * (x0 + x1)
+            fm, _, _ = f(xm)
+            if abs(fm) < tol:
+                return xm  # Close enough to zero
+            f0, _, _ = f(x0)
+            if f0 * fm < 0:
+                x1 = xm  # Root is in [x0, xm]
+            else:
+                x0 = xm  # Root is in [xm, x1]
+            if abs(x1 - x0) < tol:
+                return 0.5 * (x0 + x1)  # Interval is tiny. return midpoint
+        return nan  # Didn't converge
+
+    # Main logic
     fa, da, _ = f(a)
     if fa <= 0.0:
-        return a
+        return a  # Already satisfies condition at the left endpoint
 
     fb, db, _ = f(b)
     if fb <= 0.0:
-        # Bracket [a, b]: Use Newton's method
+        # There’s a root somewhere between a and b
         return newton_root(f, a, b)
 
-    if da < 0 and db > 0:
+    # If f is decreasing then increasing (da < 0, db > 0), there may be a minimum inside
+    if da < 0.0 and db > 0.0:
         t_min = newton_minimum(f, a, b)
         fmin, _, _ = f(t_min)
         if fmin <= 0.0:
-            # Root must be to left of minimum;
+            # The minimum is below zero. Find where it goes from positive to negative
             return newton_root(f, a, t_min)
+
+    # Hail Mary fallback: brute force sample the interval a bunch lol
+    N = 100  # Subdivide the interval finely
+    for i in range(1, N + 1):
+        x0 = a + (b - a) * (i - 1) / N
+        x1 = a + (b - a) * i / N
+        f0, _, _ = f(x0)
+        f1, _, _ = f(x1)
+        if f0 > 0.0 and f1 <= 0.0:
+            # We found a sign change, so apply bisection
+            return bisection_root(f, x0, x1)
+
+    # Dang, couldn't find anything :(
     return nan
 
 
