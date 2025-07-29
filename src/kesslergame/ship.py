@@ -406,7 +406,7 @@ class Ship:
                 # Append the end state, so we can reverse-integrate later by plugging in a negative time
                 self.integration_initial_states.append((0.0, -t2, self.speed, accel_phase2, theta1 + omega * t2, omega, -dx2, -dy2))
                 # And append the midpoint of the integration
-                self.integration_initial_states.append((-t2, -delta_time, self.speed, net_acc, theta1, omega, -dx1, -dy1))
+                self.integration_initial_states.append((-t2, -delta_time, v1, net_acc, theta1, omega, -dx1, -dy1))
 
             # Clamp speed after acceleration (This is only needed in case of floating point error, but is otherwise unnecessary)
             if abs(self.speed) > self.max_speed:

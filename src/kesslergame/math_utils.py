@@ -206,7 +206,7 @@ def find_first_leq_zero(
     """
     Finds the smallest t in [a, b] such that f(t) <= 0,
     using Newton's method with a bisection fallback for robustness.
-    This can handle discontinuities and jumps in the derivatives.
+    This can handle discontinuities and jumps in the derivatives
     
     The function f must return a triple: (f(t), f'(t), f''(t))
     """
@@ -214,6 +214,7 @@ def find_first_leq_zero(
     # Root-finding using Newton's method, with bisection fallback if Newton update jumps out of bounds
     def newton_root(f: Callable[[float], tuple[float, float, float]], x0: float, x1: float) -> float:
         # It's assumed that the input function is a decreasing function, where f(x0) > 0 and f(x1) < 0
+        # We assume there's just one root
         # This will find the point where f(x) == 0
         x_low, x_high = x0, x1
         x = 0.5 * (x0 + x1)  # Start in the middle
@@ -227,16 +228,19 @@ def find_first_leq_zero(
                 x = 0.5 * (x_low + x_high)
             else:
                 x_new = x - fx / dfx  # Newton update!
-                # Make sure it's still in [x0, x1]; if not, fallback to bisection
+                # Make sure it's still in [x0, x1]
                 if not (x0 <= x_new <= x1):
+                    # It's not, fallback to bisection
                     x_new = 0.5 * (x_low + x_high)
                 x = x_new
 
             # Update bounds based on sign of f(x)
             fx, _, _ = f(x)
             if fx > 0.0:
+                # Bisect right
                 x_low = x
             else:
+                # Bisect left
                 x_high = x
 
             # Check for convergence
@@ -244,29 +248,43 @@ def find_first_leq_zero(
                 return x
         return nan  # Didn't converge
 
-    # Tries to find a local minimum (i.e., zero of f') using Newton's method
-    def newton_minimum(f: Callable[[float], tuple[float, float, float]], a: float, b: float) -> float:
-        x = 0.5 * (a + b)
+    # Root-finding for f'(x) using Newton's method, with bisection fallback if Newton update jumps out of bounds
+    def newton_minimum(f: Callable[[float], tuple[float, float, float]], x0: float, x1: float) -> float:
+        # It's assumed that the input function has a local minimum in [x0, x1]
+        # We're looking for the point where f'(x) == 0
+        # We assume there's just one critical point (minimum or maximum)
+        # Assume that f'(x0) < 0 and f'(x1) > 0, so this is an increasing function
+        x_low, x_high = x0, x1
+        x = 0.5 * (x0 + x1)  # Start in the middle
         for _ in range(max_iterations):
             _, dfx, ddfx = f(x)
             if abs(dfx) < tol:
-                return x  # Gradient is close to zero, possible min
+                return x  # Found a minimum (or stationary point)!
 
-            # Avoid dividing by zero or near-zero second derivative
+            # If the second derivative is 0 or NaN, just do a bisection step
             if abs(ddfx) < 1e-8 or isnan(ddfx):
-                x = 0.5 * (a + b)
-                continue
+                x = 0.5 * (x_low + x_high)
+            else:
+                x_new = x - dfx / ddfx  # Newton update!
+                # Make sure it's still in [x0, x1]
+                if not (x0 <= x_new <= x1):
+                    # It's not, fallback to bisection
+                    x_new = 0.5 * (x_low + x_high)
+                x = x_new
 
-            x_new = x - dfx / ddfx
-            # If Newton jumps out of bounds, just bisect instead
-            if not (a <= x_new <= b):
-                x_new = 0.5 * (a + b)
+            # Update bounds based on sign of f'(x)
+            _, dfx, _ = f(x)
+            if dfx > 0.0:
+                # Bisect left
+                x_high = x
+            else:
+                # Bisect right
+                x_low = x
 
             # Check for convergence
-            if abs(x_new - x) < tol:
-                return x_new
-            x = x_new
-        return x  # Return last guess even if not fully converged
+            if abs(x_high - x_low) < tol:
+                return x
+        return nan # Didn't converge
 
     # Classic bisection method. Slower but guaranteed if f changes sign
     def bisection_root(f: Callable[[float], tuple[float, float, float]], x0: float, x1: float) -> float:
