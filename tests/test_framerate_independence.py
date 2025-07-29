@@ -1,8 +1,8 @@
 import random
 from kesslergame import Scenario, KesslerGame, GraphicsType, KesslerController
 
-TRIALS = 1
-GRAPHICS = True
+TRIALS = 10000
+GRAPHICS = False
 COMPETITION_SAFE_MODE = True
 WIDTH = 1000
 HEIGHT = 800
@@ -27,17 +27,20 @@ class FramerateIndependentController(KesslerController):
         turn_rate = None
         fire = False
         drop_mine = False
-
+        if time_f == 0:
+            print()
         for second, action in enumerate(self.actions_list):
             # second is an integer, where if the floor of the time in seconds is equal to it, it will do that action
             if time_f == second * int(framerate):
+                if float(time_f + framerate) + 1e-6 >= framerate*game_state.time_limit:
+                    print(f"Frame {time_f}, pos=({ship_state.x}, {ship_state.y}), heading={ship_state.heading}, speed={ship_state.speed}")
                 fire = action[2]
                 drop_mine = action[3]
             if second * int(framerate) <= time_f < (second + 1) * int(framerate):
                 thrust = action[0]
                 turn_rate = action[1]
                 break
-        
+        #print(f"Frame {time_f}, pos=({ship_state.x}, {ship_state.y}), heading={ship_state.heading}, speed={ship_state.speed}")
         if thrust is None or turn_rate is None:
             # Ran out of planned actions. Just use the final one for the rest of time.
             thrust = self.actions_list[-1][0]
@@ -69,33 +72,34 @@ def randomly_initialized_controllers(number: int) -> list[FramerateIndependentCo
     for i in range(number):
         actions_list = [(random.uniform(thrust_range[0], thrust_range[1]),
                         random.uniform(turn_rate_range[0], turn_rate_range[1]),
-                        random.choice([True, False]),
-                        random.choice([True, False])) for _ in range(1000)]
+                        random.choice([False, False]),
+                        random.choice([False, False])) for _ in range(1000)]
         controllers.append(FramerateIndependentController(actions_list))
     return controllers
 
 for i in range(TRIALS):
     seed = random.randint(0, 1_000_000)
-    seed = 56761
+    #seed = 16
     random.seed(seed)
-    framerate1 = random.randint(2, 60)
-    framerate2 = framerate1
+    framerate1 = 20#random.randint(2, 60)
+    framerate2 = 40#framerate1
     while framerate1 == framerate2:
         framerate2 = random.randint(2, 60)
     print(f"Trial={i}, seed={seed}, framerates: {framerate1} and {framerate2}")
-    num_ships = random.randint(1, 1)
+    num_ships = random.randint(3, 3)
     scenario = Scenario(name=f"Trial {i}",
-                        num_asteroids=random.randint(1, 10),
+                        num_asteroids=random.randint(5, 15),
                         ship_states=random_ship_states(num_ships),
                         map_size=(WIDTH, HEIGHT),
                         seed=seed,
                         ammo_limit_multiplier=random.uniform(0.0, 2.0),
-                        time_limit=float(random.randint(5, 15)))
+                        time_limit=float(random.randint(10, 30)))
     controllers = randomly_initialized_controllers(num_ships)
 
     game_settings_1 = {'perf_tracker': True,
                     'graphics_type': GraphicsType.NoGraphics if not GRAPHICS else GraphicsType.Tkinter,
-                    'realtime_multiplier': 1.0,
+                    'realtime_multiplier': 0.0,
+                    'frame_skip': 2,
                     'graphics_obj': None,
                     'frequency': framerate1,
                     "competition_safe_mode": COMPETITION_SAFE_MODE,
@@ -107,7 +111,8 @@ for i in range(TRIALS):
 
     game_settings_2 = {'perf_tracker': True,
                     'graphics_type': GraphicsType.NoGraphics if not GRAPHICS else GraphicsType.Tkinter,
-                    'realtime_multiplier': 1.0,
+                    'realtime_multiplier': 0.0,
+                    'frame_skip': 2,
                     'graphics_obj': None,
                     'frequency': framerate2,
                     "competition_safe_mode": COMPETITION_SAFE_MODE,
@@ -121,3 +126,6 @@ for i in range(TRIALS):
     print()
     print(score_2)
     print()
+    if score_1 != score_2:
+        print("MISMATCH!")
+        break

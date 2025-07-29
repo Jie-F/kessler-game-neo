@@ -10,10 +10,11 @@ from .math_utils import solve_quadratic, project_point_onto_segment_and_get_t, a
 
 def ship_asteroid_continuous_collision_time(ship_x: float, ship_y: float, ship_r: float, ship_speed: float,
                                             ship_integration_initial_states: list[tuple[float, float, float, float, float, float, float, float]],
-                                            ast_x: float, ast_y: float, ast_vx: float, ast_vy: float, ast_r: float, ast_speed: float, delta_time: float) -> float:
+                                            ast_x: float, ast_y: float, ast_vx: float, ast_vy: float, ast_r: float, ast_speed: float,
+                                            time_interval_start: float, time_interval_end: float) -> float:
     # Given the asteroid and ship states at this instant, this function checks whether a collision
-    # between them has occurred anytime within the past delta_time seconds.
-    # This function returns nan if not, and returns t, the earliest time of collision where -delta_time <= t <= 0.0, if a collision was detected.
+    # between them has occurred anytime within the time interval. The current time is treated as t=0
+    # This function returns nan if not, and returns t, the earliest time of collision where time_interval_start <= t <= time_interval_end, if a collision was detected.
     
     # The asteroid moves at constant velocity
     # The ship can accelerate, and move in a spiral path. Integration is required to solve for its movement.
@@ -24,20 +25,26 @@ def ship_asteroid_continuous_collision_time(ship_x: float, ship_y: float, ship_r
     # First, we do an early rejection check. If the asteroid and ship are far enough away that with their combined velocities
     # it is impossible that they could have collided within the past delta_time seconds, then return nan
     # This check can be made stronger if we find the magnitude of their relative velocity, but that's more expensive to calculate compared to this conservative check
-    combined_vel = abs(ship_speed) + ast_speed #sqrt(ast_vx * ast_vx + ast_vy * ast_vy)
+    max_time_diff_from_now = max(abs(time_interval_start), abs(time_interval_end))
+    # Find the upper bound of their combined velocities
+    combined_vel = abs(ship_speed) + (480.0 + 80.0) * 0.5 * max_time_diff_from_now + ast_speed #sqrt(ast_vx * ast_vx + ast_vy * ast_vy)
+    assert ast_speed >= 0.0
     delta_x = ship_x - ast_x
     delta_y = ship_y - ast_y
-    max_separation = delta_time * combined_vel + ship_r + ast_r
+    max_separation = max_time_diff_from_now * combined_vel + ship_r + ast_r
     # if separation <= 0.0 then we collided, but we still go through the rest of the function to find when it first happened
     if delta_x * delta_x + delta_y * delta_y > max_separation * max_separation:
-        # There is no possible way these could have been colliding in the time interval [-delta_time, 0.0]
+        # There is no possible way these could have been colliding in the time interval [time_interval_start, time_interval_end]
         # even if they were booking it away from each other in this past frame
         return nan
 
     # This is the function we want to root find
     def squared_separation_between_ship_and_asteroid_at_t(t: float) -> tuple[float, float, float]:
         # Returns f(t), f'(t), f''(t)
-        assert -delta_time <= t <= 0.0
+        assert time_interval_start <= t <= time_interval_end, (
+            f"Time 't' is out of bounds: expected {time_interval_start} <= t <= {time_interval_end}, "
+            f"but got t = {t}"
+        )
         # Back-extrapolate the asteroid
         ax = ast_x + ast_vx * t
         ay = ast_y + ast_vy * t
@@ -105,16 +112,17 @@ def ship_asteroid_continuous_collision_time(ship_x: float, ship_y: float, ship_r
         
         return function_value, derivative_value, second_derivative_value
 
-    return find_first_leq_zero(squared_separation_between_ship_and_asteroid_at_t, -delta_time, 0.0)
+    return find_first_leq_zero(squared_separation_between_ship_and_asteroid_at_t, time_interval_start, time_interval_end)
 
 
 def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r: float, ship1_speed: float,
                                         ship1_integration_initial_states: list[tuple[float, float, float, float, float, float, float, float]],
                                         ship2_x: float, ship2_y: float, ship2_r: float, ship2_speed: float,
-                                        ship2_integration_initial_states: list[tuple[float, float, float, float, float, float, float, float]], delta_time: float) -> float:
+                                        ship2_integration_initial_states: list[tuple[float, float, float, float, float, float, float, float]],
+                                        time_interval_start: float, time_interval_end: float) -> float:
     # Given the two ship states at this instant, this function checks whether a collision
-    # between them has occurred anytime within the past delta_time seconds.
-    # This function returns nan if not, and returns t, the earliest time of collision where -delta_time <= t <= 0.0, if a collision was detected.
+    # between them has occurred anytime within the time interval
+    # This function returns nan if not, and returns t, the earliest time of collision where time_interval_start <= t <= time_interval_end, if a collision was detected.
 
     # Both ships can accelerate and move in spiral paths. Integration is required to solve for their movements.
 
@@ -124,10 +132,12 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
     # First, we do an early rejection check. If the ships are far enough away that with their combined velocities
     # it is impossible that they could have collided within the past delta_time seconds, then return nan
     # This check can be made stronger if we find the magnitude of their relative velocity, but that's more expensive to calculate compared to this conservative check
-    combined_vel = abs(ship1_speed) + abs(ship2_speed)
+    max_time_diff_from_now = max(abs(time_interval_start), abs(time_interval_end))
+    # Find the upper bound of their combined velocities
+    combined_vel = abs(ship1_speed) + abs(ship2_speed) + (480.0 + 80.0) * max_time_diff_from_now
     delta_x = ship1_x - ship2_x
     delta_y = ship1_y - ship2_y
-    max_separation = delta_time * combined_vel + ship1_r + ship2_r
+    max_separation = max_time_diff_from_now * combined_vel + ship1_r + ship2_r
     # if separation <= 0.0 then we collided, but we still go through the rest of the function to find when it first happened
     if delta_x * delta_x + delta_y * delta_y > max_separation * max_separation:
         # There is no possible way these could have been colliding in the time interval [-delta_time, 0.0]
@@ -137,7 +147,7 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
     # This is the function we want to root find
     def squared_separation_between_ships_at_t(t: float) -> tuple[float, float, float]:
         # Returns f(t), f'(t), f''(t)
-        assert -delta_time <= t <= 0.0
+        assert time_interval_start <= t <= time_interval_end
 
         dx1_sum = 0.0
         dy1_sum = 0.0
@@ -247,7 +257,7 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
 
         return function_value, derivative_value, second_derivative_value
     
-    return find_first_leq_zero(squared_separation_between_ships_at_t, -delta_time, 0.0)
+    return find_first_leq_zero(squared_separation_between_ships_at_t, time_interval_start, time_interval_end)
 
 
 def collision_time_interval(

@@ -286,7 +286,9 @@ class Ship:
             # 2. Net acc changes sign, meaning the ship will infinitely oscillate across the 0 boundary every infinitesimal timestep forward.
             #    To handle this, we split up the integration into period 1 with net_acc, and period 2 with 0 acceleration to simulate the infinite oscillations
             net_acc = self.thrust + drag_acc  # m/s²
-            
+            if abs(drag_acc) > abs(self.thrust):
+                net_acc = 0.0
+            #print(f"{net_acc=}")
             # We perform analytic position integration, which is framerate independent
             # The shape that the ship traces out with a constant turn rate and thrust over the previous frame is a type of spiral
             # This spiral can be analytically integrated! Yay!
@@ -300,8 +302,9 @@ class Ship:
             v1: float = 0.0
             accel_phase2 = 0.0  # default to coasting at max speed, or stopped in second phase
 
-            # Case 1: drag will bring us to a stop
             if is_moving and net_acc * initial_speed < 0.0: # Net accel is opposite sign from direction of movement
+                # Case 1: drag will bring us to a stop
+                #print('case 1')
                 assert net_acc != 0.0
                 t_to_stop = -initial_speed / net_acc # This is a positive number, and net_acc is nonzero
                 assert t_to_stop >= 0.0
@@ -318,10 +321,11 @@ class Ship:
                         # Thrust too weak. We fall into zero valley and infinitely oscillate!
                         accel_phase2 = 0.0 # Infinite oscillations around 0. Essentially simulate that with 0 acceleration to bypass oscillations.
             else:
-                # Case 2: acceleration would exceed max speed
+                # Case 2: acceleration would exceed max speed eventually
                 max_speed = copysign(self.max_speed, initial_speed + net_acc * delta_time)
                 if net_acc != 0.0 and delta_time != 0.0:
                     to_max = (max_speed - initial_speed) / net_acc
+                    #print('case 2', to_max)
                     assert to_max >= 0.0
                     # If we'll achieve and exceed max speed within this frame
                     if 0.0 <= to_max < delta_time:
@@ -398,6 +402,7 @@ class Ship:
                 new_bullet = self.fire_bullet(map_size) if self.fire else None
                 new_mine = self.deploy_mine() if self.drop_mine else None
         else:
+            #print('SHIP ROLLBACK')
             # This is a negative-time update, which rolls-back a portion of the frame we last updated forward.
             # We have recorded how we did the forward integration, so we use that history to do the backward integration.
             assert self.integration_initial_states, "Cannot rollback ship state without a preceding forward update!"
@@ -420,6 +425,7 @@ class Ship:
                     dx_sum += dx
                     dy_sum += dy
                     speed_sum += a * (delta_time - start_t) # This time diff results in a negative number
+                    assert delta_time - start_t <= 0.0
                     break # Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
                 else:
                     # This interval is fully included within t. Add the full integral amount
@@ -427,6 +433,7 @@ class Ship:
                     dx_sum += dx
                     dy_sum += dy
                     speed_sum += a * (end_t - start_t) # This time diff results in a negative number
+                    assert end_t - start_t <= 0.0
             
             self.x += dx_sum
             self.y += dy_sum

@@ -365,11 +365,11 @@ class KesslerGame:
                     ast_y_centered_around_ship = asteroid.y + self.map_height
                 else:
                     ast_y_centered_around_ship = asteroid.y
-                
+                assert ship._respawning <= 1e-12, f"{ship._respawning=}"
                 collision_start_time = ship_asteroid_continuous_collision_time(
                     ship.x, ship.y, ship.radius, ship.speed, ship.integration_initial_states,
                     ast_x_centered_around_ship, ast_y_centered_around_ship, asteroid.vx, asteroid.vy, asteroid.radius, asteroid.speed,
-                    max(self.delta_time, ship._respawning) # Only check collisions starting from when the ship's respawn invincibility wore off
+                    max(-self.delta_time, min(0.0, ship._respawning)), 0.0 # Only check collisions starting from when the ship's respawn invincibility wore off
                 )
                 if not isnan(collision_start_time):
                     assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
@@ -405,7 +405,7 @@ class KesslerGame:
                         collision_start_time = ship_ship_continuous_collision_time(
                             ship1.x, ship1.y, ship1.radius, ship1.speed, ship1.integration_initial_states,
                             ship2_x_centered_around_ship1, ship2_y_centered_around_ship1, ship2.radius, ship2.speed, ship2.integration_initial_states,
-                            max(self.delta_time, max(ship1._respawning, ship2._respawning)) # Clamp to when ships are out of respawn. Double max calls is MUCH faster than calling max with 3 args, in MyPyC compiled code!
+                            max(-self.delta_time, min(0.0, max(ship1._respawning, ship2._respawning))), 0.0 # Clamp to when ships are out of respawn. Double max/min calls is MUCH faster than calling max/min with 3-4 args, in MyPyC compiled code!
                         )
                         if not isnan(collision_start_time):
                             assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
@@ -720,6 +720,9 @@ class KesslerGame:
                             continue
                         asteroid = asteroids[ast_idx]
                         # Rewind
+                        assert abs(dt) <= self.delta_time
+                        assert dt <= 0.0
+                        #print(f"{dt=} {sim_time=} {(dt + sim_time + self.delta_time)=}")
                         ship.update(dt, scenario.map_size, False)
                         asteroid.update(dt, scenario.map_size)
                         # Handle collision
@@ -759,18 +762,18 @@ class KesslerGame:
                         if ship1.is_respawning or ship2.is_respawning:
                             continue
                         # Rollback
-                        ship1.update(dt, scenario.map_size)
-                        ship2.update(dt, scenario.map_size)
+                        ship1.update(dt, scenario.map_size, False)
+                        ship2.update(dt, scenario.map_size, False)
                         # Handle collision
                         ship1.destruct(map_size=scenario.map_size)
                         ship2.destruct(map_size=scenario.map_size)
                         # Roll forward to the end of the frame again if alive
                         if ship1.alive:
-                            ship1.update(-dt, scenario.map_size)
+                            ship1.update(-dt, scenario.map_size, False)
                         else:
                             ships_to_cull.append(ship1_idx)
                         if ship2.alive:
-                            ship2.update(-dt, scenario.map_size)
+                            ship2.update(-dt, scenario.map_size, False)
                         else:
                             ships_to_cull.append(ship2_idx)
 

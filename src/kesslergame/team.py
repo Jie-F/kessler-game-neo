@@ -66,3 +66,32 @@ class Team:
             return max(self.eval_times)
         else:
             return 0.0
+
+    def __repr__(self) -> str:
+        return (
+            f"Team {self.team_id} ({self.team_name}): "
+            f"Asteroids Hit={self.asteroids_hit}, Bullets Hit={self.bullets_hit}, "
+            f"Shots Fired={self.shots_fired}, Bullets Remaining={self.bullets_remaining}, "
+            f"Mines Remaining={self.mines_remaining}, Deaths={self.deaths}, "
+            f"Lives Remaining={self.lives_remaining}, "
+            f"Eval Times={self.eval_times}"
+        )
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Team):
+            return False
+
+        return (
+            self.team_id == other.team_id and
+            self.team_name == other.team_name and
+            self.total_bullets == other.total_bullets and
+            self.total_asteroids == other.total_asteroids and
+            self.asteroids_hit == other.asteroids_hit and
+            self.bullets_hit == other.bullets_hit and
+            self.shots_fired == other.shots_fired and
+            self.bullets_remaining == other.bullets_remaining and
+            self.mines_remaining == other.mines_remaining and
+            self.deaths == other.deaths and
+            self.lives_remaining == other.lives_remaining# and
+            #self.eval_times == other.eval_times
+        )

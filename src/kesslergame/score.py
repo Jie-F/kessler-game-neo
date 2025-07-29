@@ -71,3 +71,19 @@ class Score:
             f"<Score(sim_time={self.sim_time:.2f}, stop_reason={stop},\n"
             f" Teams:\n  " + "\n  ".join(team_summaries) + ")>"
         )
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Score):
+            return False
+
+        if self.sim_time != other.sim_time or self.stop_reason != other.stop_reason:
+            return False
+
+        if len(self.teams) != len(other.teams):
+            return False
+
+        for team_self, team_other in zip(self.teams, other.teams):
+            if team_self != team_other:
+                return False
+
+        return True
