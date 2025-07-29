@@ -307,6 +307,8 @@ def find_first_leq_zero(
     for i in range(1, N + 1):
         x0 = a + (b - a) * (i - 1) / N
         x1 = a + (b - a) * i / N
+        x0 = max(x0, a)
+        x1 = min(x1, b)
         f0, _, _ = f(x0)
         f1, _, _ = f(x1)
         if f0 > 0.0 and f1 <= 0.0:
