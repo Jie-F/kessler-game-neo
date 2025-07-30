@@ -864,8 +864,20 @@ class KesslerGame:
                     assert game_state is not None
                     game_state.remove_asteroid(ast_idx)
             
-            # TODO: CULL BULLETS!
             assert len(bullets_to_cull) == len(set(bullets_to_cull))
+
+            # Cull bullets that are off the map
+            for bul_idx, bullet in enumerate(bullets):
+                if bul_idx in bullets_to_cull:
+                    continue
+                if not (
+                    (0.0 <= bullet.x <= self.map_width and 0.0 <= bullet.y <= self.map_height)
+                    or (0.0 <= bullet.x + bullet.tail_delta_x <= self.map_width and 0.0 <= bullet.y + bullet.tail_delta_y <= self.map_height)
+                ):
+                    # Neither head nor tail are inbounds
+                    bullet.destruct()
+                    bullets_to_cull.append(bul_idx)
+            
             for bul_idx in sorted(bullets_to_cull, reverse=True):
                 bullets[bul_idx] = bullets[-1]
                 bullets.pop()
