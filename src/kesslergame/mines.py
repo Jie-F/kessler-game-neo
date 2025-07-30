@@ -63,3 +63,14 @@ class Mine:
         Also takes into account asteroid diameter to resolve total acceleration based on size/mass
         """
         return (1.0 - dist / (self.blast_radius + obj.radius)) * self.blast_pressure * 2.0 * obj.radius
+
+    def __repr__(self) -> str:
+        return (
+            f"<Mine("
+            f"x={self.x}, y={self.y}, "
+            f"mass={self.mass}, radius={self.radius}, "
+            f"blast_radius={self.blast_radius}, blast_pressure={self.blast_pressure}, "
+            f"fuse_time={self.fuse_time}, countdown_timer={self.countdown_timer}, "
+            f"detonating={self.detonating}, owner={self.owner}"
+            f")>"
+        )

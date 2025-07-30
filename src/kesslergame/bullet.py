@@ -66,3 +66,15 @@ class Bullet:
     @property
     def tail(self) -> tuple[float, float]:
         return (self.x + self.tail_delta_x, self.y + self.tail_delta_y)
+
+    def __repr__(self) -> str:
+        return (
+            f"<Bullet("
+            f"owner={self.owner}, "
+            f"x={self.x}, y={self.y}, "
+            f"vx={self.vx}, vy={self.vy}, "
+            f"heading={self.heading}, "
+            f"tail_delta_x={self.tail_delta_x}, tail_delta_y={self.tail_delta_y}, "
+            f"speed={self.speed}, mass={self.mass}, length={self.length}"
+            f")>"
+        )

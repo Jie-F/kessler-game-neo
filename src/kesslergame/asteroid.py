@@ -193,3 +193,14 @@ class Asteroid:
             # return [Asteroid(position=self.position, size=self.size-1) for _ in range(self.num_children)]
         else:
             return []
+
+    def __repr__(self) -> str:
+        return (
+            f"<Asteroid("
+            f"x={self.x}, y={self.y}, "
+            f"vx={self.vx}, vy={self.vy}, "
+            f"speed={self.speed}, angle={self.angle}, turnrate={self.turnrate}, "
+            f"size={self.size}, radius={self.radius}, mass={self.mass}, "
+            f"num_children={self.num_children}"
+            f")>"
+        )

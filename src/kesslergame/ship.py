@@ -577,3 +577,17 @@ class Ship:
 
         # Return nothing if we can't fire a bullet right now
         return None
+
+    def __repr__(self) -> str:
+        return (
+            f"<Ship("
+            f"id={self.id}, team={self.team}, team_name='{self.team_name}', "
+            f"x={self.x}, y={self.y}, vx={self.vx}, vy={self.vy}, "
+            f"speed={self.speed}, heading={self.heading}, "
+            f"lives={self.lives}, deaths={self.deaths}, "
+            f"is_respawning={self.is_respawning}, "
+            f"bullets_remaining={self.bullets_remaining}, mines_remaining={self.mines_remaining}, "
+            f"can_fire={self.can_fire}, can_deploy_mine={self.can_deploy_mine}, "
+            f"thrust={self.thrust}, turn_rate={self.turn_rate}"
+            f")>"
+        )
