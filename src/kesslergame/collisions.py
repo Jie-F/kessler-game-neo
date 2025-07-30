@@ -3,7 +3,7 @@
 # NOTICE: This file is subject to the license agreement defined in file 'LICENSE', which is part of
 # this source code package.
 
-from math import isnan, sqrt, hypot, dist, nan, inf, isfinite, sin, cos
+from math import isnan, sqrt, dist, nan, inf, isfinite, sin, cos
 
 from .math_utils import solve_quadratic, project_point_onto_segment_and_get_t, analytic_ship_movement_integration, find_first_leq_zero
 
@@ -298,7 +298,7 @@ def collision_time_interval(
     # Direction and length of the segment
     seg_dx = b0x - a0x
     seg_dy = b0y - a0y
-    seg_len = hypot(seg_dx, seg_dy)  # Should be 12.0, but calculate it to be general
+    seg_len = sqrt(seg_dx * seg_dx + seg_dy * seg_dy) # Should be 12.0 for a bullet, but calculate it to be general, and to allow for "virtual bullets"
 
     # Degenerate segment, just a point
     if seg_len == 0.0:
@@ -319,17 +319,21 @@ def collision_time_interval(
 
     t0_B, t1_B = solve_quadratic(q2, q1, q0)
 
-    # If nothing ever collides at either endpoint, we’re done
-    if isnan(t0_A) and isnan(t0_B):
+    # If nothing ever collides at either endpoint, 
+    # and the circle is too large to fit through between endpoints,
+    # we’re done. No possible way the further check will catch a collision!
+    if isnan(t0_A) and isnan(t0_B) and r > seg_len:
         return (nan, nan)
 
     # Get the min/max collision window from the two endpoints
+    # t0 is the min of all non-nan times
     t0 = inf
     if not isnan(t0_A):
         t0 = t0_A
     if not isnan(t0_B) and t0_B < t0:
         t0 = t0_B
 
+    # t1 is the max of all non-nan times
     t1 = -inf
     if not isnan(t1_A):
         t1 = t1_A
@@ -338,7 +342,7 @@ def collision_time_interval(
 
     # Check the case where the segment middle collides before the head/tail does
     # To handle that, find the normal (perpendicular) direction to the segment and project velocity there.
-    if seg_len > 0:
+    if seg_len > 0.0:
         nx = seg_dy / seg_len
         ny = -seg_dx / seg_len
     else:
@@ -383,9 +387,11 @@ def collision_time_interval(
     # Only count these times if the projection is inside the segment at all (t in [0, 1])
     if 0.0 <= t_proj_0 <= 1.0:
         # This is a legit "middle-of-segment" first contact
+        assert t0_mid <= t0
         t0 = t0_mid
     if 0.0 <= t_proj_1 <= 1.0:
         # This is a legit "middle-of-segment" last contact
+        assert t1_mid >= t1
         t1 = t1_mid
 
     # If neither t0 nor t1 got set properly, there was no collision
