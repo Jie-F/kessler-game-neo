@@ -51,7 +51,7 @@ class CollisionType(IntEnum):
 
 
 class CollisionEvent:
-    __slots__ = ("time_offset", "distance", "object_a_idx", "object_b_idx", "collision_type")
+    __slots__ = ("time_offset", "distance", "object_a_idx", "object_b_idx", "collision_type", "index_sum")
 
     def __init__(self, time_offset: float, distance: float, object_a_idx: int, object_b_idx: int, collision_type: CollisionType):
         """
@@ -69,18 +69,25 @@ class CollisionEvent:
         self.object_a_idx = object_a_idx
         self.object_b_idx = object_b_idx
         self.collision_type = collision_type
+        self.index_sum = object_a_idx + object_b_idx
 
     # Hand-implement each of the comparison dunders for speed, instead of using one for the others
     def __lt__(self, other: CollisionEvent) -> bool:
         return (
             self.time_offset < other.time_offset or
-            (self.time_offset == other.time_offset and self.distance < other.distance)
+            (self.time_offset == other.time_offset and (
+                self.distance < other.distance or
+                (self.distance == other.distance and self.index_sum < other.index_sum)
+            ))
         )
 
     def __le__(self, other: CollisionEvent) -> bool:
         return (
             self.time_offset < other.time_offset or
-            (self.time_offset == other.time_offset and self.distance <= other.distance)
+            (self.time_offset == other.time_offset and (
+                self.distance < other.distance or
+                (self.distance == other.distance and self.index_sum <= other.index_sum)
+            ))
         )
 
     def __eq__(self, other: object) -> bool:
@@ -88,7 +95,8 @@ class CollisionEvent:
             return NotImplemented
         return (
             self.time_offset == other.time_offset and
-            self.distance == other.distance
+            self.distance == other.distance and
+            self.index_sum == other.index_sum
         )
 
     def __ne__(self, other: object) -> bool:
@@ -96,19 +104,26 @@ class CollisionEvent:
             return NotImplemented
         return (
             self.time_offset != other.time_offset or
-            self.distance != other.distance
+            self.distance != other.distance or
+            self.index_sum != other.index_sum
         )
 
     def __gt__(self, other: CollisionEvent) -> bool:
         return (
             self.time_offset > other.time_offset or
-            (self.time_offset == other.time_offset and self.distance > other.distance)
+            (self.time_offset == other.time_offset and (
+                self.distance > other.distance or
+                (self.distance == other.distance and self.index_sum > other.index_sum)
+            ))
         )
 
     def __ge__(self, other: CollisionEvent) -> bool:
         return (
             self.time_offset > other.time_offset or
-            (self.time_offset == other.time_offset and self.distance >= other.distance)
+            (self.time_offset == other.time_offset and (
+                self.distance > other.distance or
+                (self.distance == other.distance and self.index_sum >= other.index_sum)
+            ))
         )
 
     def __repr__(self) -> str:
@@ -146,7 +161,7 @@ class KesslerGame:
                                 'controller_name': True, 'scale': 1.0}
         self.UI_settings = cast(UISettingsDict, UI_settings)
 
-    def enqueue_bullet_asteroid_collisions(self, bullets: list[Bullet], asteroids: list[Asteroid], asteroid_list_idx_offset: int = 0) -> None:
+    def enqueue_bullet_asteroid_collisions(self, bullets: list[Bullet], asteroids: list[Asteroid], asteroid_past_time_clamp: float, asteroid_list_idx_offset: int = 0) -> None:
         # Collect all potential bullet-asteroid collisions
         # Since bullets do not wrap, we treat the bullet hitbox as being clamped at the map edge.
         # The way to calculate the collision time interval is elegant. It considers two virtual bullets,
@@ -173,6 +188,10 @@ class KesslerGame:
                 ty = -y / vy
 
             return min(tx, ty)
+
+        # We might not be able to go back a full delta_time if the asteroid wasn't alive for that long yet!
+        # So we clamp that time
+        collision_past_time_clamp = min(asteroid_past_time_clamp, self.delta_time)
 
         for bul_idx, bullet in enumerate(bullets):
             for ast_idx, asteroid in enumerate(asteroids):
@@ -205,7 +224,6 @@ class KesslerGame:
                 t_clamp_start = t_head_exit
                 t_clamp_end = t_tail_exit
                 assert t_clamp_start <= t_clamp_end
-
                 if t_clamp_start > 0.0:
                     # This means that the bullet hasn't begun clipping on the map border yet!
                     # This is the simplest case to handle. Do the normal collision check:
@@ -216,7 +234,7 @@ class KesslerGame:
                         ast_x_centered, ast_y_centered,
                         asteroid.vx, asteroid.vy,
                         asteroid.radius,
-                        self.delta_time
+                        collision_past_time_clamp
                     ):
                         collision_start_time, _ = collision_time_interval(
                             bullet_head_x, bullet_head_y,
@@ -231,8 +249,8 @@ class KesslerGame:
                             # it might be that the first function detected a barely collision, and then the second function
                             # missed it and the discriminant was -0.0000000000000001, and returns nan for collision time ¯\_(ツ)_/¯
                             continue
-                        collision_time = max(-self.delta_time, collision_start_time)
-                        assert -self.delta_time <= collision_time <= 0.0
+                        collision_time = max(-collision_past_time_clamp, collision_start_time)
+                        assert -collision_past_time_clamp <= collision_time <= 0.0
 
                         collision_event = CollisionEvent(collision_time, 0.0, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID)
                         i = len(self.collision_queue)
@@ -251,7 +269,7 @@ class KesslerGame:
                         ast_x_centered, ast_y_centered,
                         asteroid.vx, asteroid.vy,
                         asteroid.radius,
-                        self.delta_time
+                        collision_past_time_clamp
                     )
                     if not hit1:
                         continue
@@ -272,8 +290,8 @@ class KesslerGame:
                     pinned_head_x = bullet_head_x + bullet.vx * t_clamp_start
                     pinned_head_y = bullet_head_y + bullet.vy * t_clamp_start
                     # Just stick the tail of the bullet waaaaaay into the map to make sure we don't clamp on that end at all!
-                    pinned_tail_x = bullet_tail_x + bullet.vx * (t_clamp_start - self.delta_time)
-                    pinned_tail_y = bullet_tail_y + bullet.vy * (t_clamp_start - self.delta_time)
+                    pinned_tail_x = bullet_tail_x + bullet.vx * (t_clamp_start - collision_past_time_clamp)
+                    pinned_tail_y = bullet_tail_y + bullet.vy * (t_clamp_start - collision_past_time_clamp)
 
                     hit2 = circle_line_collision_continuous(
                         pinned_head_x, pinned_head_y,
@@ -282,7 +300,7 @@ class KesslerGame:
                         ast_x_centered, ast_y_centered,
                         asteroid.vx, asteroid.vy,
                         asteroid.radius,
-                        self.delta_time
+                        collision_past_time_clamp
                     )
                     if not hit2:
                         continue
@@ -300,13 +318,13 @@ class KesslerGame:
 
                     # Take the intersection of the intervals
                     # Use nested min/max instead of 3-arg min/max, because this is much faster for MyPyC compilation
-                    t_start = max(-self.delta_time, max(t1_start, t2_start))
+                    t_start = max(-collision_past_time_clamp, max(t1_start, t2_start))
                     t_end = min(0.0, min(t1_end, t2_end))
 
                     if t_start <= t_end:
                         # The interval actually exists
                         collision_time = t_start
-                        assert -self.delta_time <= collision_time <= 0.0
+                        assert -collision_past_time_clamp <= collision_time <= 0.0
                         collision_event = CollisionEvent(collision_time, 0.0, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID)
                         i = len(self.collision_queue)
                         while i > 0 and self.collision_queue[i - 1] > collision_event:
@@ -358,7 +376,7 @@ class KesslerGame:
                             i -= 1
                         self.collision_queue.insert(i, collision_event)
 
-    def enqueue_ship_asteroid_collisions(self, ships: list[Ship], asteroids: list[Asteroid], asteroid_list_idx_offset: int = 0) -> None:
+    def enqueue_ship_asteroid_collisions(self, ships: list[Ship], asteroids: list[Asteroid], asteroid_past_time_clamp: float, asteroid_list_idx_offset: int = 0) -> None:
         for ship_idx, ship in enumerate(ships):
             if ship.is_respawning or not ship.alive:
                 continue
@@ -381,7 +399,7 @@ class KesslerGame:
                 collision_start_time = ship_asteroid_continuous_collision_time(
                     ship.x, ship.y, ship.radius, ship.speed, ship.integration_initial_states,
                     ast_x_centered_around_ship, ast_y_centered_around_ship, asteroid.vx, asteroid.vy, asteroid.radius, asteroid.speed,
-                    max(-self.delta_time, min(0.0, ship._respawning)), 0.0 # Only check collisions starting from when the ship's respawn invincibility wore off
+                    max(-min(asteroid_past_time_clamp, self.delta_time), min(0.0, ship._respawning)), 0.0 # Only check collisions starting from when the ship's respawn invincibility wore off
                 )
                 if not isnan(collision_start_time):
                     assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
@@ -637,10 +655,10 @@ class KesslerGame:
 
             # --- CHECK FOR COLLISIONS AND ENQUEUE ---
 
-            self.enqueue_bullet_asteroid_collisions(bullets, asteroids)
+            self.enqueue_bullet_asteroid_collisions(bullets, asteroids, self.delta_time)
             self.enqueue_mine_asteroid_collisions(mines, asteroids)
             self.enqueue_mine_ship_collisions(mines, ships)
-            self.enqueue_ship_asteroid_collisions(ships, asteroids)
+            self.enqueue_ship_asteroid_collisions(ships, asteroids, self.delta_time)
             self.enqueue_ship_ship_collisions(ships)
 
             # --- Resolve collisions in the queue until it is empty ---
@@ -652,6 +670,9 @@ class KesslerGame:
             ships_to_cull.clear()
             asteroids_to_cull.clear()
             bullets_to_cull.clear()
+            if len(self.collision_queue) > 1:
+                print(f"Frame {sim_frame}")
+                print(self.collision_queue)
             while self.collision_queue:
                 event = self.collision_queue.pop(0)
                 dt = event.time_offset
@@ -688,9 +709,9 @@ class KesslerGame:
                             assert game_state is not None
                             game_state.add_asteroids([a.state for a in new_asteroids])
                         # Take care of possible collision events from these children asteroids this frame
-                        self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, ast_idx_offset)
+                        self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset)
                         self.enqueue_mine_asteroid_collisions(mines, new_asteroids, ast_idx_offset)
-                        self.enqueue_ship_asteroid_collisions(ships, new_asteroids, ast_idx_offset)
+                        self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset)
                     case CollisionType.MINE_ASTEROID:
                         mine_idx = event.object_a_idx
                         ast_idx = event.object_b_idx
@@ -780,9 +801,9 @@ class KesslerGame:
                         if not self.competition_safe_mode:
                             assert game_state is not None
                             game_state.add_asteroids([a.state for a in new_asteroids])
-                        self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, ast_idx_offset)
+                        self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset)
                         self.enqueue_mine_asteroid_collisions(mines, new_asteroids, ast_idx_offset)
-                        self.enqueue_ship_asteroid_collisions(ships, new_asteroids, ast_idx_offset)
+                        self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset)
 
                         if ship.alive:
                             ship.update(-dt, scenario.map_size, False)

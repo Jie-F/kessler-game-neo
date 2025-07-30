@@ -19,14 +19,12 @@ def ship_asteroid_continuous_collision_time(ship_x: float, ship_y: float, ship_r
     # The asteroid moves at constant velocity
     # The ship can accelerate, and move in a spiral path. Integration is required to solve for its movement.
 
-    # Wrapping is NOT CONSIDERED. That would make things too complex, and is not necessary 99.999999% of the time.
-    # Not considering wrapping will only introduce false negatives, and not false positives, so this will be lenient for players.
-
     # First, we do an early rejection check. If the asteroid and ship are far enough away that with their combined velocities
     # it is impossible that they could have collided within the past delta_time seconds, then return nan
     # This check can be made stronger if we find the magnitude of their relative velocity, but that's more expensive to calculate compared to this conservative check
     max_time_diff_from_now = max(abs(time_interval_start), abs(time_interval_end))
     # Find the upper bound of their combined velocities
+    # Basically because the ship could have been moving faster at the start of the interval, we integrate with the at^2/2 factor added in, with max ship accel
     combined_vel = abs(ship_speed) + (480.0 + 80.0) * 0.5 * max_time_diff_from_now + ast_speed #sqrt(ast_vx * ast_vx + ast_vy * ast_vy)
     assert ast_speed >= 0.0
     delta_x = ship_x - ast_x
@@ -126,14 +124,12 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
 
     # Both ships can accelerate and move in spiral paths. Integration is required to solve for their movements.
 
-    # Wrapping is NOT CONSIDERED. That would make things too complex, and is not necessary 99.999999% of the time.
-    # Not considering wrapping will only introduce false negatives, and not false positives, so this will be lenient for players.
-
     # First, we do an early rejection check. If the ships are far enough away that with their combined velocities
     # it is impossible that they could have collided within the past delta_time seconds, then return nan
     # This check can be made stronger if we find the magnitude of their relative velocity, but that's more expensive to calculate compared to this conservative check
     max_time_diff_from_now = max(abs(time_interval_start), abs(time_interval_end))
     # Find the upper bound of their combined velocities
+    # Basically because the ships could have been moving faster at the start of the interval, we integrate with the at^2/2 factor added in, with max ship accel
     combined_vel = abs(ship1_speed) + abs(ship2_speed) + (480.0 + 80.0) * max_time_diff_from_now
     delta_x = ship1_x - ship2_x
     delta_y = ship1_y - ship2_y

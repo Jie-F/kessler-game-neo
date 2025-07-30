@@ -268,8 +268,8 @@ class Ship:
             new_bullet = self.fire_bullet(map_size) if self.fire else None
             new_mine = self.deploy_mine() if self.drop_mine else None
         else:
-            new_bullet: Bullet | None = None
-            new_mine: Mine | None = None
+            new_bullet = None
+            new_mine = None
 
         # Bounds check the thrust
         if self.thrust < self.thrust_range[0] or self.thrust > self.thrust_range[1]:
