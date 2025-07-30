@@ -208,24 +208,42 @@ class KesslerGame:
 
             return min(tx, ty)
 
+        def time_until_enter(x: float, y: float, vx: float, vy: float) -> float:
+            """Returns the time when a point moving at (vx, vy) will fully enter the map."""
+            tx = -inf
+            ty = -inf
+
+            if vx > 0.0:
+                tx = -x / vx
+            elif vx < 0.0:
+                tx = (self.map_width - x) / vx
+
+            if vy > 0.0:
+                ty = -y / vy
+            elif vy < 0.0:
+                ty = (self.map_height - y) / vy
+
+            return max(tx, ty)
+
         # We might not be able to go back a full delta_time if the asteroid wasn't alive for that long yet!
         # So we clamp that time
         collision_past_time_clamp = min(asteroid_past_time_clamp, self.delta_time)
 
         for bul_idx, bullet in enumerate(bullets):
-            # Compute unclamped bullet path (as if bullet passes through the map edge)
+            # Find unclamped bullet path (as if bullet passes through the map edge)
             bullet_head_x = bullet.x
             bullet_head_y = bullet.y
             bullet_tail_x = bullet.x + bullet.tail_delta_x
             bullet_tail_y = bullet.y + bullet.tail_delta_y
 
-            # Compute when head and tail leave the visible map
+            # Find when head and tail leave the visible map
             t_head_exit = time_until_exit(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy)
             t_tail_exit = time_until_exit(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy)
-            # Determine valid time window for clamped bullet
-            t_clamp_start = t_head_exit
-            t_clamp_end = t_tail_exit
-            assert t_clamp_start <= t_clamp_end
+            assert t_head_exit <= t_tail_exit
+            # Find when head and tail enter the visible map
+            t_head_enter = time_until_enter(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy)
+            t_tail_enter = time_until_enter(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy)
+            assert t_head_enter <= t_tail_enter
 
             for ast_idx, asteroid in enumerate(asteroids):
                 # Center the asteroid position relative to the bullet, accounting for wrapping of asteroids.
@@ -243,8 +261,9 @@ class KesslerGame:
                 else:
                     ast_y_centered = asteroid.y
 
-                if t_clamp_start > 0.0:
-                    # This means that the bullet hasn't begun clipping on the map border yet!
+                if t_head_exit >= 0.0 and t_tail_enter <= -collision_past_time_clamp:
+                    # This means that for the whole duration we're checking, the bullet is entirely within the map's visible bounds!
+                    # The tail has entered the map before the interval starts, and the head will not leave until after the interval ends.
                     # This is the simplest case to handle. Do the normal collision check:
                     if circle_line_collision_continuous(
                         bullet_head_x, bullet_head_y,
@@ -297,7 +316,13 @@ class KesslerGame:
                         self.collision_queue.insert(i, collision_event)
                 else:
                     # During the time interval we're checking, either the whole time or a part of the time,
-                    # the bullet is at least partially out of bounds and has to have its hitbox clipped at the edge
+                    # the bullet is at least partially out of bounds and has to have its hitbox clipped at the edge.
+                    # To do this check, we create two virtual bullets! The first virtual bullet is just the regular bullet, but it's
+                    # allowed to go out of bounds.
+                    # The second virtual bullet is a stationary one, with the head at the map border where the bullet leaves, and the tail
+                    # also on the border where the bullet would first enter the map
+                    # If we find the collision time interval between the asteroid and these two virtual bullets, and take
+                    # their intersections, we'll have the true collision interval of the clamped bullet.
                     
                     # Virtual bullet 1: normal moving bullet that is unclamped as it goes beyond the border
                     hit1 = circle_line_collision_continuous(
@@ -324,13 +349,13 @@ class KesslerGame:
                         warnings.warn("Numeric instability in quadratic solver? VB1 collision time is NaN", RuntimeWarning)
                         continue
 
-                    # Virtual bullet 2: bullet head pinned at boundary, tail sticking FAR into map, stationary!
+                    # Virtual bullet 2: stationary bullet, where head and tails are pinned at the map border, along the bullet's line of travel
                     # Remember that the t_clamp_start is a negative number. The bullet head at the end of the frame is already past bound.
-                    pinned_head_x = bullet_head_x + bullet.vx * t_clamp_start
-                    pinned_head_y = bullet_head_y + bullet.vy * t_clamp_start
-                    # Just stick the tail of the bullet waaaaaay into the map to make sure we don't clamp on that end at all!
-                    pinned_tail_x = bullet_tail_x + bullet.vx * (t_clamp_start - collision_past_time_clamp)
-                    pinned_tail_y = bullet_tail_y + bullet.vy * (t_clamp_start - collision_past_time_clamp)
+                    pinned_head_x = bullet_head_x + bullet.vx * t_head_exit
+                    pinned_head_y = bullet_head_y + bullet.vy * t_head_exit
+                    # Stick the tail of the bullet on the map border where the bullet would enter the map
+                    pinned_tail_x = bullet_tail_x + bullet.vx * t_tail_enter
+                    pinned_tail_y = bullet_tail_y + bullet.vy * t_tail_enter
 
                     hit2 = circle_line_collision_continuous(
                         pinned_head_x, pinned_head_y,
