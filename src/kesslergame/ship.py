@@ -44,14 +44,15 @@ class Ship:
 
         # State info
         self.id: int = ship_id
+        self.team: int = team
+        self.team_name: str = team_name if team_name is not None else 'Team ' + str(self.team)
+
         self.speed: float = 0.0
         self.x, self.y = position
         self.vx, self.vy = (0.0, 0.0)
         self.heading: float = angle
         self.lives: int = lives
         self.deaths: int = 0
-        self.team: int = team
-        self.team_name: str = team_name if team_name is not None else 'Team ' + str(self.team)
 
         # To be able to perform continuous collision detection between the ship and other objects,
         # We need to store the stages of integration over the previous frame

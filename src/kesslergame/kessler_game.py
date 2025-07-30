@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 
 from math import inf, nan, isfinite, isnan, ceil, sqrt
-from typing import Any, TypedDict, cast
+from typing import Any, TypedDict, cast, ClassVar
 from enum import Enum, IntEnum
 
 from .scenario import Scenario
@@ -53,7 +53,7 @@ class CollisionType(IntEnum):
 class CollisionEvent:
     __slots__ = ("time_offset", "distance", "object_a_idx", "object_b_idx", "collision_type", "index_sum")
 
-    TOLERANCE = 1e-10
+    TOLERANCE: ClassVar[float] = 1e-10
 
     def __init__(self, time_offset: float, distance: float, object_a_idx: int, object_b_idx: int, collision_type: CollisionType):
         """
@@ -212,6 +212,21 @@ class KesslerGame:
         collision_past_time_clamp = min(asteroid_past_time_clamp, self.delta_time)
 
         for bul_idx, bullet in enumerate(bullets):
+            # Compute unclamped bullet path (as if bullet passes through the map edge)
+            bullet_head_x = bullet.x
+            bullet_head_y = bullet.y
+            bullet_tail_x = bullet.x + bullet.tail_delta_x
+            bullet_tail_y = bullet.y + bullet.tail_delta_y
+
+            # Compute when head and tail leave the visible map
+            t_head_exit = time_until_exit(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy)
+            t_tail_exit = time_until_exit(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy)
+            print(f"{bullet_head_x=}, {bullet_head_y=}, {t_head_exit=} {t_tail_exit=}")
+            # Determine valid time window for clamped bullet
+            t_clamp_start = t_head_exit
+            t_clamp_end = t_tail_exit
+            assert t_clamp_start <= t_clamp_end
+
             for ast_idx, asteroid in enumerate(asteroids):
                 # Center the asteroid position relative to the bullet, accounting for wrapping of asteroids.
                 if asteroid.x - bullet.x > 0.5 * self.map_width:
@@ -228,20 +243,6 @@ class KesslerGame:
                 else:
                     ast_y_centered = asteroid.y
 
-                # Compute unclamped bullet path (as if bullet passes through the map edge)
-                bullet_head_x = bullet.x
-                bullet_head_y = bullet.y
-                bullet_tail_x = bullet.x + bullet.tail_delta_x
-                bullet_tail_y = bullet.y + bullet.tail_delta_y
-
-                # Compute when head and tail leave the visible map
-                t_head_exit = time_until_exit(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy)
-                t_tail_exit = time_until_exit(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy)
-
-                # Determine valid time window for clamped bullet
-                t_clamp_start = t_head_exit
-                t_clamp_end = t_tail_exit
-                assert t_clamp_start <= t_clamp_end
                 if t_clamp_start > 0.0:
                     # This means that the bullet hasn't begun clipping on the map border yet!
                     # This is the simplest case to handle. Do the normal collision check:
@@ -863,6 +864,7 @@ class KesslerGame:
                     assert game_state is not None
                     game_state.remove_asteroid(ast_idx)
             
+            # TODO: CULL BULLETS!
             assert len(bullets_to_cull) == len(set(bullets_to_cull))
             for bul_idx in sorted(bullets_to_cull, reverse=True):
                 bullets[bul_idx] = bullets[-1]
