@@ -287,7 +287,8 @@ class KesslerGame:
                         bul_tail_y_collision = bullet_tail_y + collision_time * bullet.vy
                         # Either the bullet head or tail should be inside the map bounds for this collision to be valid.
                         # This should be guaranteed, because at no point during this interval was the bullet expected to leave the map bound, and need to be clamped!
-                        assert ((0.0 <= bul_head_x_collision <= self.map_width) and (0.0 <= bul_head_y_collision <= self.map_height)) or ((0.0 <= bul_tail_x_collision <= self.map_width) and (0.0 <= bul_tail_y_collision <= self.map_height))
+                        assert (((0.0 <= bul_head_x_collision <= self.map_width) and (0.0 <= bul_head_y_collision <= self.map_height))
+                                or ((0.0 <= bul_tail_x_collision <= self.map_width) and (0.0 <= bul_tail_y_collision <= self.map_height)))
 
                         collision_event = CollisionEvent(collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID)
                         i = len(self.collision_queue)
@@ -379,7 +380,8 @@ class KesslerGame:
                         bul_head_y_collision = bullet_head_y + collision_time * bullet.vy
                         bul_tail_x_collision = bullet_tail_x + collision_time * bullet.vx
                         bul_tail_y_collision = bullet_tail_y + collision_time * bullet.vy
-                        if not ((0.0 <= bul_head_x_collision <= self.map_width) and (0.0 <= bul_head_y_collision <= self.map_height)) or ((0.0 <= bul_tail_x_collision <= self.map_width) and (0.0 <= bul_tail_y_collision <= self.map_height)):
+                        if not (((0.0 <= bul_head_x_collision <= self.map_width) and (0.0 <= bul_head_y_collision <= self.map_height))
+                                or ((0.0 <= bul_tail_x_collision <= self.map_width) and (0.0 <= bul_tail_y_collision <= self.map_height))):
                             # The bullet is completely OoB when the collision first occurs.
                             # Since the bullet must start inbounds, this means that no later collision can occur, and therefore this bullet will not collide.
                             continue
