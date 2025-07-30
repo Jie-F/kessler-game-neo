@@ -53,6 +53,8 @@ class CollisionType(IntEnum):
 class CollisionEvent:
     __slots__ = ("time_offset", "distance", "object_a_idx", "object_b_idx", "collision_type", "index_sum")
 
+    TOLERANCE = 1e-10
+
     def __init__(self, time_offset: float, distance: float, object_a_idx: int, object_b_idx: int, collision_type: CollisionType):
         """
         Represents a collision event between two game objects at a specific time.
@@ -72,30 +74,44 @@ class CollisionEvent:
         self.index_sum = object_a_idx + object_b_idx
 
     # Hand-implement each of the comparison dunders for speed, instead of using one for the others
+    @staticmethod
+    def _less(a: float, b: float) -> bool:
+        return a < b - CollisionEvent.TOLERANCE
+
+    @staticmethod
+    def _greater(a: float, b: float) -> bool:
+        return a > b + CollisionEvent.TOLERANCE
+
+    @staticmethod
+    def _equal(a: float, b: float) -> bool:
+        return abs(a - b) <= CollisionEvent.TOLERANCE
+
     def __lt__(self, other: CollisionEvent) -> bool:
-        return (
-            self.time_offset < other.time_offset or
-            (self.time_offset == other.time_offset and (
-                self.distance < other.distance or
-                (self.distance == other.distance and self.index_sum < other.index_sum)
-            ))
-        )
+        if self._less(self.time_offset, other.time_offset):
+            return True
+        if self._equal(self.time_offset, other.time_offset):
+            if self._less(self.distance, other.distance):
+                return True
+            if self._equal(self.distance, other.distance):
+                return self.index_sum < other.index_sum
+        return False
 
     def __le__(self, other: CollisionEvent) -> bool:
-        return (
-            self.time_offset < other.time_offset or
-            (self.time_offset == other.time_offset and (
-                self.distance < other.distance or
-                (self.distance == other.distance and self.index_sum <= other.index_sum)
-            ))
-        )
+        if self._less(self.time_offset, other.time_offset):
+            return True
+        if self._equal(self.time_offset, other.time_offset):
+            if self._less(self.distance, other.distance):
+                return True
+            if self._equal(self.distance, other.distance):
+                return self.index_sum <= other.index_sum
+        return False
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, CollisionEvent):
             return NotImplemented
         return (
-            self.time_offset == other.time_offset and
-            self.distance == other.distance and
+            self._equal(self.time_offset, other.time_offset) and
+            self._equal(self.distance, other.distance) and
             self.index_sum == other.index_sum
         )
 
@@ -103,28 +119,30 @@ class CollisionEvent:
         if not isinstance(other, CollisionEvent):
             return NotImplemented
         return (
-            self.time_offset != other.time_offset or
-            self.distance != other.distance or
+            not self._equal(self.time_offset, other.time_offset) or
+            not self._equal(self.distance, other.distance) or
             self.index_sum != other.index_sum
         )
 
     def __gt__(self, other: CollisionEvent) -> bool:
-        return (
-            self.time_offset > other.time_offset or
-            (self.time_offset == other.time_offset and (
-                self.distance > other.distance or
-                (self.distance == other.distance and self.index_sum > other.index_sum)
-            ))
-        )
+        if self._greater(self.time_offset, other.time_offset):
+            return True
+        if self._equal(self.time_offset, other.time_offset):
+            if self._greater(self.distance, other.distance):
+                return True
+            if self._equal(self.distance, other.distance):
+                return self.index_sum > other.index_sum
+        return False
 
     def __ge__(self, other: CollisionEvent) -> bool:
-        return (
-            self.time_offset > other.time_offset or
-            (self.time_offset == other.time_offset and (
-                self.distance > other.distance or
-                (self.distance == other.distance and self.index_sum >= other.index_sum)
-            ))
-        )
+        if self._greater(self.time_offset, other.time_offset):
+            return True
+        if self._equal(self.time_offset, other.time_offset):
+            if self._greater(self.distance, other.distance):
+                return True
+            if self._equal(self.distance, other.distance):
+                return self.index_sum >= other.index_sum
+        return False
 
     def __repr__(self) -> str:
         return f"<CollisionEvent time_offset={self.time_offset}s distance={self.distance} type={self.collision_type} obj_a_idx={self.object_a_idx} obj_b_idx={self.object_b_idx}>"
@@ -670,9 +688,6 @@ class KesslerGame:
             ships_to_cull.clear()
             asteroids_to_cull.clear()
             bullets_to_cull.clear()
-            if len(self.collision_queue) > 1:
-                print(f"Frame {sim_frame}")
-                print(self.collision_queue)
             while self.collision_queue:
                 event = self.collision_queue.pop(0)
                 dt = event.time_offset
@@ -784,7 +799,6 @@ class KesslerGame:
                         # Rewind
                         assert abs(dt) <= self.delta_time
                         assert dt <= 0.0
-                        #print(f"{dt=} {sim_time=} {(dt + sim_time + self.delta_time)=}")
                         ship.update(dt, scenario.map_size, False)
                         asteroid.update(dt, scenario.map_size)
                         # Handle collision
