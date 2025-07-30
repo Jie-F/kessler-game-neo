@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import time
+import warnings
 
 from math import inf, nan, isfinite, isnan, ceil, sqrt
 from typing import Any, TypedDict, cast, ClassVar
@@ -51,9 +52,10 @@ class CollisionType(IntEnum):
 
 
 class CollisionEvent:
-    __slots__ = ("time_offset", "distance", "object_a_idx", "object_b_idx", "collision_type", "index_sum")
+    __slots__ = ("time_offset", "distance", "object_a_idx", "object_b_idx", "collision_type")
 
     TOLERANCE: ClassVar[float] = 1e-10
+    COLLISION_PRECEDENCE: ClassVar[list[int]] = [0, 3, 4, 1, 2]
 
     def __init__(self, time_offset: float, distance: float, object_a_idx: int, object_b_idx: int, collision_type: CollisionType):
         """
@@ -71,7 +73,6 @@ class CollisionEvent:
         self.object_a_idx = object_a_idx
         self.object_b_idx = object_b_idx
         self.collision_type = collision_type
-        self.index_sum = object_a_idx + object_b_idx
 
     # Hand-implement each of the comparison dunders for speed, instead of using one for the others
     @staticmethod
@@ -93,7 +94,7 @@ class CollisionEvent:
             if self._less(self.distance, other.distance):
                 return True
             if self._equal(self.distance, other.distance):
-                return self.index_sum < other.index_sum
+                return CollisionEvent.COLLISION_PRECEDENCE[self.collision_type] < CollisionEvent.COLLISION_PRECEDENCE[other.collision_type]
         return False
 
     def __le__(self, other: CollisionEvent) -> bool:
@@ -103,7 +104,7 @@ class CollisionEvent:
             if self._less(self.distance, other.distance):
                 return True
             if self._equal(self.distance, other.distance):
-                return self.index_sum <= other.index_sum
+                return CollisionEvent.COLLISION_PRECEDENCE[self.collision_type] <= CollisionEvent.COLLISION_PRECEDENCE[other.collision_type]
         return False
 
     def __eq__(self, other: object) -> bool:
@@ -112,7 +113,7 @@ class CollisionEvent:
         return (
             self._equal(self.time_offset, other.time_offset) and
             self._equal(self.distance, other.distance) and
-            self.index_sum == other.index_sum
+            CollisionEvent.COLLISION_PRECEDENCE[self.collision_type] == CollisionEvent.COLLISION_PRECEDENCE[other.collision_type]
         )
 
     def __ne__(self, other: object) -> bool:
@@ -121,7 +122,7 @@ class CollisionEvent:
         return (
             not self._equal(self.time_offset, other.time_offset) or
             not self._equal(self.distance, other.distance) or
-            self.index_sum != other.index_sum
+            CollisionEvent.COLLISION_PRECEDENCE[self.collision_type] != CollisionEvent.COLLISION_PRECEDENCE[other.collision_type]
         )
 
     def __gt__(self, other: CollisionEvent) -> bool:
@@ -131,7 +132,7 @@ class CollisionEvent:
             if self._greater(self.distance, other.distance):
                 return True
             if self._equal(self.distance, other.distance):
-                return self.index_sum > other.index_sum
+                return CollisionEvent.COLLISION_PRECEDENCE[self.collision_type] > CollisionEvent.COLLISION_PRECEDENCE[other.collision_type]
         return False
 
     def __ge__(self, other: CollisionEvent) -> bool:
@@ -141,7 +142,7 @@ class CollisionEvent:
             if self._greater(self.distance, other.distance):
                 return True
             if self._equal(self.distance, other.distance):
-                return self.index_sum >= other.index_sum
+                return CollisionEvent.COLLISION_PRECEDENCE[self.collision_type] >= CollisionEvent.COLLISION_PRECEDENCE[other.collision_type]
         return False
 
     def __repr__(self) -> str:
@@ -266,11 +267,21 @@ class KesslerGame:
                             # This case should NEVER happen, but maybe due to some pathological numeric instability,
                             # it might be that the first function detected a barely collision, and then the second function
                             # missed it and the discriminant was -0.0000000000000001, and returns nan for collision time ¯\_(ツ)_/¯
+                            warnings.warn("Numeric instability in quadratic solver? Real bullet collision time is NaN", RuntimeWarning)
                             continue
                         collision_time = max(-collision_past_time_clamp, collision_start_time)
                         assert -collision_past_time_clamp <= collision_time <= 0.0
 
-                        collision_event = CollisionEvent(collision_time, 0.0, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID)
+                        # Calculate the distance between center of bullet and the asteroid at the time of collision, to use as a tiebreaker in ordering events
+                        bul_x_mid_collision = 0.5 * (bullet_head_x + bullet_tail_x) + collision_time * bullet.vx
+                        bul_y_mid_collision = 0.5 * (bullet_head_y + bullet_tail_y) + collision_time * bullet.vy
+                        ast_x_collision = ast_x_centered + collision_time * asteroid.vx
+                        ast_y_collision = ast_y_centered + collision_time * asteroid.vy
+                        dx = ast_x_collision - bul_x_mid_collision
+                        dy = ast_y_collision - bul_y_mid_collision
+                        sq_dist = dx * dx + dy * dy
+
+                        collision_event = CollisionEvent(collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID)
                         i = len(self.collision_queue)
                         while i > 0 and self.collision_queue[i - 1] > collision_event:
                             i -= 1
@@ -301,6 +312,7 @@ class KesslerGame:
                     )
                     if isnan(t1_start) or isnan(t1_end):
                         # This should never happen, but is here in case of numeric instability in a barely collision
+                        warnings.warn("Numeric instability in quadratic solver? VB1 collision time is NaN", RuntimeWarning)
                         continue
 
                     # Virtual bullet 2: bullet head pinned at boundary, tail sticking FAR into map, stationary!
@@ -332,6 +344,7 @@ class KesslerGame:
                     )
                     if isnan(t2_start) or isnan(t2_end):
                         # This should never happen, but is here in case of numeric instability in a barely collision
+                        warnings.warn("Numeric instability in quadratic solver? VB2 collision time is NaN", RuntimeWarning)
                         continue
 
                     # Take the intersection of the intervals
@@ -343,7 +356,18 @@ class KesslerGame:
                         # The interval actually exists
                         collision_time = t_start
                         assert -collision_past_time_clamp <= collision_time <= 0.0
-                        collision_event = CollisionEvent(collision_time, 0.0, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID)
+
+                        # Calculate the distance between center of bullet and the asteroid at the time of collision, to use as a tiebreaker in ordering events
+                        # This does not consider that the bullet could be clamped at the edge, and just uses the bullet passing through the border anyway.
+                        bul_x_mid_collision = 0.5 * (bullet_head_x + bullet_tail_x) + collision_time * bullet.vx
+                        bul_y_mid_collision = 0.5 * (bullet_head_y + bullet_tail_y) + collision_time * bullet.vy
+                        ast_x_collision = ast_x_centered + collision_time * asteroid.vx
+                        ast_y_collision = ast_y_centered + collision_time * asteroid.vy
+                        dx = ast_x_collision - bul_x_mid_collision
+                        dy = ast_y_collision - bul_y_mid_collision
+                        sq_dist = dx * dx + dy * dy
+
+                        collision_event = CollisionEvent(collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID)
                         i = len(self.collision_queue)
                         while i > 0 and self.collision_queue[i - 1] > collision_event:
                             i -= 1
