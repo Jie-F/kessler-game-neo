@@ -191,10 +191,6 @@ class KesslerGame:
         # interval from when the bullet head first hits the edge, until the tail also leaves. This construction
         # is invalid before this time interval!
 
-        # Another complication is that because a ship poking its head into the other side of the wrap can shoot a bullet,
-        # bullets can spawn with its head inbounds but its tail out of bounds! In this case, this is the opposite case where
-        # the hitbox will grow, but needs to be clamped to the map edge where it spawns.
-
         def time_until_exit(x: float, y: float, vx: float, vy: float) -> float:
             """Returns the time when a point moving at (vx, vy) will fully exit the map."""
             tx = inf
@@ -212,23 +208,6 @@ class KesslerGame:
 
             return min(tx, ty)
 
-        def time_until_enter(x: float, y: float, vx: float, vy: float) -> float:
-            """Returns the time when a point moving at (vx, vy) will fully enter the map."""
-            tx = -inf
-            ty = -inf
-
-            if vx > 0.0:
-                tx = -x / vx
-            elif vx < 0.0:
-                tx = (self.map_width - x) / vx
-
-            if vy > 0.0:
-                ty = -y / vy
-            elif vy < 0.0:
-                ty = (self.map_height - y) / vy
-
-            return max(tx, ty)
-
         # We might not be able to go back a full delta_time if the asteroid wasn't alive for that long yet!
         # So we clamp that time
         collision_past_time_clamp = min(asteroid_past_time_clamp, self.delta_time)
@@ -243,12 +222,7 @@ class KesslerGame:
             # Compute when head and tail leave the visible map
             t_head_exit = time_until_exit(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy)
             t_tail_exit = time_until_exit(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy)
-
-            # Compute when head and tail ENTER the visible map (for spawn-time clamping!)
-            t_head_enter = time_until_enter(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy)
-            t_tail_enter = time_until_enter(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy)
-
-            # Determine valid time window for clamped bullet (clamping on EXIT)
+            # Determine valid time window for clamped bullet
             t_clamp_start = t_head_exit
             t_clamp_end = t_tail_exit
             assert t_clamp_start <= t_clamp_end
@@ -269,9 +243,9 @@ class KesslerGame:
                 else:
                     ast_y_centered = asteroid.y
 
-                if t_clamp_start > 0.0 and t_tail_enter <= -collision_past_time_clamp:
-                    # This means that the bullet hasn't begun clipping on the map border yet,
-                    # and also did not spawn with any part out-of-bounds. Do the normal collision check:
+                if t_clamp_start > 0.0:
+                    # This means that the bullet hasn't begun clipping on the map border yet!
+                    # This is the simplest case to handle. Do the normal collision check:
                     if circle_line_collision_continuous(
                         bullet_head_x, bullet_head_y,
                         bullet_tail_x, bullet_tail_y,
@@ -324,10 +298,7 @@ class KesslerGame:
                 else:
                     # During the time interval we're checking, either the whole time or a part of the time,
                     # the bullet is at least partially out of bounds and has to have its hitbox clipped at the edge
-                    # The bullet is clamped on exit, entry, or both
-
-                    entry_clamping_needed = t_tail_enter > -collision_past_time_clamp
-
+                    
                     # Virtual bullet 1: normal moving bullet that is unclamped as it goes beyond the border
                     hit1 = circle_line_collision_continuous(
                         bullet_head_x, bullet_head_y,
@@ -385,44 +356,10 @@ class KesslerGame:
                         warnings.warn("Numeric instability in quadratic solver? VB2 collision time is NaN", RuntimeWarning)
                         continue
 
-                    # Virtual bullet 3: bullet tail pinned at boundary (spawn clamping), stationary
-                    if entry_clamping_needed:
-                        t_entry_start = t_tail_enter
-                        pinned_tail_entry_x = bullet_tail_x + bullet.vx * t_entry_start
-                        pinned_tail_entry_y = bullet_tail_y + bullet.vy * t_entry_start
-                        pinned_head_entry_x = bullet_head_x + bullet.vx * (t_entry_start + collision_past_time_clamp)
-                        pinned_head_entry_y = bullet_head_y + bullet.vy * (t_entry_start + collision_past_time_clamp)
-
-                        hit3 = circle_line_collision_continuous(
-                            pinned_head_entry_x, pinned_head_entry_y,
-                            pinned_tail_entry_x, pinned_tail_entry_y,
-                            0.0, 0.0,
-                            ast_x_centered, ast_y_centered,
-                            asteroid.vx, asteroid.vy,
-                            asteroid.radius,
-                            collision_past_time_clamp
-                        )
-                        if not hit3:
-                            continue
-                        t3_start, t3_end = collision_time_interval(
-                            pinned_head_entry_x, pinned_head_entry_y,
-                            pinned_tail_entry_x, pinned_tail_entry_y,
-                            0.0, 0.0,
-                            ast_x_centered, ast_y_centered,
-                            asteroid.vx, asteroid.vy,
-                            asteroid.radius
-                        )
-                        if isnan(t3_start) or isnan(t3_end):
-                            warnings.warn("Numeric instability in quadratic solver? VB3 collision time is NaN", RuntimeWarning)
-                            continue
-                    else:
-                        t3_start = -collision_past_time_clamp
-                        t3_end = 0.0
-
-                    # Take intersection of all 3 intervals
+                    # Take the intersection of the intervals
                     # Use nested min/max instead of 3-arg min/max, because this is much faster for MyPyC compilation
-                    t_start = max(-collision_past_time_clamp, max(t1_start, max(t2_start, t3_start)))
-                    t_end = min(0.0, min(t1_end, min(t2_end, t3_end)))
+                    t_start = max(-collision_past_time_clamp, max(t1_start, t2_start))
+                    t_end = min(0.0, min(t1_end, t2_end))
 
                     if t_start <= t_end:
                         # The interval actually exists
