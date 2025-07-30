@@ -197,37 +197,45 @@ class KesslerGame:
 
         def time_until_exit(x: float, y: float, vx: float, vy: float) -> float:
             """Returns the time when a point moving at (vx, vy) will fully exit the map."""
-            tx = inf
-            ty = inf
+            if 0.0 <= x <= self.map_width and 0.0 <= y <= self.map_height:
+                tx = inf
+                ty = inf
 
-            if vx > 0.0:
-                tx = (self.map_width - x) / vx
-            elif vx < 0.0:
-                tx = -x / vx
+                if vx > 0.0:
+                    tx = (self.map_width - x) / vx
+                elif vx < 0.0:
+                    tx = -x / vx
 
-            if vy > 0.0:
-                ty = (self.map_height - y) / vy
-            elif vy < 0.0:
-                ty = -y / vy
+                if vy > 0.0:
+                    ty = (self.map_height - y) / vy
+                elif vy < 0.0:
+                    ty = -y / vy
 
-            return min(tx, ty)
+                return min(tx, ty)
+            else:
+                # Already out of bounds. Exited long ago
+                return -inf
 
         def time_until_enter(x: float, y: float, vx: float, vy: float) -> float:
             """Returns the time when a point moving at (vx, vy) will fully enter the map."""
-            tx = -inf
-            ty = -inf
+            if x < 0.0 or x > self.map_width or y < 0.0 or y > self.map_height:
+                tx = inf
+                ty = inf
 
-            if vx > 0.0:
-                tx = -x / vx
-            elif vx < 0.0:
-                tx = (self.map_width - x) / vx
+                if vx > 0.0:
+                    tx = -x / vx
+                elif vx < 0.0:
+                    tx = (self.map_width - x) / vx
 
-            if vy > 0.0:
-                ty = -y / vy
-            elif vy < 0.0:
-                ty = (self.map_height - y) / vy
+                if vy > 0.0:
+                    ty = -y / vy
+                elif vy < 0.0:
+                    ty = (self.map_height - y) / vy
 
-            return max(tx, ty)
+                return max(tx, ty)
+            else:
+                # Already inside. Entered long ago
+                return -inf
 
         # We might not be able to go back a full delta_time if the asteroid wasn't alive for that long yet!
         # So we clamp that time
@@ -243,16 +251,13 @@ class KesslerGame:
             # Compute when head and tail leave the visible map
             t_head_exit = time_until_exit(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy)
             t_tail_exit = time_until_exit(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy)
+            assert t_head_exit <= t_tail_exit
 
             # Compute when head and tail ENTER the visible map (for spawn-time clamping!)
             t_head_enter = time_until_enter(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy)
             t_tail_enter = time_until_enter(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy)
-
-            # Determine valid time window for clamped bullet (clamping on EXIT)
-            t_clamp_start = t_head_exit
-            t_clamp_end = t_tail_exit
-            assert t_clamp_start <= t_clamp_end
-
+            assert t_head_enter <= t_tail_enter
+            
             for ast_idx, asteroid in enumerate(asteroids):
                 # Center the asteroid position relative to the bullet, accounting for wrapping of asteroids.
                 if asteroid.x - bullet.x > 0.5 * self.map_width:
@@ -269,7 +274,7 @@ class KesslerGame:
                 else:
                     ast_y_centered = asteroid.y
 
-                if t_clamp_start > 0.0 and t_tail_enter <= -collision_past_time_clamp:
+                if t_head_exit > 0.0 and t_tail_enter <= -collision_past_time_clamp:
                     # This means that the bullet hasn't begun clipping on the map border yet,
                     # and also did not spawn with any part out-of-bounds. Do the normal collision check:
                     if circle_line_collision_continuous(
@@ -354,12 +359,12 @@ class KesslerGame:
                         continue
 
                     # Virtual bullet 2: bullet head pinned at boundary, tail sticking FAR into map, stationary!
-                    # Remember that the t_clamp_start is a negative number. The bullet head at the end of the frame is already past bound.
-                    pinned_head_x = bullet_head_x + bullet.vx * t_clamp_start
-                    pinned_head_y = bullet_head_y + bullet.vy * t_clamp_start
+                    # Remember that the t_head_exit is a negative number. The bullet head at the end of the frame is already past bound.
+                    pinned_head_x = bullet_head_x + bullet.vx * t_head_exit
+                    pinned_head_y = bullet_head_y + bullet.vy * t_head_exit
                     # Just stick the tail of the bullet waaaaaay into the map to make sure we don't clamp on that end at all!
-                    pinned_tail_x = bullet_tail_x + bullet.vx * (t_clamp_start - collision_past_time_clamp)
-                    pinned_tail_y = bullet_tail_y + bullet.vy * (t_clamp_start - collision_past_time_clamp)
+                    pinned_tail_x = bullet_tail_x + bullet.vx * (t_head_exit - collision_past_time_clamp)
+                    pinned_tail_y = bullet_tail_y + bullet.vy * (t_head_exit - collision_past_time_clamp)
 
                     hit2 = circle_line_collision_continuous(
                         pinned_head_x, pinned_head_y,
@@ -416,6 +421,7 @@ class KesslerGame:
                             warnings.warn("Numeric instability in quadratic solver? VB3 collision time is NaN", RuntimeWarning)
                             continue
                     else:
+                        # Unclamped on enter
                         t3_start = -collision_past_time_clamp
                         t3_end = 0.0
 
