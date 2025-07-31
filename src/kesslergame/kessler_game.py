@@ -1073,19 +1073,21 @@ class KesslerGame:
                     prev = time.perf_counter()
             
             # --- CHECK STOP CONDITIONS --------------------------------------------------------------------------------
-            if not asteroids:
+            if scenario.stop_if_no_asteroids and not asteroids:
                 # No asteroids remain
                 stop_reason = StopReason.no_asteroids
-            elif not liveships and not (len(mines) > 0 or len(bullets) > 0):
+            elif scenario.stop_if_no_ships and not liveships and not (mines or bullets):
                 # No ships are alive and no mines exist and no bullets exist
                 # Prevents unfairness where ship that dies before another gets score from its bullets as long as the other
                 # is alive but the one that lives longer doesn't get the same benefit from its bullets/mines persisting
                 # after it dies
                 stop_reason = StopReason.no_ships
-            elif not sum([ship.bullets_remaining for ship in liveships]) > 0 \
-                    and not sum([ship.mines_remaining for ship in liveships])\
-                    and not (len(bullets) > 0 or len(mines) > 0) \
-                    and scenario.stop_if_no_ammo:
+            elif (
+                scenario.stop_if_no_ammo
+                and sum(ship.bullets_remaining for ship in liveships) == 0
+                and sum(ship.mines_remaining for ship in liveships) == 0
+                and not (bullets or mines)
+            ):
                 # All live ships are out of bullets and no bullets are on map
                 stop_reason = StopReason.out_of_bullets
             elif sim_frame >= ceil(time_limit * self.frequency):
