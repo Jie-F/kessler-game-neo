@@ -58,10 +58,10 @@ def random_ship_states(number: int) -> list[dict]:
     for _ in range(number):
         state = {"position": (random.uniform(0.0, WIDTH), random.uniform(0.0, HEIGHT)),
                  "angle": random.uniform(0.0, 360.0),
-                 "lives": random.randint(30, 1000),
+                 "lives": random.randint(1, 1000),
                  "team": random.randint(1, 2),
                  #"bullets_remaining": random.randint(1, 5000),
-                 "mines_remaining": random.randint(10, 100)}
+                 "mines_remaining": random.randint(0, 100)}
         ship_states.append(state)
     return ship_states
 
@@ -71,8 +71,8 @@ def randomly_initialized_controllers(number: int) -> list[FramerateIndependentCo
         actions_list = [(random.uniform(*thrust_range),
                          random.uniform(*turn_rate_range),
                          random.choice([True, False]),
-                         random.choice([True, False])) for _ in range(1000)]
-        actions_list[0] = (actions_list[0][0], actions_list[0][1], False, False)  # No fire/drop on first
+                         random.choice([True, False])) for _ in range(62)]
+        #actions_list[0] = (actions_list[0][0], actions_list[0][1], False, False)  # No fire/drop on first
         controllers.append(FramerateIndependentController(actions_list))
     return controllers
 
@@ -101,21 +101,21 @@ for i in range(TRIALS):
         seed = rand_seed
     random.seed(seed)
 
-    framerate1 = random.randint(10, 60)
+    framerate1 = random.randint(10, 120)
     framerate2 = framerate1
     while framerate1 == framerate2:
-        framerate2 = random.randint(10, 60)
+        framerate2 = random.randint(10, 120)
 
     print(f"Trial={i}, seed={seed}, framerates: {framerate1} and {framerate2}")
 
-    num_ships = random.randint(1, 5)
+    num_ships = random.randint(1, 10)
     scenario = Scenario(name=f"Trial {i}",
-                        num_asteroids=random.randint(1, 3),
+                        num_asteroids=random.randint(1, 60),
                         ship_states=random_ship_states(num_ships),
                         map_size=(WIDTH, HEIGHT),
                         seed=seed,
                         ammo_limit_multiplier=random.uniform(0.0, 2.0),
-                        time_limit=float(random.randint(6, 16)))
+                        time_limit=float(random.randint(2, 60)))
     controllers = randomly_initialized_controllers(num_ships)
 
     settings_base = {
