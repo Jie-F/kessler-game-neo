@@ -59,8 +59,8 @@ def solve_quadratic(a: float, b: float, c: float) -> tuple[float, float]:
 
 def project_point_onto_segment_and_get_t(x1: float, y1: float, x2: float, y2: float, px: float, py: float) -> float:
     """
-    Projects point P onto segment A->B, returns t in [0,1] where projection falls;
-    If out of [0,1], the closest endpoint is closer than the interior.
+    Projects point P onto segment A->B, returns t in [0, 1] where projection falls
+    If out of [0, 1] the closest endpoint is closer than the interior
     """
     dx = x2 - x1
     dy = y2 - y1
@@ -200,13 +200,14 @@ def find_first_leq_zero(
     f: Callable[[float], tuple[float, float, float]],
     a: float,
     b: float,
-    tol: float = 1e-10,
-    max_iterations: int = 100 # This is way overkill, and 30 is probably fine. But this is so rare to use more than 30, that this won't slow down the game.
+    tol: float = 1e-12,
+    max_iterations: int = 80 # This is way overkill, and 30 is probably fine. But this is so rare to use more than 30, that this won't slow down the game.
 ) -> float:
     """
     Finds the smallest t in [a, b] such that f(t) <= 0,
     using Newton's method with a bisection fallback for robustness.
     This can handle discontinuities and jumps in the derivatives
+    Newton's method is made to return the right endpoint, to be safe and return f(t) <= 0 and not > 0
     
     The function f must return a triple: (f(t), f'(t), f''(t))
     """
@@ -216,11 +217,12 @@ def find_first_leq_zero(
         # It's assumed that the input function is a decreasing function, where f(x0) > 0 and f(x1) < 0
         # We assume there's just one root
         # This will find the point where f(x) == 0
+        # More precisely, it finds the smallest x such that f(x) < 0, so slightly past the root!
         x_low, x_high = x0, x1
         x = 0.5 * (x0 + x1)  # Start in the middle
         for _ in range(max_iterations):
             fx, dfx, _ = f(x)
-            if abs(fx) < tol:
+            if -tol < fx <= 0.0:
                 return x  # Found a root!
 
             # If the slope is 0 or NaN, just do a bisection step
@@ -245,8 +247,8 @@ def find_first_leq_zero(
 
             # Check for convergence
             if abs(x_high - x_low) < tol:
-                return x
-        return x # Didn't converge, but just return x anyway and hope nothing goes wrong ¯\_(ツ)_/¯
+                return x_high
+        return x_high # Didn't converge, but just return x_high anyway and hope nothing goes wrong ¯\_(ツ)_/¯
 
     # Root-finding for f'(x) using Newton's method, with bisection fallback if Newton update jumps out of bounds
     def newton_minimum(f: Callable[[float], tuple[float, float, float]], x0: float, x1: float) -> float:
@@ -292,20 +294,20 @@ def find_first_leq_zero(
             xm = 0.5 * (x0 + x1)
             fm, _, _ = f(xm)
             if abs(fm) < tol:
-                return xm  # Close enough to zero
+                return xm # Close enough to zero
             f0, _, _ = f(x0)
             if f0 * fm < 0:
-                x1 = xm  # Root is in [x0, xm]
+                x1 = xm # Root is in [x0, xm]
             else:
-                x0 = xm  # Root is in [xm, x1]
+                x0 = xm # Root is in [xm, x1]
             if abs(x1 - x0) < tol:
-                return 0.5 * (x0 + x1)  # Interval is tiny. return midpoint
-        return 0.5 * (x0 + x1) # Didn't converge, but return our best guess
+                return x1 # Interval is tiny. return right point, which is hopefully <= 0
+        return x1 # Didn't converge, but return our best guess
 
     # Main logic
     fa, da, _ = f(a)
     if fa <= 0.0:
-        return a  # Already satisfies condition at the left endpoint
+        return a # Already satisfies condition at the left endpoint
 
     fb, db, _ = f(b)
     if fb <= 0.0:
@@ -321,7 +323,7 @@ def find_first_leq_zero(
             return newton_root(f, a, t_min)
 
     # Hail Mary fallback: brute force sample the interval a bunch lol
-    N = 100  # Subdivide the interval finely
+    N = 30  # Subdivide the interval finely
     for i in range(1, N + 1):
         x0 = a + (b - a) * (i - 1) / N
         x1 = a + (b - a) * i / N

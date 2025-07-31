@@ -583,9 +583,6 @@ class KesslerGame:
                             ship2_x_centered_around_ship1, ship2_y_centered_around_ship1, ship2.radius, ship2.speed, ship2.integration_initial_states,
                             max(-self.delta_time, min(0.0, max(ship1._respawning, ship2._respawning))), 0.0 # Clamp to when ships are out of respawn. Double max/min calls is MUCH faster than calling max/min with 3-4 args, in MyPyC compiled code!
                         )
-                        collision_start_time += 1e-10 # Add an eps to REALLY make sure the ships are colliding!
-                        if collision_start_time > 0.0:
-                            collision_start_time = 0.0
                         if not isnan(collision_start_time):
                             assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
                             # Insert chronologically
@@ -598,11 +595,12 @@ class KesslerGame:
                             if dy > 0.5 * self.map_height:
                                 dy = self.map_height - dy
                             sq_dist = dx * dx + dy * dy
-                            #radii_sum = ship1.radius + ship2.radius
+                            
                             # This following assertion is to mostly make sure that the ships end up in a definitely colliding state, and
                             # is good for ensuring framerate independence. So that at other framerates, the ships don't end up not actually colliding
                             # But to be safe, don't actually use this assert to stop execution if it's not true, just in case a 1/1000000 thing happens or something.
-                            #assert sq_dist <= radii_sum * radii_sum, f"Square dist {sq_dist} is not <= square of radii sum {radii_sum * radii_sum}"
+                            radii_sum = ship1.radius + ship2.radius
+                            assert sq_dist <= radii_sum * radii_sum, f"Square dist {sq_dist} is not <= square of radii sum {radii_sum * radii_sum}"
                             collision_event = CollisionEvent(collision_start_time, sq_dist, ship1_idx, ship2_idx, CollisionType.SHIP_SHIP)
                             i = len(self.collision_queue)
                             while i > 0 and self.collision_queue[i - 1] > collision_event:
@@ -1102,7 +1100,7 @@ class KesslerGame:
             # Hold simulation so that it runs at realtime ratio if specified, else let it pass
             if self.realtime_multiplier != 0.0:
                 time_dif = time.perf_counter() - step_start
-                while time_dif < self.delta_time / self.realtime_multiplier:
+                while time_dif * self.realtime_multiplier < self.delta_time:
                     time_dif = time.perf_counter() - step_start
 
         ############################################
