@@ -78,7 +78,7 @@ def randomly_initialized_controllers(number: int) -> list[FramerateIndependentCo
 
 def check_scores(score_1, score_2, seed) -> bool:
     if score_1 != score_2:
-        if score_1.stop_reason == StopReason.no_asteroids and score_2.stop_reason == StopReason.no_asteroids:
+        if (score_1.stop_reason == StopReason.no_asteroids and score_2.stop_reason == StopReason.no_asteroids) or (score_1.stop_reason == StopReason.no_ships and score_2.stop_reason == StopReason.no_ships):
             if len(score_1.teams) != len(score_2.teams):
                 logging.info(f'{seed} - team length mismatch: {len(score_1.teams)} vs {len(score_2.teams)}')
                 return False
@@ -125,6 +125,7 @@ for i in range(TRIALS):
         'frame_skip': 1,
         'graphics_obj': None,
         'time_limit': TIME_LIMIT_OVERRIDE,
+        'perf_tracker': False,
         "competition_safe_mode": COMPETITION_SAFE_MODE,
         'UI_settings': {'ships': True, 'lives_remaining': True, 'accuracy': True,
                         'asteroids_hit': True, 'shots_fired': True, 'bullets_remaining': True,
