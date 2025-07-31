@@ -2,7 +2,7 @@ import random
 from kesslergame import Scenario, KesslerGame, GraphicsType, KesslerController, StopReason
 from math import sqrt, inf
 TRIALS = 100000000000
-GRAPHICS = True
+GRAPHICS = False
 rand_seed = None
 TIME_LIMIT_OVERRIDE = inf # Nvm it's not actually an override. Just used if the scenario has no time limit defined.
 COMPETITION_SAFE_MODE = False
