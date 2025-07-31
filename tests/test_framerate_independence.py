@@ -1,5 +1,6 @@
 import random
 import logging
+import os
 from kesslergame import Scenario, KesslerGame, GraphicsType, KesslerController, StopReason
 from math import sqrt, inf
 
@@ -15,7 +16,8 @@ thrust_range = (-480.0, 480.0)
 turn_rate_range = (-180.0, 180.0)
 
 # Setup logging
-logging.basicConfig(filename='mismatches.log',
+log_filename = f'mismatches_{os.getpid()}.log'
+logging.basicConfig(filename=log_filename,
                     level=logging.INFO,
                     format='%(asctime)s - SEED: %(message)s')
 
