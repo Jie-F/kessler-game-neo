@@ -534,8 +534,9 @@ def circle_line_collision_continuous(
 
     # If still no collision, then the only way this can still be a collision is if the circle is completely contained within the parallelogram,
     # which is impossible in this case because the bullet is too short for an asteroid to fit between its ends.
-    # But for completeness, for the general solution, you can uncomment the following code which checks whether the origin is within the parallelogram using a cross product orientation checker
-    '''
+    # BUT we're now using a virtual bullet to do clamping, and this "virtual bullet" is super long, so we need this!
+    # Check whether the origin is within the parallelogram using a cross product orientation checker
+    
     def is_origin_in_parallelogram(ax, ay, bx, by, cx, cy, dx, dy):
         def cross(xa, ya, xb, yb):
             return xa * yb - ya * xb
@@ -559,7 +560,7 @@ def circle_line_collision_continuous(
         return True
     if is_origin_in_parallelogram(ax, ay, bx, by, cx, cy, dx, dy):
         return True
-    '''
+    
     return False
 
 
