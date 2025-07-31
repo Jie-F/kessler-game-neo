@@ -598,7 +598,7 @@ class KesslerGame:
                             if dy > 0.5 * self.map_height:
                                 dy = self.map_height - dy
                             sq_dist = dx * dx + dy * dy
-                            radii_sum = ship1.radius + ship2.radius
+                            #radii_sum = ship1.radius + ship2.radius
                             # This following assertion is to mostly make sure that the ships end up in a definitely colliding state, and
                             # is good for ensuring framerate independence. So that at other framerates, the ships don't end up not actually colliding
                             # But to be safe, don't actually use this assert to stop execution if it's not true, just in case a 1/1000000 thing happens or something.

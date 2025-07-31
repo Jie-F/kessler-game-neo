@@ -1,6 +1,8 @@
 import random
+import logging
 from kesslergame import Scenario, KesslerGame, GraphicsType, KesslerController, StopReason
 from math import sqrt, inf
+
 TRIALS = 100000000000
 GRAPHICS = False
 rand_seed = None
@@ -11,6 +13,11 @@ HEIGHT = 800
 
 thrust_range = (-480.0, 480.0)
 turn_rate_range = (-180.0, 180.0)
+
+# Setup logging
+logging.basicConfig(filename='mismatches.log',
+                    level=logging.INFO,
+                    format='%(asctime)s - SEED: %(message)s')
 
 class FramerateIndependentController(KesslerController):
     def __init__(self, actions_list: list[tuple[float, float, bool, bool]]):
@@ -39,10 +46,7 @@ class FramerateIndependentController(KesslerController):
                 break
         if thrust is None or turn_rate is None:
             # Ran out of planned actions. Just use the final one for the rest of time.
-            thrust = self.actions_list[-1][0]
-            turn_rate = self.actions_list[-1][1]
-            fire = self.actions_list[-1][2]
-            drop_mine = self.actions_list[-1][3]
+            thrust, turn_rate, fire, drop_mine = self.actions_list[-1]
         return thrust, turn_rate, fire, drop_mine
 
     @property
@@ -51,7 +55,7 @@ class FramerateIndependentController(KesslerController):
 
 def random_ship_states(number: int) -> list[dict]:
     ship_states = []
-    for i in range(number):
+    for _ in range(number):
         state = {"position": (random.uniform(0.0, WIDTH), random.uniform(0.0, HEIGHT)),
                  "angle": random.uniform(0.0, 360.0),
                  "lives": random.randint(30, 1000),
@@ -63,14 +67,32 @@ def random_ship_states(number: int) -> list[dict]:
 
 def randomly_initialized_controllers(number: int) -> list[FramerateIndependentController]:
     controllers = []
-    for i in range(number):
-        actions_list = [(random.uniform(thrust_range[0], thrust_range[1]),
-                        random.uniform(turn_rate_range[0], turn_rate_range[1]),
-                        random.choice([True, False]) if i != 0 else False,
-                        random.choice([True, False]) if i != 0 else False) for i in range(1000)]
+    for _ in range(number):
+        actions_list = [(random.uniform(*thrust_range),
+                         random.uniform(*turn_rate_range),
+                         random.choice([True, False]),
+                         random.choice([True, False])) for _ in range(1000)]
+        actions_list[0] = (actions_list[0][0], actions_list[0][1], False, False)  # No fire/drop on first
         controllers.append(FramerateIndependentController(actions_list))
     return controllers
 
+def check_scores(score_1, score_2, seed) -> bool:
+    if score_1 != score_2:
+        if score_1.stop_reason == StopReason.no_asteroids and score_2.stop_reason == StopReason.no_asteroids:
+            if len(score_1.teams) != len(score_2.teams):
+                logging.info(f'{seed} - team length mismatch: {len(score_1.teams)} vs {len(score_2.teams)}')
+                return False
+            for t1, t2 in zip(score_1.teams, score_2.teams):
+                if t1 != t2:
+                    logging.info(f'{seed} - team data mismatch: {t1} vs {t2}')
+                    return False
+            return True
+        else:
+            logging.info(f'{seed} - score mismatch\nScore1: {score_1}\nScore2: {score_2}')
+            return False
+    return True
+
+# Main loop
 for i in range(TRIALS):
     if rand_seed is None:
         random.seed()
@@ -78,11 +100,14 @@ for i in range(TRIALS):
     else:
         seed = rand_seed
     random.seed(seed)
+
     framerate1 = random.randint(10, 60)
     framerate2 = framerate1
     while framerate1 == framerate2:
         framerate2 = random.randint(10, 60)
+
     print(f"Trial={i}, seed={seed}, framerates: {framerate1} and {framerate2}")
+
     num_ships = random.randint(1, 5)
     scenario = Scenario(name=f"Trial {i}",
                         num_asteroids=random.randint(1, 3),
@@ -93,49 +118,27 @@ for i in range(TRIALS):
                         time_limit=float(random.randint(6, 16)))
     controllers = randomly_initialized_controllers(num_ships)
 
-    game_settings_1 = {'perf_tracker': True,
-                    'graphics_type': GraphicsType.NoGraphics if not GRAPHICS else GraphicsType.Tkinter,
-                    'realtime_multiplier': 1.0 if GRAPHICS else 0.0,
-                    'frame_skip': 1,
-                    'graphics_obj': None,
-                    'frequency': framerate1,
-                    'time_limit': TIME_LIMIT_OVERRIDE,
-                    "competition_safe_mode": COMPETITION_SAFE_MODE,
-                    'UI_settings': {'ships': True, 'lives_remaining': True, 'accuracy': True,
-                                    'asteroids_hit': True, 'shots_fired': True, 'bullets_remaining': True,
-                                    'controller_name': True, 'scale': 2.0}}
-    game_1 = KesslerGame(settings=game_settings_1)
-    score_1, perf_data_1 = game_1.run(scenario, controllers)
+    settings_base = {
+        'perf_tracker': True,
+        'graphics_type': GraphicsType.NoGraphics if not GRAPHICS else GraphicsType.Tkinter,
+        'realtime_multiplier': 1.0 if GRAPHICS else 0.0,
+        'frame_skip': 1,
+        'graphics_obj': None,
+        'time_limit': TIME_LIMIT_OVERRIDE,
+        "competition_safe_mode": COMPETITION_SAFE_MODE,
+        'UI_settings': {'ships': True, 'lives_remaining': True, 'accuracy': True,
+                        'asteroids_hit': True, 'shots_fired': True, 'bullets_remaining': True,
+                        'controller_name': True, 'scale': 2.0}
+    }
 
-    game_settings_2 = {'perf_tracker': True,
-                    'graphics_type': GraphicsType.NoGraphics if not GRAPHICS else GraphicsType.Tkinter,
-                    'realtime_multiplier': 1.0 if GRAPHICS else 0.0,
-                    'frame_skip': 1,
-                    'graphics_obj': None,
-                    'frequency': framerate2,
-                    'time_limit': TIME_LIMIT_OVERRIDE,
-                    "competition_safe_mode": COMPETITION_SAFE_MODE,
-                    'UI_settings': {'ships': True, 'lives_remaining': True, 'accuracy': True,
-                                    'asteroids_hit': True, 'shots_fired': True, 'bullets_remaining': True,
-                                    'controller_name': True, 'scale': 2.0}}
-    game_2 = KesslerGame(settings=game_settings_2)
-    score_2, perf_data_2 = game_2.run(scenario, controllers)
+    settings_1 = settings_base | {'frequency': framerate1}
+    settings_2 = settings_base | {'frequency': framerate2}
 
-    print(score_1)
-    print()
-    print(score_2)
-    print()
-    if score_1 != score_2:
-        if score_1.stop_reason == StopReason.no_asteroids and score_2.stop_reason == StopReason.no_asteroids:
-            # If no asteroids, the scores won't match because the sim time at the end can be slightly off.
-            # Just make sure everything else matches.
-            if len(score_1.teams) != len(score_2.teams):
-                print("MISMATCH!")
-                break
-            for team_self, team_other in zip(score_1.teams, score_2.teams):
-                if team_self != team_other:
-                    print("MISMATCH!")
-                    break
-        else:
-            print("MISMATCH!")
-            break
+    game_1 = KesslerGame(settings=settings_1)
+    score_1, _ = game_1.run(scenario, controllers)
+
+    game_2 = KesslerGame(settings=settings_2)
+    score_2, _ = game_2.run(scenario, controllers)
+
+    if not check_scores(score_1, score_2, seed):
+        print(f"Mismatch found. Seed logged: {seed}")
