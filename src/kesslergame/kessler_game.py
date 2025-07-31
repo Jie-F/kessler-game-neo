@@ -45,19 +45,18 @@ class PerfDict(TypedDict, total=False):
 
 class CollisionType(IntEnum):
     BULLET_ASTEROID = 0
-    MINE_ASTEROID = 1
-    MINE_SHIP = 2
-    SHIP_ASTEROID = 3
-    SHIP_SHIP = 4
+    SHIP_ASTEROID = 1
+    SHIP_SHIP = 2
+    MINE_ASTEROID = 3
+    MINE_SHIP = 4
 
 
 class CollisionEvent:
-    __slots__ = ("time_offset", "distance", "object_a_idx", "object_b_idx", "collision_type")
+    __slots__ = ("time_offset", "distance", "object_a_idx", "object_b_idx", "collision_type", "collision_specific_final_tiebreaker")
 
     TOLERANCE: ClassVar[float] = 1e-10
-    COLLISION_PRECEDENCE: ClassVar[list[int]] = [0, 3, 4, 1, 2]
 
-    def __init__(self, time_offset: float, distance: float, object_a_idx: int, object_b_idx: int, collision_type: CollisionType):
+    def __init__(self, time_offset: float, distance: float, object_a_idx: int, object_b_idx: int, collision_type: CollisionType, specific_tiebreaker: float = 0.0):
         """
         Represents a collision event between two game objects at a specific time.
 
@@ -67,14 +66,19 @@ class CollisionEvent:
         :param object_b_idx: Index of second object involved in the collision.
         :param collision_type: Type of collision as defined in CollisionType enum.
         """
-        self.time_offset = time_offset  # Time offset in seconds relative to frame end, e.g., -0.001
-        self.distance = distance
+        self.time_offset: float = time_offset  # Time offset in seconds relative to frame end, e.g., -0.001
+        self.distance: float = distance # Distance between centers of colliding objects. Squared!
         # Time offset should be in range [-delta_time, 0.0]
         self.object_a_idx = object_a_idx
         self.object_b_idx = object_b_idx
         self.collision_type = collision_type
+        self.collision_specific_final_tiebreaker: float = specific_tiebreaker
+
+        # The sort order is: time offset, collision type, distance, collision specific final tiebreaker
 
     # Hand-implement each of the comparison dunders for speed, instead of using one for the others
+
+    # Tolerant float comparison helpers
     @staticmethod
     def _less(a: float, b: float) -> bool:
         return a < b - CollisionEvent.TOLERANCE
@@ -90,63 +94,97 @@ class CollisionEvent:
     def __lt__(self, other: CollisionEvent) -> bool:
         if self._less(self.time_offset, other.time_offset):
             return True
-        if self._equal(self.time_offset, other.time_offset):
-            if self._less(self.distance, other.distance):
-                return True
-            if self._equal(self.distance, other.distance):
-                return CollisionEvent.COLLISION_PRECEDENCE[self.collision_type] < CollisionEvent.COLLISION_PRECEDENCE[other.collision_type]
-        return False
+        if self._greater(self.time_offset, other.time_offset):
+            return False
+
+        if self.collision_type < other.collision_type:
+            return True
+        if self.collision_type > other.collision_type:
+            return False
+
+        if self._less(self.distance, other.distance):
+            return True
+        if self._greater(self.distance, other.distance):
+            return False
+
+        return self._less(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker)
 
     def __le__(self, other: CollisionEvent) -> bool:
         if self._less(self.time_offset, other.time_offset):
             return True
-        if self._equal(self.time_offset, other.time_offset):
-            if self._less(self.distance, other.distance):
-                return True
-            if self._equal(self.distance, other.distance):
-                return CollisionEvent.COLLISION_PRECEDENCE[self.collision_type] <= CollisionEvent.COLLISION_PRECEDENCE[other.collision_type]
-        return False
+        if self._greater(self.time_offset, other.time_offset):
+            return False
+
+        if self.collision_type < other.collision_type:
+            return True
+        if self.collision_type > other.collision_type:
+            return False
+
+        if self._less(self.distance, other.distance):
+            return True
+        if self._greater(self.distance, other.distance):
+            return False
+
+        return not self._greater(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, CollisionEvent):
             return NotImplemented
         return (
-            self._equal(self.time_offset, other.time_offset) and
-            self._equal(self.distance, other.distance) and
-            CollisionEvent.COLLISION_PRECEDENCE[self.collision_type] == CollisionEvent.COLLISION_PRECEDENCE[other.collision_type]
+            self._equal(self.time_offset, other.time_offset)
+            and self.collision_type == other.collision_type
+            and self._equal(self.distance, other.distance)
+            and self._equal(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker)
         )
 
     def __ne__(self, other: object) -> bool:
         if not isinstance(other, CollisionEvent):
             return NotImplemented
         return (
-            not self._equal(self.time_offset, other.time_offset) or
-            not self._equal(self.distance, other.distance) or
-            CollisionEvent.COLLISION_PRECEDENCE[self.collision_type] != CollisionEvent.COLLISION_PRECEDENCE[other.collision_type]
+            not self._equal(self.time_offset, other.time_offset)
+            or self.collision_type != other.collision_type
+            or not self._equal(self.distance, other.distance)
+            or not self._equal(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker)
         )
 
     def __gt__(self, other: CollisionEvent) -> bool:
         if self._greater(self.time_offset, other.time_offset):
             return True
-        if self._equal(self.time_offset, other.time_offset):
-            if self._greater(self.distance, other.distance):
-                return True
-            if self._equal(self.distance, other.distance):
-                return CollisionEvent.COLLISION_PRECEDENCE[self.collision_type] > CollisionEvent.COLLISION_PRECEDENCE[other.collision_type]
-        return False
+        if self._less(self.time_offset, other.time_offset):
+            return False
+
+        if self.collision_type > other.collision_type:
+            return True
+        if self.collision_type < other.collision_type:
+            return False
+
+        if self._greater(self.distance, other.distance):
+            return True
+        if self._less(self.distance, other.distance):
+            return False
+
+        return self._greater(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker)
 
     def __ge__(self, other: CollisionEvent) -> bool:
         if self._greater(self.time_offset, other.time_offset):
             return True
-        if self._equal(self.time_offset, other.time_offset):
-            if self._greater(self.distance, other.distance):
-                return True
-            if self._equal(self.distance, other.distance):
-                return CollisionEvent.COLLISION_PRECEDENCE[self.collision_type] >= CollisionEvent.COLLISION_PRECEDENCE[other.collision_type]
-        return False
+        if self._less(self.time_offset, other.time_offset):
+            return False
+
+        if self.collision_type > other.collision_type:
+            return True
+        if self.collision_type < other.collision_type:
+            return False
+
+        if self._greater(self.distance, other.distance):
+            return True
+        if self._less(self.distance, other.distance):
+            return False
+
+        return not self._less(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker)
 
     def __repr__(self) -> str:
-        return f"<CollisionEvent time_offset={self.time_offset}s distance={self.distance} type={self.collision_type} obj_a_idx={self.object_a_idx} obj_b_idx={self.object_b_idx}>"
+        return f"<CollisionEvent time_offset={self.time_offset}s distance={self.distance} type={self.collision_type} obj_a_idx={self.object_a_idx} obj_b_idx={self.object_b_idx} collision_specific_final_tiebreaker={self.collision_specific_final_tiebreaker}>"
 
 
 class KesslerGame:
@@ -309,7 +347,11 @@ class KesslerGame:
                         assert (((0.0 <= bul_head_x_collision <= self.map_width) and (0.0 <= bul_head_y_collision <= self.map_height))
                                 or ((0.0 <= bul_tail_x_collision <= self.map_width) and (0.0 <= bul_tail_y_collision <= self.map_height)))
 
-                        collision_event = CollisionEvent(collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID)
+                        negative_dot_bullet_vel_ast_vel_tiebreaker = -(bullet.vx * asteroid.vx + bullet.vy * asteroid.vy)
+
+                        # It happens surprisingly frequently where an asteroid splits, and the three overlapping children asteroids get hit by a bullet. We need a tiebreaker for this situation!
+                        # Or else we get weird random indeterminate behavior, and there goes our framerate independence.
+                        collision_event = CollisionEvent(collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID, negative_dot_bullet_vel_ast_vel_tiebreaker)
                         i = len(self.collision_queue)
                         while i > 0 and self.collision_queue[i - 1] > collision_event:
                             i -= 1
@@ -535,6 +577,9 @@ class KesslerGame:
                             ship2_x_centered_around_ship1, ship2_y_centered_around_ship1, ship2.radius, ship2.speed, ship2.integration_initial_states,
                             max(-self.delta_time, min(0.0, max(ship1._respawning, ship2._respawning))), 0.0 # Clamp to when ships are out of respawn. Double max/min calls is MUCH faster than calling max/min with 3-4 args, in MyPyC compiled code!
                         )
+                        collision_start_time += 1e-10 # Add an eps to REALLY make sure the ships are colliding!
+                        if collision_start_time > 0.0:
+                            collision_start_time = 0.0
                         if not isnan(collision_start_time):
                             assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
                             # Insert chronologically
@@ -547,6 +592,11 @@ class KesslerGame:
                             if dy > 0.5 * self.map_height:
                                 dy = self.map_height - dy
                             sq_dist = dx * dx + dy * dy
+                            radii_sum = ship1.radius + ship2.radius
+                            # This following assertion is to mostly make sure that the ships end up in a definitely colliding state, and
+                            # is good for ensuring framerate independence. So that at other framerates, the ships don't end up not actually colliding
+                            # But to be safe, don't actually use this assert to stop execution if it's not true, just in case a 1/1000000 thing happens or something.
+                            #assert sq_dist <= radii_sum * radii_sum, f"Square dist {sq_dist} is not <= square of radii sum {radii_sum * radii_sum}"
                             collision_event = CollisionEvent(collision_start_time, sq_dist, ship1_idx, ship2_idx, CollisionType.SHIP_SHIP)
                             i = len(self.collision_queue)
                             while i > 0 and self.collision_queue[i - 1] > collision_event:
