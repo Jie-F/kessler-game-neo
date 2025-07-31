@@ -183,10 +183,20 @@ class GraphicsTK(KesslerGraphics):
                 output_location_x, output_location_y,
                 text=score_board, fill="white", font=("Courier New", team_font_size), anchor=NW
             )
-            icon_idx = team.team_id-1
+            # Default to -1 which means unset yet
+            icon_idx = -1
+            # For each team, try to find a team icon by going through ships sequentially and seeing if any have a custom ship sprite
             for ship in ships:
                 if ship.custom_sprite_path and ship.team == team.team_id:
                     icon_idx = self.image_paths.index(os.path.join(self.img_dir, ship.custom_sprite_path))
+                    break
+            if icon_idx == -1:
+                # Couldn't find a custom ship sprite.
+                # Take the first ship number in this team and nominate it as the "team leader", and use that ship's default ship sprite to represent this team
+                for ship_idx, ship in enumerate(ships):
+                    if ship.team == team.team_id:
+                        icon_idx = ship_idx
+                        break
             self.game_canvas.create_image(
                 output_location_x + round(120 * self.scale),
                 output_location_y + round(15 * self.scale),
