@@ -322,7 +322,7 @@ def collision_time_interval(
     # If nothing ever collides at either endpoint, 
     # and the circle is too large to fit through between endpoints,
     # we’re done. No possible way the further check will catch a collision!
-    if isnan(t0_A) and isnan(t0_B) and r > seg_len:
+    if isnan(t0_A) and isnan(t0_B) and seg_len < r:
         return (nan, nan)
 
     # Get the min/max collision window from the two endpoints
@@ -558,14 +558,20 @@ def circle_line_collision_continuous(
                 if (cp > 0.0) != sign:
                     return False
         return True
-    if is_origin_in_parallelogram(ax, ay, bx, by, cx, cy, dx, dy):
-        return True
     
-    return False
-
+    delta_x = ax - bx
+    delta_y = ay - by
+    seg_len_sq = delta_x * delta_x + delta_y * delta_y
+    if seg_len_sq < rad_sq:
+        # The line segment (one side of the parallelogram) is too short to contain the circle completely
+        # so there's no possible collision here
+        return False
+    else:
+        # It's possible for the parallelogram to completely contain the circle, so we check for that case
+        return is_origin_in_parallelogram(ax, ay, bx, by, cx, cy, dx, dy)
 
 def circle_line_collision_discrete(line_A: tuple[float, float], line_B: tuple[float, float], center: tuple[float, float], radius: float) -> bool:
-    # Unused
+    # UNUSED
     # Accurate version of the discrete collision check
     
     # Quick rejection check:

@@ -75,7 +75,7 @@ def project_point_onto_segment_and_get_t(x1: float, y1: float, x2: float, y2: fl
 
 def analytic_ship_movement_integration(v0: float, a: float, theta0: float, omega: float, delta_t: float) -> tuple[float, float]:
     """
-    Returns (dx, dy) using either analytic or Taylor expansion for small omega.
+    Returns (dx, dy) using either analytic or Taylor expansion for small omega
     Args:
         v0: initial speed
         a: acceleration
@@ -223,7 +223,7 @@ def find_first_leq_zero(
         for _ in range(max_iterations):
             fx, dfx, _ = f(x)
             if -tol < fx <= 0.0:
-                return x  # Found a root!
+                return x  # Close enough!
 
             # If the slope is 0 or NaN, just do a bisection step
             if dfx == 0.0 or isnan(dfx):
@@ -293,8 +293,8 @@ def find_first_leq_zero(
         for _ in range(max_iterations):
             xm = 0.5 * (x0 + x1)
             fm, _, _ = f(xm)
-            if abs(fm) < tol:
-                return xm # Close enough to zero
+            if -tol < fm <= 0.0:
+                return xm # Close enough!
             f0, _, _ = f(x0)
             if f0 * fm < 0:
                 x1 = xm # Root is in [x0, xm]

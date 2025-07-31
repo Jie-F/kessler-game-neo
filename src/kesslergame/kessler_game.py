@@ -54,7 +54,7 @@ class CollisionType(IntEnum):
 class CollisionEvent:
     __slots__ = ("time_offset", "distance", "object_a_idx", "object_b_idx", "collision_type", "collision_specific_final_tiebreaker")
 
-    TOLERANCE: ClassVar[float] = 1e-10
+    TOLERANCE: ClassVar[float] = 1e-12
 
     def __init__(self, time_offset: float, distance: float, object_a_idx: int, object_b_idx: int, collision_type: CollisionType, specific_tiebreaker: float = 0.0):
         """
@@ -583,6 +583,9 @@ class KesslerGame:
                             ship2_x_centered_around_ship1, ship2_y_centered_around_ship1, ship2.radius, ship2.speed, ship2.integration_initial_states,
                             max(-self.delta_time, min(0.0, max(ship1._respawning, ship2._respawning))), 0.0 # Clamp to when ships are out of respawn. Double max/min calls is MUCH faster than calling max/min with 3-4 args, in MyPyC compiled code!
                         )
+                        collision_start_time += 1e-12 # Add an eps to REALLY make sure the ships are colliding!
+                        if collision_start_time > 0.0:
+                            collision_start_time = 0.0
                         if not isnan(collision_start_time):
                             assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
                             # Insert chronologically
