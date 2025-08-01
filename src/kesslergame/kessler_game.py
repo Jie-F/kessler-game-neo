@@ -487,7 +487,7 @@ class KesslerGame:
             if mine.detonating:
                 # For each live, non-respawning ship, apply damage only from the closest mine within range
                 for ship_idx, ship in enumerate(ships):
-                    if ship.is_respawning or not ship.alive:
+                    if ship.is_respawning_internal or not ship.alive:
                         continue
                     dx = abs(ship.x - mine.x)
                     dy = abs(ship.y - mine.y)
@@ -508,7 +508,7 @@ class KesslerGame:
 
     def enqueue_ship_asteroid_collisions(self, ships: list[Ship], asteroids: list[Asteroid], asteroid_past_time_clamp: float, asteroid_list_idx_offset: int = 0) -> None:
         for ship_idx, ship in enumerate(ships):
-            if ship.is_respawning or not ship.alive:
+            if ship.is_respawning_internal or not ship.alive:
                 continue
             for ast_idx, asteroid in enumerate(asteroids):
                 # Check for collisions in time interval [t - delta_time, t]
@@ -525,11 +525,11 @@ class KesslerGame:
                     ast_y_centered_around_ship = asteroid.y + self.map_height
                 else:
                     ast_y_centered_around_ship = asteroid.y
-                assert ship._respawning <= 1e-12, f"{ship._respawning=}"
+                assert ship.respawn_time_internal <= 1e-12, f"{ship.respawn_time_internal=}"
                 collision_start_time = ship_asteroid_continuous_collision_time(
                     ship.x, ship.y, ship.radius, ship.speed, ship.integration_initial_states,
                     ast_x_centered_around_ship, ast_y_centered_around_ship, asteroid.vx, asteroid.vy, asteroid.radius, asteroid.speed,
-                    max(-min(asteroid_past_time_clamp, self.delta_time), min(0.0, ship._respawning)), 0.0 # Only check collisions starting from when the ship's respawn invincibility wore off
+                    max(-min(asteroid_past_time_clamp, self.delta_time), min(0.0, ship.respawn_time_internal)), 0.0 # Only check collisions starting from when the ship's respawn invincibility wore off
                 )
                 if not isnan(collision_start_time):
                     assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
@@ -558,10 +558,10 @@ class KesslerGame:
     def enqueue_ship_ship_collisions(self, ships: list[Ship]) -> None:
         num_ships = len(ships)
         for ship1_idx, ship1 in enumerate(ships):
-            if ship1.alive and not ship1.is_respawning:
+            if ship1.alive and not ship1.is_respawning_internal:
                 for ship2_idx in range(ship1_idx + 1, num_ships):
                     ship2 = ships[ship2_idx]
-                    if ship2.alive and not ship2.is_respawning:
+                    if ship2.alive and not ship2.is_respawning_internal:
                         # Check for collisions in time interval [t - delta_time, t]
                         # But clamp the start time to when both ships are out of respawn
                         if ship2.x - ship1.x > 0.5 * self.map_width:
@@ -578,7 +578,7 @@ class KesslerGame:
                         else:
                             ship2_y_centered_around_ship1 = ship2.y
                         
-                        collision_check_interval_start = max(-self.delta_time, min(0.0, max(ship1._respawning, ship2._respawning)))
+                        collision_check_interval_start = max(-self.delta_time, min(0.0, max(ship1.respawn_time_internal, ship2.respawn_time_internal)))
                         collision_start_time = ship_ship_continuous_collision_time(
                             ship1.x, ship1.y, ship1.radius, ship1.speed, ship1.integration_initial_states,
                             ship2_x_centered_around_ship1, ship2_y_centered_around_ship1, ship2.radius, ship2.speed, ship2.integration_initial_states,
@@ -914,7 +914,7 @@ class KesslerGame:
                         ship = ships[ship_idx]
 
                         assert ship.alive
-                        if ship.is_respawning:
+                        if ship.is_respawning_internal:
                             continue
                         
                         assert dt == 0.0
@@ -936,7 +936,7 @@ class KesslerGame:
 
                         ship = ships[ship_idx]
                         assert ship.alive
-                        if ship.is_respawning:
+                        if ship.is_respawning_internal:
                             continue
                         asteroid = asteroids[ast_idx]
                         # Rewind
@@ -982,7 +982,7 @@ class KesslerGame:
                         ship2 = ships[ship2_idx]
 
                         assert ship1.alive and ship2.alive
-                        if ship1.is_respawning or ship2.is_respawning:
+                        if ship1.is_respawning_internal or ship2.is_respawning_internal:
                             continue
                         # Rollback
                         if abs(dt) > CollisionEvent.TOLERANCE:

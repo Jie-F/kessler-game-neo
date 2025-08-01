@@ -185,7 +185,13 @@ class Ship:
 
     @property
     def is_respawning(self) -> bool:
+        # Externally, if a ship's respawn expires right this instant, we say it's no longer respawning
         return self._respawning > 1e-12
+
+    @property
+    def is_respawning_internal(self) -> bool:
+        # Internally, if a ship's respawn comes off this instant, we still treat it as invulnerable
+        return self._respawning > -1e-12
 
     @property
     def respawn_time_left(self) -> float:
@@ -194,6 +200,10 @@ class Ship:
             return 0.0
         else:
             return clamped_to_zero
+
+    @property
+    def respawn_time_internal(self) -> float:
+        return self._respawning
 
     @property
     def respawn_time(self) -> float:
