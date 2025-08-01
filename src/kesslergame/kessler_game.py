@@ -54,7 +54,7 @@ class CollisionType(IntEnum):
 class CollisionEvent:
     __slots__ = ("time_offset", "distance", "object_a_idx", "object_b_idx", "collision_type", "collision_specific_final_tiebreaker")
 
-    TOLERANCE: ClassVar[float] = 1e-12
+    TOLERANCE: ClassVar[float] = 1e-10
 
     def __init__(self, time_offset: float, distance: float, object_a_idx: int, object_b_idx: int, collision_type: CollisionType, specific_tiebreaker: float = 0.0):
         """

@@ -17,9 +17,17 @@ turn_rate_range = (-180.0, 180.0)
 
 # Setup logging
 log_filename = f'mismatches_{os.getpid()}.log'
-logging.basicConfig(filename=log_filename,
-                    level=logging.INFO,
-                    format='%(asctime)s - SEED: %(message)s')
+
+class FlushFileHandler(logging.FileHandler):
+    def emit(self, record):
+        super().emit(record)
+        self.flush()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - SEED: %(message)s',
+    handlers=[FlushFileHandler(log_filename, mode='w')]
+)
 
 class FramerateIndependentController(KesslerController):
     def __init__(self, actions_list: list[tuple[float, float, bool, bool]]):
