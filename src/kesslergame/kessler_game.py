@@ -600,8 +600,9 @@ class KesslerGame:
                             # is good for ensuring framerate independence. So that at other framerates, the ships don't end up not actually colliding
                             # The root finder is meant to find the time that the ships begin colliding, but due to imprecision, it might find the time right before they start colliding.
                             radii_sum = ship1.radius + ship2.radius
+                            radii_sum_sq = radii_sum * radii_sum
                             verified_collision: bool = True
-                            if not (sq_dist <= radii_sum * radii_sum):
+                            if not (sq_dist + 1e-10 <= radii_sum_sq):
                                 verified_collision = False
                                 # Ships aren't colliding. Nudge the time forward and hope that makes them collide.
                                 # Add an eps to REALLY make sure the ships are colliding!
@@ -627,7 +628,7 @@ class KesslerGame:
                                     if dy > 0.5 * self.map_height:
                                         dy = self.map_height - dy
                                     sq_dist = dx * dx + dy * dy
-                                    if sq_dist <= radii_sum * radii_sum:
+                                    if sq_dist + 1e-10 <= radii_sum_sq:
                                         verified_collision = True
                                         break
 
