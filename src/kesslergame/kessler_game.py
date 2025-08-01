@@ -349,8 +349,8 @@ class KesslerGame:
 
                         # It happens surprisingly frequently where an asteroid splits, and the three overlapping children asteroids get hit by a bullet. We need a tiebreaker for this situation!
                         # Or else we get weird random indeterminate behavior, and there goes our framerate independence.
-                        negative_dot_bullet_vel_ast_vel_tiebreaker = -(bullet.vx * asteroid.vx + bullet.vy * asteroid.vy)
-                        collision_event = CollisionEvent(collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID, negative_dot_bullet_vel_ast_vel_tiebreaker)
+                        dot_bullet_vel_ast_vel_tiebreaker = bullet.vx * asteroid.vx + bullet.vy * asteroid.vy
+                        collision_event = CollisionEvent(collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID, dot_bullet_vel_ast_vel_tiebreaker)
                         i = len(self.collision_queue)
                         while i > 0 and self.collision_queue[i - 1] > collision_event:
                             i -= 1
@@ -454,8 +454,8 @@ class KesslerGame:
 
                         # It happens surprisingly frequently where an asteroid splits, and the three overlapping children asteroids get hit by a bullet. We need a tiebreaker for this situation!
                         # Or else we get weird random indeterminate behavior, and there goes our framerate independence.
-                        negative_dot_bullet_vel_ast_vel_tiebreaker = -(bullet.vx * asteroid.vx + bullet.vy * asteroid.vy)
-                        collision_event = CollisionEvent(collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID, negative_dot_bullet_vel_ast_vel_tiebreaker)
+                        dot_bullet_vel_ast_vel_tiebreaker = bullet.vx * asteroid.vx + bullet.vy * asteroid.vy
+                        collision_event = CollisionEvent(collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID, dot_bullet_vel_ast_vel_tiebreaker)
                         i = len(self.collision_queue)
                         while i > 0 and self.collision_queue[i - 1] > collision_event:
                             i -= 1
@@ -548,8 +548,8 @@ class KesslerGame:
 
                     # Break ties in case everything else matches, including asteroid distance from the ship
                     ship_heading_collision = radians(ship.heading + ship.turn_rate * collision_start_time)
-                    negative_dot_product_tiebreaker_ship_ast = -(cos(ship_heading_collision) * asteroid.vx + sin(ship_heading_collision) * asteroid.vy)
-                    collision_event = CollisionEvent(collision_start_time, sq_dist, ship_idx, ast_idx + asteroid_list_idx_offset, CollisionType.SHIP_ASTEROID, negative_dot_product_tiebreaker_ship_ast)
+                    dot_product_tiebreaker_ship_ast = cos(ship_heading_collision) * asteroid.vx + sin(ship_heading_collision) * asteroid.vy
+                    collision_event = CollisionEvent(collision_start_time, sq_dist, ship_idx, ast_idx + asteroid_list_idx_offset, CollisionType.SHIP_ASTEROID, dot_product_tiebreaker_ship_ast)
                     i = len(self.collision_queue)
                     while i > 0 and self.collision_queue[i - 1] > collision_event:
                         i -= 1
