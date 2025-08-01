@@ -585,17 +585,7 @@ class KesslerGame:
                             collision_check_interval_start, 0.0 # Clamp to when ships are out of respawn. Double max/min calls is MUCH faster than calling max/min with 3-4 args, in MyPyC compiled code!
                         )
                         if not isnan(collision_start_time):
-                            if collision_start_time != collision_check_interval_start:
-                                # Add an eps to REALLY make sure the ships are colliding!
-                                # But we only want to do this if the root was found in the middle of the interval when the function
-                                # dips down. If the interval start is negative, then we do NOT nudge this forward, or else wacky stuff
-                                # will happen, and we get edge cases where the ship on the edge of respawn will have framerate dependence due
-                                # to floating point error. Especially in mine-ship collisions which happen on integer seconds.
-                                collision_start_time += 1e-12
-                                if collision_start_time > 0.0:
-                                    collision_start_time = 0.0
                             assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
-                            # Insert chronologically
                             ship1_past_x, ship1_past_y = ship1.get_past_position(collision_start_time, (self.map_width, self.map_height))
                             ship2_past_x, ship2_past_y = ship2.get_past_position(collision_start_time, (self.map_width, self.map_height))
                             dx = abs(ship1_past_x - ship2_past_x)
@@ -606,16 +596,47 @@ class KesslerGame:
                                 dy = self.map_height - dy
                             sq_dist = dx * dx + dy * dy
                             
-                            # This following assertion is to mostly make sure that the ships end up in a definitely colliding state, and
+                            # This following test is to make sure that the ships end up in a definitely colliding state, and
                             # is good for ensuring framerate independence. So that at other framerates, the ships don't end up not actually colliding
-                            # But to be safe, don't actually use this assert to stop execution if it's not true, just in case a 1/1000000 thing happens or something.
+                            # The root finder is meant to find the time that the ships begin colliding, but due to imprecision, it might find the time right before they start colliding.
                             radii_sum = ship1.radius + ship2.radius
-                            assert sq_dist <= radii_sum * radii_sum, f"Square dist {sq_dist} is not <= square of radii sum {radii_sum * radii_sum}"
-                            collision_event = CollisionEvent(collision_start_time, sq_dist, ship1_idx, ship2_idx, CollisionType.SHIP_SHIP)
-                            i = len(self.collision_queue)
-                            while i > 0 and self.collision_queue[i - 1] > collision_event:
-                                i -= 1
-                            self.collision_queue.insert(i, collision_event)
+                            verified_collision: bool = True
+                            if not (sq_dist <= radii_sum * radii_sum):
+                                verified_collision = False
+                                # Ships aren't colliding. Nudge the time forward and hope that makes them collide.
+                                # Add an eps to REALLY make sure the ships are colliding!
+                                # But we only want to do this if the root was found in the middle of the interval when the function
+                                # dips down. If the interval start is negative, then we do NOT nudge this forward, or else wacky stuff
+                                # will happen, and we get edge cases where the ship on the edge of respawn will have framerate dependence due
+                                # to floating point error. Especially in mine-ship collisions which happen on integer seconds.
+
+                                for i in range(1000):
+                                    # Instead of using a while loop, it's better to use a for loop and have an upper bound on this,
+                                    # just so we don't infinite loop here in some super weird case
+                                    collision_start_time += 1e-12
+                                    if collision_start_time > 0.0:
+                                        # We reached the end of the interval, so this is hopeless. These ships are not colliding!
+                                        break
+
+                                    ship1_past_x, ship1_past_y = ship1.get_past_position(collision_start_time, (self.map_width, self.map_height))
+                                    ship2_past_x, ship2_past_y = ship2.get_past_position(collision_start_time, (self.map_width, self.map_height))
+                                    dx = abs(ship1_past_x - ship2_past_x)
+                                    dy = abs(ship1_past_y - ship2_past_y)
+                                    if dx > 0.5 * self.map_width:
+                                        dx = self.map_width - dx
+                                    if dy > 0.5 * self.map_height:
+                                        dy = self.map_height - dy
+                                    sq_dist = dx * dx + dy * dy
+                                    if sq_dist <= radii_sum * radii_sum:
+                                        verified_collision = True
+                                        break
+
+                            if verified_collision:
+                                collision_event = CollisionEvent(collision_start_time, sq_dist, ship1_idx, ship2_idx, CollisionType.SHIP_SHIP)
+                                i = len(self.collision_queue)
+                                while i > 0 and self.collision_queue[i - 1] > collision_event:
+                                    i -= 1
+                                self.collision_queue.insert(i, collision_event)
 
     def run(self, scenario: Scenario, controllers: list[KesslerController]) -> tuple[Score, PerfDict]:
         """
