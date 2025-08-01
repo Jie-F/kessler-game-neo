@@ -220,24 +220,27 @@ def find_first_leq_zero(
         # More precisely, it finds the smallest x such that f(x) < 0, so slightly past the root!
         x_low, x_high = x0, x1
         x = 0.5 * (x0 + x1)  # Start in the middle
+        fx, dfx, _ = f(x) # Initial evaluation
         for _ in range(max_iterations):
-            fx, dfx, _ = f(x)
             if -tol < fx <= 0.0:
                 return x  # Close enough!
 
-            # If the slope is 0 or NaN, just do a bisection step
-            if dfx == 0.0 or isnan(dfx):
-                x = 0.5 * (x_low + x_high)
+            if abs(dfx) < tol or isnan(dfx):
+                # If the slope is 0 or NaN, just do a bisection step
+                x_new = 0.5 * (x_low + x_high)
             else:
-                x_new = x - fx / dfx  # Newton update!
+                x_new = x - fx / dfx # Newton update!
                 # Make sure it's still in [x0, x1]
                 if not (x0 <= x_new <= x1):
-                    # It's not, fallback to bisection
+                    # It's not, so fallback to bisection
                     x_new = 0.5 * (x_low + x_high)
-                x = x_new
+                elif abs(x_new - x) < tol:
+                    # The newton step is tiny, and has stalled
+                    return x_new
+            x = x_new
 
             # Update bounds based on sign of f(x)
-            fx, _, _ = f(x)
+            fx, dfx, _ = f(x)
             if fx > 0.0:
                 # Bisect right
                 x_low = x
@@ -258,24 +261,28 @@ def find_first_leq_zero(
         # Assume that f'(x0) < 0 and f'(x1) > 0, so this is an increasing function
         x_low, x_high = x0, x1
         x = 0.5 * (x0 + x1)  # Start in the middle
+        _, dfx, ddfx = f(x) # Initial evaluation
         for _ in range(max_iterations):
             _, dfx, ddfx = f(x)
             if abs(dfx) < tol:
                 return x  # Found a minimum (or stationary point)!
 
-            # If the second derivative is 0 or NaN, just do a bisection step
-            if abs(ddfx) < 1e-8 or isnan(ddfx):
-                x = 0.5 * (x_low + x_high)
+            if abs(ddfx) < tol or isnan(ddfx):
+                # If the second derivative is 0 or NaN, just do a bisection step
+                x_new = 0.5 * (x_low + x_high)
             else:
                 x_new = x - dfx / ddfx  # Newton update!
                 # Make sure it's still in [x0, x1]
                 if not (x0 <= x_new <= x1):
                     # It's not, fallback to bisection
                     x_new = 0.5 * (x_low + x_high)
-                x = x_new
+                elif abs(x_new - x) < tol:
+                    # The newton step is tiny, and has stalled
+                    return x_new
+            x = x_new
 
             # Update bounds based on sign of f'(x)
-            _, dfx, _ = f(x)
+            _, dfx, ddfx = f(x)
             if dfx > 0.0:
                 # Bisect left
                 x_high = x
@@ -290,19 +297,27 @@ def find_first_leq_zero(
 
     # Classic bisection method. Slower but guaranteed if f changes sign
     def bisection_root(f: Callable[[float], tuple[float, float, float]], x0: float, x1: float) -> float:
+        f0, _, _ = f(x0)  # Cache initial f(x0)
+        f1, _, _ = f(x1)  # Cache initial f(x1)
+        assert f0 * f1 <= 0.0
         for _ in range(max_iterations):
             xm = 0.5 * (x0 + x1)
             fm, _, _ = f(xm)
             if -tol < fm <= 0.0:
-                return xm # Close enough!
-            f0, _, _ = f(x0)
-            if f0 * fm < 0:
-                x1 = xm # Root is in [x0, xm]
+                return xm  # Close enough!
+
+            # Update the interval based on the sign of fm
+            if f0 * fm < 0.0:
+                x1 = xm      # Root is in [x0, xm]
+                f1 = fm      # f(x1) becomes f(xm)
             else:
-                x0 = xm # Root is in [xm, x1]
+                x0 = xm      # Root is in [xm, x1]
+                f0 = fm      # f(x0) becomes f(xm)
+
             if abs(x1 - x0) < tol:
-                return x1 # Interval is tiny. return right point, which is hopefully <= 0
-        return x1 # Didn't converge, but return our best guess
+                return x1  # Interval is tiny. return right point, which is hopefully <= 0
+
+        return x1  # Didn't converge, but return our best guess
 
     # Main logic
     fa, da, _ = f(a)
@@ -323,6 +338,7 @@ def find_first_leq_zero(
             return newton_root(f, a, t_min)
 
     # Hail Mary fallback: brute force sample the interval a bunch lol
+    '''
     N = 30  # Subdivide the interval finely
     for i in range(1, N + 1):
         x0 = a + (b - a) * (i - 1) / N
@@ -334,7 +350,7 @@ def find_first_leq_zero(
         if f0 > 0.0 and f1 <= 0.0:
             # We found a sign change, so apply bisection
             return bisection_root(f, x0, x1)
-
+    '''
     # Dang, couldn't find anything :(
     return nan
 

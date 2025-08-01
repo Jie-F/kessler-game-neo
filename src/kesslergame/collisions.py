@@ -537,11 +537,18 @@ def circle_line_collision_continuous(
     # BUT we're now using a virtual bullet to do clamping, and this "virtual bullet" is super long, so we need this!
     # Check whether the origin is within the parallelogram using a cross product orientation checker
     
-    def is_origin_in_parallelogram(ax, ay, bx, by, cx, cy, dx, dy):
-        def cross(xa, ya, xb, yb):
+    def is_origin_in_parallelogram(
+        ax: float, ay: float,
+        bx: float, by: float,
+        cx: float, cy: float,
+        dx: float, dy: float
+    ) -> bool:
+        def cross(xa: float, ya: float, xb: float, yb: float) -> float:
             return xa * yb - ya * xb
-        corners = [(ax, ay), (bx, by), (dx, dy), (cx, cy)]
-        sign = None
+
+        corners: list[tuple[float, float]] = [(ax, ay), (bx, by), (dx, dy), (cx, cy)]
+        sign: bool | None = None
+
         for i in range(4):
             x0, y0 = corners[i]
             x1, y1 = corners[(i + 1) % 4]
