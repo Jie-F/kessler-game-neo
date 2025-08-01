@@ -66,7 +66,7 @@ class CollisionEvent:
         :param object_b_idx: Index of second object involved in the collision.
         :param collision_type: Type of collision as defined in CollisionType enum.
         """
-        self.time_offset: float = time_offset  # Time offset in seconds relative to frame end, e.g., -0.001
+        self.time_offset: float = time_offset # Time offset in seconds relative to frame end, e.g., -0.001
         self.distance: float = distance # Distance between centers of colliding objects. Squared!
         # Time offset should be in range [-delta_time, 0.0]
         self.object_a_idx = object_a_idx
@@ -577,16 +577,23 @@ class KesslerGame:
                             ship2_y_centered_around_ship1 = ship2.y + self.map_height
                         else:
                             ship2_y_centered_around_ship1 = ship2.y
-
+                        
+                        collision_check_interval_start = max(-self.delta_time, min(0.0, max(ship1._respawning, ship2._respawning)))
                         collision_start_time = ship_ship_continuous_collision_time(
                             ship1.x, ship1.y, ship1.radius, ship1.speed, ship1.integration_initial_states,
                             ship2_x_centered_around_ship1, ship2_y_centered_around_ship1, ship2.radius, ship2.speed, ship2.integration_initial_states,
-                            max(-self.delta_time, min(0.0, max(ship1._respawning, ship2._respawning))), 0.0 # Clamp to when ships are out of respawn. Double max/min calls is MUCH faster than calling max/min with 3-4 args, in MyPyC compiled code!
+                            collision_check_interval_start, 0.0 # Clamp to when ships are out of respawn. Double max/min calls is MUCH faster than calling max/min with 3-4 args, in MyPyC compiled code!
                         )
-                        collision_start_time += 1e-12 # Add an eps to REALLY make sure the ships are colliding!
-                        if collision_start_time > 0.0:
-                            collision_start_time = 0.0
                         if not isnan(collision_start_time):
+                            if collision_start_time != collision_check_interval_start:
+                                # Add an eps to REALLY make sure the ships are colliding!
+                                # But we only want to do this if the root was found in the middle of the interval when the function
+                                # dips down. If the interval start is negative, then we do NOT nudge this forward, or else wacky stuff
+                                # will happen, and we get edge cases where the ship on the edge of respawn will have framerate dependence due
+                                # to floating point error. Especially in mine-ship collisions which happen on integer seconds.
+                                collision_start_time += 1e-12
+                                if collision_start_time > 0.0:
+                                    collision_start_time = 0.0
                             assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
                             # Insert chronologically
                             ship1_past_x, ship1_past_y = ship1.get_past_position(collision_start_time, (self.map_width, self.map_height))

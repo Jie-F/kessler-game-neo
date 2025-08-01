@@ -201,7 +201,7 @@ def find_first_leq_zero(
     a: float,
     b: float,
     tol: float = 1e-12,
-    max_iterations: int = 80 # This is way overkill, and 30 is probably fine. But this is so rare to use more than 30, that this won't slow down the game.
+    max_iterations: int = 80 # This is way overkill, and 30 is probably fine. But this is so rare to use more than just a few iterations, that this won't slow down the game.
 ) -> float:
     """
     Finds the smallest t in [a, b] such that f(t) <= 0,
