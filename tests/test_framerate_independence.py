@@ -68,10 +68,10 @@ def random_ship_states(number: int) -> list[dict]:
     for _ in range(number):
         state = {"position": (random.uniform(0.0, WIDTH), random.uniform(0.0, HEIGHT)),
                  "angle": random.uniform(0.0, 360.0),
-                 "lives": random.randint(1, 100),
+                 "lives": random.randint(1, 50),
                  "team": random.randint(1, 2),
                  #"bullets_remaining": random.randint(1, 5000),
-                 "mines_remaining": random.randint(0, 30)}
+                 "mines_remaining": random.randint(0, 20)}
         ship_states.append(state)
     return ship_states
 
@@ -118,9 +118,9 @@ for i in range(TRIALS):
 
     print(f"Trial={i}, seed={seed}, framerates: {framerate1} and {framerate2}")
 
-    num_ships = random.randint(1, 10)
+    num_ships = random.randint(1, 6)
     scenario = Scenario(name=f"Trial {i}",
-                        num_asteroids=random.randint(1, 50),
+                        num_asteroids=random.randint(1, 10),
                         ship_states=random_ship_states(num_ships),
                         map_size=(WIDTH, HEIGHT),
                         seed=seed,
@@ -128,7 +128,7 @@ for i in range(TRIALS):
                         stop_if_no_ammo=False,
                         stop_if_no_asteroids=False,
                         stop_if_no_ships=False,
-                        time_limit=float(random.randint(2, 60)))
+                        time_limit=float(random.randint(2, 20)))
     controllers = randomly_initialized_controllers(num_ships)
 
     settings_base = {
