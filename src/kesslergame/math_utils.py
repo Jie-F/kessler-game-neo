@@ -319,12 +319,34 @@ def find_first_leq_zero(
 
         return x1  # Didn't converge, but return our best guess
 
+    def bisection_on_second_derivative(f: Callable[[float], tuple[float, float, float]], x0: float, x1: float) -> float:
+        _, _, dd0 = f(x0)
+        _, _, dd1 = f(x1)
+        assert dd0 * dd1 <= 0.0
+        for _ in range(max_iterations):
+            xm = 0.5 * (x0 + x1)
+            _, _, ddm = f(xm)
+            if abs(ddm) < tol:
+                return xm
+            if dd0 * ddm < 0.0:
+                # Bisect left
+                x1 = xm
+                dd1 = ddm
+            else:
+                # Bisect right
+                x0 = xm
+                dd0 = ddm
+            if abs(x1 - x0) < tol:
+                return xm
+        # Didn't converge, but return best guess
+        return 0.5 * (x0 + x1)
+
     # Main logic
-    fa, da, _ = f(a)
+    fa, da, dda = f(a)
     if fa <= 0.0:
         return a # Already satisfies condition at the left endpoint
 
-    fb, db, _ = f(b)
+    fb, db, ddb = f(b)
     if fb <= 0.0:
         # There’s a root somewhere between a and b
         return newton_root(f, a, b)
@@ -337,9 +359,30 @@ def find_first_leq_zero(
             # The minimum is below zero. Find where it goes from positive to negative
             return newton_root(f, a, t_min)
 
+    # If the concavity of the function (second derivative) changes, then
+    # it's very possible that the function can seem to not want to dip down,
+    # but actually it has a couple extra turning points in there, and really does dip down!
+    # Check for second derivative sign change. If there is, then the function is cubic-shaped!
+    if dda * ddb < 0.0:
+        t_inflect = bisection_on_second_derivative(f, a, b)
+        fi, di, ddi = f(t_inflect)
+        if da < 0.0 and di > 0.0:
+            # There's a minimum between a and the inflection point! Find it!
+            t_min = newton_minimum(f, a, t_inflect)
+            fmin, _, _ = f(t_min)
+            if fmin <= 0.0:
+                return newton_root(f, a, t_min)
+        elif di < 0.0 and db > 0.0:
+            # There's a minimum between the inflection point and b! Find it!
+            t_min = newton_minimum(f, t_inflect, b)
+            fmin, _, _ = f(t_min)
+            if fmin <= 0.0:
+                return newton_root(f, a, t_min) # Tempting to do Newton between t_inflect and t_min, but this is safer
+
     # Hail Mary fallback: brute force sample the interval a bunch lol
+    # Nvm, just give up at this point. The juice is not worth the squeeze!
     '''
-    N = 30  # Subdivide the interval finely
+    N = 100  # Subdivide the interval finely
     for i in range(1, N + 1):
         x0 = a + (b - a) * (i - 1) / N
         x1 = a + (b - a) * i / N
