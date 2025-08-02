@@ -3,7 +3,7 @@
 # NOTICE: This file is subject to the license agreement defined in file 'LICENSE', which is part of
 # this source code package.
 
-from math import isnan, sqrt, dist, nan, inf, isfinite, sin, cos
+from math import isnan, sqrt, dist, nan, inf, isfinite, sin, cos, nextafter
 from typing import Callable
 
 from .math_utils import solve_quadratic, project_point_onto_segment_and_get_t, analytic_ship_movement_integration, find_first_leq_zero
@@ -126,9 +126,7 @@ def ship_asteroid_continuous_collision_time(ship_x: float, ship_y: float, ship_r
         ddt2_sy: float = 0.0
         for ship_initial_state in ship_integration_initial_states:
             start_t, end_t, v0, a, theta0, omega, dx, dy = ship_initial_state
-            # Add some tolerance so it's more lenient and likely to fit in the first, and larger interval
-            # Differentiating along the edge is a bit wacky, so we want to find the diff in the large interval, and not like an interval of zero width!
-            if end_t - 1e-12 <= t <= start_t + 1e-12:
+            if end_t <= t <= start_t:
                 # Found the interval we differentiate in
                 theta_t = theta0 + omega * (t - start_t)
                 v_t = v0 + a * (t - start_t)
@@ -154,6 +152,20 @@ def ship_asteroid_continuous_collision_time(ship_x: float, ship_y: float, ship_r
 
     root_t = find_first_leq_zero(squared_separation_between_ship_and_asteroid_at_t, time_interval_start, time_interval_end)
     
+    ship_intervals = len(ship_integration_initial_states)
+    assert ship_intervals <= 2
+    if ship_intervals == 2:
+        # The separation function's second derivative will be discontinuous in 1 spot
+        # We need to do the root finding interval-by-interval, and not just the whole thing at once.
+        interval_mid = ship_integration_initial_states[0][1]
+        assert time_interval_start <= interval_mid <= time_interval_end
+        root_t = find_first_leq_zero(squared_separation_between_ship_and_asteroid_at_t, time_interval_start, nextafter(interval_mid, -inf))
+        if isnan(root_t):
+            # Try the next interval
+            root_t = find_first_leq_zero(squared_separation_between_ship_and_asteroid_at_t, nextafter(interval_mid, inf), time_interval_end)
+    else:
+        root_t = find_first_leq_zero(squared_separation_between_ship_and_asteroid_at_t, time_interval_start, time_interval_end)
+
     if debug_plot:
         debug_plot_function_over_time(
             squared_separation_between_ship_and_asteroid_at_t,
@@ -255,9 +267,7 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
         # Compute derivatives for ship 1
         for state in ship1_integration_initial_states:
             start_t, end_t, v0, a, theta0, omega, dx, dy = state
-            # Add some tolerance so it's more lenient and likely to fit in the first, and larger interval
-            # Differentiating along the edge is a bit wacky, so we want to find the diff in the large interval, and not like an interval of zero width!
-            if end_t - 1e-12 <= t <= start_t + 1e-12:
+            if end_t <= t <= start_t:
                 # Found the interval we differentiate in
                 theta_t = theta0 + omega * (t - start_t)
                 v_t = v0 + a * (t - start_t)
@@ -276,9 +286,7 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
         # Compute derivatives for ship 2
         for state in ship2_integration_initial_states:
             start_t, end_t, v0, a, theta0, omega, dx, dy = state
-            # Add some tolerance so it's more lenient and likely to fit in the first, and larger interval
-            # Differentiating along the edge is a bit wacky, so we want to find the diff in the large interval, and not like an interval of zero width!
-            if end_t - 1e-12 <= t <= start_t + 1e-12:
+            if end_t <= t <= start_t:
                 # Found the interval we differentiate in
                 theta_t = theta0 + omega * (t - start_t)
                 v_t = v0 + a * (t - start_t)
@@ -306,7 +314,39 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
 
         return function_value, derivative_value, second_derivative_value
     
-    root_t = find_first_leq_zero(squared_separation_between_ships_at_t, time_interval_start, time_interval_end)
+    ship1_intervals = len(ship1_integration_initial_states)
+    ship2_intervals = len(ship2_integration_initial_states)
+    assert ship1_intervals <= 2 and ship2_intervals <= 2
+    if ship1_intervals == 2 and ship2_intervals == 2:
+        # The separation function's second derivative will be discontinuous in 2 spots
+        # We need to do the root finding interval-by-interval, and not just the whole thing at once.
+        interval_mid_1 = ship1_integration_initial_states[0][1] # end_t
+        interval_mid_2 = ship2_integration_initial_states[0][1] # end_t
+        if interval_mid_1 > interval_mid_2:
+            # Fix interval order
+            interval_mid_1, interval_mid_2 = interval_mid_2, interval_mid_1
+        assert time_interval_start <= interval_mid_1 <= interval_mid_2 <= time_interval_end
+        root_t = find_first_leq_zero(squared_separation_between_ships_at_t, time_interval_start, nextafter(interval_mid_1, -inf))
+        if isnan(root_t):
+            # Try the next interval
+            root_t = find_first_leq_zero(squared_separation_between_ships_at_t, nextafter(interval_mid_1, inf), nextafter(interval_mid_2, -inf))
+            if isnan(root_t):
+                # Try the last interval
+                root_t = find_first_leq_zero(squared_separation_between_ships_at_t, nextafter(interval_mid_2, inf), time_interval_end)
+    elif ship1_intervals == 2 or ship2_intervals == 2:
+        # The separation function's second derivative will be discontinuous in 1 spot
+        # We need to do the root finding interval-by-interval, and not just the whole thing at once.
+        if ship1_intervals == 2:
+            interval_mid = ship1_integration_initial_states[0][1]
+        else:
+            interval_mid = ship2_integration_initial_states[0][1]
+        assert time_interval_start <= interval_mid <= time_interval_end
+        root_t = find_first_leq_zero(squared_separation_between_ships_at_t, time_interval_start, nextafter(interval_mid, -inf))
+        if isnan(root_t):
+            # Try the next interval
+            root_t = find_first_leq_zero(squared_separation_between_ships_at_t, nextafter(interval_mid, inf), time_interval_end)
+    else:
+        root_t = find_first_leq_zero(squared_separation_between_ships_at_t, time_interval_start, time_interval_end)
     
     if debug_plot:
         debug_plot_function_over_time(

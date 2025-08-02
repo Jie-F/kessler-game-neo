@@ -582,7 +582,7 @@ class KesslerGame:
                         collision_start_time = ship_ship_continuous_collision_time(
                             ship1.x, ship1.y, ship1.radius, ship1.speed, ship1.integration_initial_states,
                             ship2_x_centered_around_ship1, ship2_y_centered_around_ship1, ship2.radius, ship2.speed, ship2.integration_initial_states,
-                            collision_check_interval_start, 0.0, bool(ship1.id + ship2.id == 3) # Clamp to when ships are out of respawn. Double max/min calls is MUCH faster than calling max/min with 3-4 args, in MyPyC compiled code!
+                            collision_check_interval_start, 0.0 # Clamp to when ships are out of respawn. Double max/min calls is MUCH faster than calling max/min with 3-4 args, in MyPyC compiled code!
                         )
                         if not isnan(collision_start_time):
                             assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
