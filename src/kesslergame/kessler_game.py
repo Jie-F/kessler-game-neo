@@ -610,11 +610,11 @@ class KesslerGame:
                                 # dips down. If the interval start is negative, then we do NOT nudge this forward, or else wacky stuff
                                 # will happen, and we get edge cases where the ship on the edge of respawn will have framerate dependence due
                                 # to floating point error. Especially in mine-ship collisions which happen on integer seconds.
-
+                                nudge = 1e-12
                                 for i in range(1000):
                                     # Instead of using a while loop, it's better to use a for loop and have an upper bound on this,
                                     # just so we don't infinite loop here in some super weird case
-                                    collision_start_time += 1e-12
+                                    collision_start_time += nudge
                                     if collision_start_time > 0.0:
                                         # We reached the end of the interval, so this is hopeless. These ships are not colliding!
                                         break
@@ -631,6 +631,7 @@ class KesslerGame:
                                     if sq_dist + 1e-10 <= radii_sum_sq:
                                         verified_collision = True
                                         break
+                                    nudge *= 2.0 # Exponentially increase the nudge
 
                             if verified_collision:
                                 collision_event = CollisionEvent(collision_start_time, sq_dist, ship1_idx, ship2_idx, CollisionType.SHIP_SHIP)
