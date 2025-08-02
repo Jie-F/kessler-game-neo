@@ -1,6 +1,28 @@
 # Changelog
 
-## [2.X.X] - NEXT VERSION, maybe last 2.X.X aside from bug fixes or documentation
+## [2.5.0] - (INSERT DATE HERE) 2025
+- Fully overhauled physics and collision system for continuous, framerate-independent simulation
+- Unified game loop with globally chronological collision handling using a priority queue
+- Continuous collision detection and resolution now occurs precisely at impact times within each frame
+- Ship respawn time can now begin and end mid-frame
+- If a ship gets hit at the instant is loses its respawn shield, it will still be protected
+- Robust numeric root finding to solve transcendental equation to detect ship-asteroid and ship-ship collisions
+- True continuous toroidal edge wrapping for all object hitboxes, including seamless corner wrapping
+- Objects can now wrap across multiple edges simultaneously, and collisions still work accurately
+- Chain reactions (e.g. bullet -> asteroid -> child asteroid -> bullet) within the same frame are supported
+- Collisions are processed in deterministic priority order: bullet-asteroid > ship-asteroid > ship-ship > mine-asteroid > mine-ship
+- Distance and velocity-based tiebreakers ensure consistent behavior under simultaneous collisions
+- Bullets spawn with wrapped head position but do not wrap afterward, to preserve original game logic
+- Mines and explosions now wrap continuously and accurately across map boundaries
+- Verified robust framerate independence through randomized testing from 5–60 FPS
+- Fixed numerous subtle bugs through extensive randomized testing across edge cases
+- Improved internal clarity and simplicity of the simulation code and game loop logic
+- Simulation behaves like the infinite-FPS limit of previous versions, while maintaining performance
+- Known limitation: assumes integer FPS >= 5 (definitely minimum 2 is required)
+- Known limitation: floating-point imprecision may cause long-run divergence
+- Known limitation: assumes mine detonation time is an integer number of seconds, so it always lands on a frame boundary at an integer FPS
+
+## [2.4.0] - 28 July 2025
 - Fixed building MyPyC compiled wheels, so compiled modules are now actually being run to provide a 4-10X+ speed benefit over interpreted
 - Use cibuildwheel to automate building MyPyC compiled wheels, and upload to pypi and the Github release
 - Removed src module for cleaner imports, and less confusion with a duplicate module that is incompatible with MyPyC

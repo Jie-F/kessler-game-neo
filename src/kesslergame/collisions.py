@@ -4,16 +4,17 @@
 # this source code package.
 
 from math import isnan, sqrt, dist, nan, inf, isfinite, sin, cos
+from typing import Callable
 
 from .math_utils import solve_quadratic, project_point_onto_segment_and_get_t, analytic_ship_movement_integration, find_first_leq_zero
 
 def debug_plot_function_over_time(
-    func: callable,
+    func: Callable[[float], tuple[float, float, float]],
     time_interval_start: float,
     time_interval_end: float,
     root_t: float,
     title: str
-):
+) -> None:
     import matplotlib.pyplot as plt
     import numpy as np
 
@@ -317,6 +318,7 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
         )
     
     return root_t
+
 
 def collision_time_interval(
     ax: float, # Line seg start
@@ -639,6 +641,7 @@ def circle_line_collision_continuous(
     else:
         # It's possible for the parallelogram to completely contain the circle, so we check for that case
         return is_origin_in_parallelogram(ax, ay, bx, by, cx, cy, dx, dy)
+
 
 def circle_line_collision_discrete(line_A: tuple[float, float], line_B: tuple[float, float], center: tuple[float, float], radius: float) -> bool:
     # UNUSED

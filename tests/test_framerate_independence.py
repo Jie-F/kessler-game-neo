@@ -10,11 +10,13 @@ parser = argparse.ArgumentParser(description='Run Kessler game simulations.')
 parser.add_argument('-seed', type=int, help='Seed value to use for the simulation (enables graphics by default).')
 parser.add_argument('--nogui', action='store_true', help='Disable graphics, even if seed is specified.')
 parser.add_argument('-trials', type=int, help='Specify max number of trials to run.')
+parser.add_argument('-fps', type=int, help='Override to run the scenario with a specific FPS.')
 args = parser.parse_args()
 
 # Set seed and graphics flag
 rand_seed = args.seed
 GRAPHICS = rand_seed is not None and not args.nogui
+FPS_OVERRIDE = args.fps
 
 TRIALS = args.trials if args.trials is not None else 100000000000
 TIME_LIMIT_OVERRIDE = inf # Nvm it's not actually an override. Just used if the scenario has no time limit defined.
@@ -155,14 +157,20 @@ for i in range(TRIALS):
                         'controller_name': True, 'scale': 2.0}
     }
 
-    settings_1 = settings_base | {'frequency': framerate1}
-    settings_2 = settings_base | {'frequency': framerate2}
+    if FPS_OVERRIDE is None:
+        settings_1 = settings_base | {'frequency': framerate1}
+        settings_2 = settings_base | {'frequency': framerate2}
 
-    game_1 = KesslerGame(settings=settings_1)
-    score_1, _ = game_1.run(scenario, controllers)
+        game_1 = KesslerGame(settings=settings_1)
+        score_1, _ = game_1.run(scenario, controllers)
 
-    game_2 = KesslerGame(settings=settings_2)
-    score_2, _ = game_2.run(scenario, controllers)
+        game_2 = KesslerGame(settings=settings_2)
+        score_2, _ = game_2.run(scenario, controllers)
 
-    if not check_scores(score_1, score_2, seed):
-        print(f"Mismatch found. Seed logged: {seed}")
+        if not check_scores(score_1, score_2, seed):
+            print(f"Mismatch found. Seed logged: {seed}")
+    else:
+        # Just run the scenario once with this FPS
+        settings = settings_base | {'frequency': FPS_OVERRIDE}
+        game = KesslerGame(settings=settings)
+        score, _ = game.run(scenario, controllers)

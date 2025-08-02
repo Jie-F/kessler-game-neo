@@ -366,17 +366,23 @@ def find_first_leq_zero(
                 return newton_root(f, a, t_min)
     else:
         # The concavity of the function (second derivative) changes in this interval, so
-        # it's very possible that the function can seem to not want to dip down,
+        # it's possible that the function can seem to not want to dip down,
         # but actually it has a couple extra turning points in there, and really does dip down!
-        # Check for second derivative sign change. If there is, then the function is cubic-shaped!
+        # This function could be cubic-shaped.
         t_inflect = bisection_on_second_derivative(f, a, b)
         fi, di, ddi = f(t_inflect)
-        if da < 0.0 and di > 0.0:
+        if fi <= 0.0:
+            # We know fa is positive, so this brackets a single root!
+            return newton_root(f, a, t_inflect)
+        elif da < 0.0 and di > 0.0:
             # There's a minimum between a and the inflection point! Find it!
             t_min = newton_minimum(f, a, t_inflect)
             fmin, _, _ = f(t_min)
             if fmin <= 0.0:
                 return newton_root(f, a, t_min)
+        elif fb <= 0.0:
+            # We know fi is positive, so this brackets a root!
+            return newton_root(f, t_inflect, b)
         elif di < 0.0 and db > 0.0:
             # There's a minimum between the inflection point and b! Find it!
             t_min = newton_minimum(f, t_inflect, b)
@@ -402,7 +408,67 @@ def find_first_leq_zero(
     # Dang, couldn't find anything :(
     return nan
 
-def find_first_leq_zero_slow(
+
+def find_first_leq_zero_robust_slow(
+    f: Callable[[float], tuple[float, float, float]],
+    a: float,
+    b: float,
+    tol: float = 1e-12,
+    max_iterations: int = 80
+) -> float:
+    """
+    Finds the smallest t in [a, b] such that f(t) <= 0,
+    using Newton's method with a bisection fallback for robustness.
+    This can handle discontinuities and jumps in the derivatives
+    Newton's method is made to return the right endpoint, to be safe and return f(t) <= 0 and not > 0
+    
+    The function f must return a triple: (f(t), f'(t), f''(t))
+    """
+
+    # Classic bisection method. Slower but guaranteed if f changes sign
+    def bisection_root(f: Callable[[float], tuple[float, float, float]], x0: float, x1: float) -> float:
+        f0, _, _ = f(x0)  # Cache initial f(x0)
+        f1, _, _ = f(x1)  # Cache initial f(x1)
+        assert f0 * f1 <= 0.0
+        for _ in range(max_iterations):
+            xm = 0.5 * (x0 + x1)
+            fm, _, _ = f(xm)
+            if -tol < fm <= 0.0:
+                return xm  # Close enough!
+
+            # Update the interval based on the sign of fm
+            if f0 * fm < 0.0:
+                x1 = xm      # Root is in [x0, xm]
+                f1 = fm      # f(x1) becomes f(xm)
+            else:
+                x0 = xm      # Root is in [xm, x1]
+                f0 = fm      # f(x0) becomes f(xm)
+
+            if abs(x1 - x0) < tol:
+                return x1  # Interval is tiny. return right point, which is hopefully <= 0
+
+        return x1  # Didn't converge, but return our best guess
+
+    fa, da, dda = f(a)
+    if fa <= 0.0:
+        return a # Already satisfies condition at the left endpoint
+
+    # Brute force sample a bunch of intervals
+    N = 1000  # Subdivide the interval finely
+    for i in range(1, N + 1):
+        x0 = a + (b - a) * (i - 1) / N
+        x1 = a + (b - a) * i / N
+        x0 = max(x0, a)
+        x1 = min(x1, b)
+        f0, _, _ = f(x0)
+        f1, _, _ = f(x1)
+        if f0 > 0.0 and f1 <= 0.0:
+            # We found a sign change, so apply bisection
+            return bisection_root(f, x0, x1)
+    return nan
+
+
+def find_first_leq_zero_no_derivs(
     f: Callable[[float], float],
     a: float,
     b: float,
