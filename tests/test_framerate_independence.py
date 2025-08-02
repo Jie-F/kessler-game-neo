@@ -3,10 +3,18 @@ import logging
 import os
 from kesslergame import Scenario, KesslerGame, GraphicsType, KesslerController, StopReason
 from math import sqrt, inf
+import argparse
+
+# Command-line argument parsing
+parser = argparse.ArgumentParser(description='Run Kessler game simulations.')
+parser.add_argument('-seed', type=int, help='Seed value to use for the simulation (enables graphics).')
+args = parser.parse_args()
+
+# Set seed and graphics mode if seed is provided
+rand_seed = args.seed
+GRAPHICS = rand_seed is not None
 
 TRIALS = 100000000000
-GRAPHICS = False
-rand_seed = None
 TIME_LIMIT_OVERRIDE = inf # Nvm it's not actually an override. Just used if the scenario has no time limit defined.
 COMPETITION_SAFE_MODE = False
 WIDTH = 1000
