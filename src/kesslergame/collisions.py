@@ -387,11 +387,12 @@ def collision_time_interval(
     # Only count these times if the projection is inside the segment at all (t in [0, 1])
     if 0.0 <= t_proj_0 <= 1.0:
         # This is a legit "middle-of-segment" first contact
-        assert t0_mid <= t0
+        # Add an eps to make this assertion easier. Due to floating point imprecision, it can fail without that! Just suuuuuuper rare.
+        assert t0_mid <= t0 + 1e-12
         t0 = t0_mid
     if 0.0 <= t_proj_1 <= 1.0:
         # This is a legit "middle-of-segment" last contact
-        assert t1_mid >= t1
+        assert t1_mid + 1e-12 >= t1
         t1 = t1_mid
 
     # If neither t0 nor t1 got set properly, there was no collision
