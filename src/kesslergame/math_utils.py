@@ -215,7 +215,9 @@ def find_first_leq_zero(
     # Root-finding using Newton's method, with bisection fallback if Newton update jumps out of bounds
     def newton_root(f: Callable[[float], tuple[float, float, float]], x0: float, x1: float) -> float:
         # It's assumed that the input function is a decreasing function, where f(x0) > 0 and f(x1) < 0
-        # We assume there's just one root
+        # We assume there's just ONE ROOT
+        # If there are multiple roots, this will only return one of them, and it's not guaranteed to return
+        # the earliest of them, which is what we need!
         # This will find the point where f(x) == 0
         # More precisely, it finds the smallest x such that f(x) < 0, so slightly past the root!
         x_low, x_high = x0, x1
@@ -347,23 +349,26 @@ def find_first_leq_zero(
         return a # Already satisfies condition at the left endpoint
 
     fb, db, ddb = f(b)
-    if fb <= 0.0:
-        # There’s a root somewhere between a and b
-        return newton_root(f, a, b)
 
-    # If f is decreasing then increasing (da < 0, db > 0), there may be a minimum inside
-    if da < 0.0 and db > 0.0:
-        t_min = newton_minimum(f, a, b)
-        fmin, _, _ = f(t_min)
-        if fmin <= 0.0:
-            # The minimum is below zero. Find where it goes from positive to negative
-            return newton_root(f, a, t_min)
+    if dda * ddb >= 0.0:
+        # The second derivative PROBABLY does not change signs in the interval,
+        # meaning there is no inflection point and no multiple roots
+        if fb <= 0.0:
+            # There’s ONLY ONE root somewhere between a and b
+            return newton_root(f, a, b)
 
-    # If the concavity of the function (second derivative) changes, then
-    # it's very possible that the function can seem to not want to dip down,
-    # but actually it has a couple extra turning points in there, and really does dip down!
-    # Check for second derivative sign change. If there is, then the function is cubic-shaped!
-    if dda * ddb < 0.0:
+        # If f is decreasing then increasing (da < 0, db > 0), there may be a minimum inside
+        if da < 0.0 and db > 0.0:
+            t_min = newton_minimum(f, a, b)
+            fmin, _, _ = f(t_min)
+            if fmin <= 0.0:
+                # The minimum is below zero. Find where it goes from positive to negative
+                return newton_root(f, a, t_min)
+    else:
+        # The concavity of the function (second derivative) changes in this interval, so
+        # it's very possible that the function can seem to not want to dip down,
+        # but actually it has a couple extra turning points in there, and really does dip down!
+        # Check for second derivative sign change. If there is, then the function is cubic-shaped!
         t_inflect = bisection_on_second_derivative(f, a, b)
         fi, di, ddi = f(t_inflect)
         if da < 0.0 and di > 0.0:
@@ -396,7 +401,6 @@ def find_first_leq_zero(
     '''
     # Dang, couldn't find anything :(
     return nan
-
 
 def find_first_leq_zero_slow(
     f: Callable[[float], float],

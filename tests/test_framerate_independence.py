@@ -9,13 +9,14 @@ import argparse
 parser = argparse.ArgumentParser(description='Run Kessler game simulations.')
 parser.add_argument('-seed', type=int, help='Seed value to use for the simulation (enables graphics by default).')
 parser.add_argument('--nogui', action='store_true', help='Disable graphics, even if seed is specified.')
+parser.add_argument('-trials', type=int, help='Specify max number of trials to run.')
 args = parser.parse_args()
 
 # Set seed and graphics flag
 rand_seed = args.seed
 GRAPHICS = rand_seed is not None and not args.nogui
 
-TRIALS = 100000000000
+TRIALS = args.trials if args.trials is not None else 100000000000
 TIME_LIMIT_OVERRIDE = inf # Nvm it's not actually an override. Just used if the scenario has no time limit defined.
 COMPETITION_SAFE_MODE = False
 WIDTH = 1000

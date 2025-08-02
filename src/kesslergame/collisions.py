@@ -7,11 +7,52 @@ from math import isnan, sqrt, dist, nan, inf, isfinite, sin, cos
 
 from .math_utils import solve_quadratic, project_point_onto_segment_and_get_t, analytic_ship_movement_integration, find_first_leq_zero
 
+def debug_plot_function_over_time(
+    func: callable,
+    time_interval_start: float,
+    time_interval_end: float,
+    root_t: float,
+    title: str
+):
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    ts = np.linspace(time_interval_start, time_interval_end, 1000)
+    fs = []
+    dfs = []
+    ddfs = []
+    for t in ts:
+        f_val, df_val, ddf_val = func(t)
+        fs.append(f_val)
+        dfs.append(df_val)
+        ddfs.append(ddf_val)
+
+    # Simple vertical scaling
+    df_scale = 1.0 / (np.max(np.abs(dfs)) + 1e-8)
+    ddf_scale = 1.0 / (np.max(np.abs(ddfs)) + 1e-8)
+
+    plt.figure(figsize=(12, 6))
+    plt.plot(ts, fs, label="f(t)", color='blue')
+    plt.plot(ts, np.array(dfs) * df_scale * np.max(np.abs(fs)), label="f'(t) (scaled)", color='green')
+    plt.plot(ts, np.array(ddfs) * ddf_scale * np.max(np.abs(fs)), label="f''(t) (scaled)", color='purple')
+
+    if not isnan(root_t):
+        plt.axvline(root_t, color='red', linestyle='--', label=f'Root t = {root_t:.6f}')
+    plt.axhline(0, color='black', linestyle=':', linewidth=0.5)
+
+    plt.xlabel("Time (t)")
+    plt.ylabel("Value")
+    plt.title(title)
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
 
 def ship_asteroid_continuous_collision_time(ship_x: float, ship_y: float, ship_r: float, ship_speed: float,
                                             ship_integration_initial_states: list[tuple[float, float, float, float, float, float, float, float]],
                                             ast_x: float, ast_y: float, ast_vx: float, ast_vy: float, ast_r: float, ast_speed: float,
-                                            time_interval_start: float, time_interval_end: float) -> float:
+                                            time_interval_start: float, time_interval_end: float, debug_plot: bool = False) -> float:
     # Given the asteroid and ship states at this instant, this function checks whether a collision
     # between them has occurred anytime within the time interval. The current time is treated as t=0
     # This function returns nan if not, and returns t, the earliest time of collision where time_interval_start <= t <= time_interval_end, if a collision was detected.
@@ -110,14 +151,25 @@ def ship_asteroid_continuous_collision_time(ship_x: float, ship_y: float, ship_r
         
         return function_value, derivative_value, second_derivative_value
 
-    return find_first_leq_zero(squared_separation_between_ship_and_asteroid_at_t, time_interval_start, time_interval_end)
+    root_t = find_first_leq_zero(squared_separation_between_ship_and_asteroid_at_t, time_interval_start, time_interval_end)
+    
+    if debug_plot:
+        debug_plot_function_over_time(
+            squared_separation_between_ship_and_asteroid_at_t,
+            time_interval_start,
+            time_interval_end,
+            root_t,
+            "Ship-Ast Dist f(t) and Derivatives (scaled) Over Time"
+        )
+
+    return root_t
 
 
 def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r: float, ship1_speed: float,
                                         ship1_integration_initial_states: list[tuple[float, float, float, float, float, float, float, float]],
                                         ship2_x: float, ship2_y: float, ship2_r: float, ship2_speed: float,
                                         ship2_integration_initial_states: list[tuple[float, float, float, float, float, float, float, float]],
-                                        time_interval_start: float, time_interval_end: float) -> float:
+                                        time_interval_start: float, time_interval_end: float, debug_plot: bool = False) -> float:
     # Given the two ship states at this instant, this function checks whether a collision
     # between them has occurred anytime within the time interval
     # This function returns nan if not, and returns t, the earliest time of collision where time_interval_start <= t <= time_interval_end, if a collision was detected.
@@ -253,8 +305,18 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
 
         return function_value, derivative_value, second_derivative_value
     
-    return find_first_leq_zero(squared_separation_between_ships_at_t, time_interval_start, time_interval_end)
-
+    root_t = find_first_leq_zero(squared_separation_between_ships_at_t, time_interval_start, time_interval_end)
+    
+    if debug_plot:
+        debug_plot_function_over_time(
+            squared_separation_between_ships_at_t,
+            time_interval_start,
+            time_interval_end,
+            root_t,
+            "Ship-Ship Dist f(t) and Derivatives (scaled) Over Time"
+        )
+    
+    return root_t
 
 def collision_time_interval(
     ax: float, # Line seg start
