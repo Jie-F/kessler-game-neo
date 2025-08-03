@@ -36,10 +36,12 @@ class Mine:
         ]
 
     def update(self, delta_time: float) -> None:
-        self.countdown_timer -= delta_time
+        # Avoid attribute lookup using local var
+        countdown_timer = self.countdown_timer - delta_time
+        self.countdown_timer = countdown_timer
         # Sync the mutable state
-        self._state[4] = self.countdown_timer
-        if self.countdown_timer <= 1e-12:
+        self._state[4] = countdown_timer
+        if countdown_timer <= 1e-12:
             self.detonate()
 
     def detonate(self) -> None:

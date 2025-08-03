@@ -94,13 +94,17 @@ class Asteroid:
 
     def update(self, delta_time: float, map_width: float, map_height: float) -> None:
         """ Move the asteroid based on velocity"""
-        self.x += self.vx * delta_time
-        self.y += self.vy * delta_time
-        self.x %= map_width
-        self.y %= map_height
+        # Avoid attribute lookup using local var
+        x, y = self.x, self.y
+        x += self.vx * delta_time
+        y += self.vy * delta_time
+        x %= map_width
+        y %= map_height
+        self.x = x
+        self.y = y
         # Update mutable state
-        self._state[0] = self.x
-        self._state[1] = self.y
+        self._state[0] = x
+        self._state[1] = y
         self.angle += delta_time * self.turnrate
 
     def destruct(self, impactor: Bullet | Mine | Ship, map_width: float, map_height: float, random_ast_split: bool) -> list[Asteroid]:

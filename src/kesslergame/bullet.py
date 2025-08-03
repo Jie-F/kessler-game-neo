@@ -42,11 +42,14 @@ class Bullet:
 
     def update(self, delta_time: float) -> None:
         # Update the position:
-        self.x += self.vx * delta_time
-        self.y += self.vy * delta_time
+        # Avoid attribute lookup using local var
+        x = self.x + self.vx * delta_time
+        y = self.y + self.vy * delta_time
+        self.x = x
+        self.y = y
         # Keep _state in sync
-        self._state[0] = self.x
-        self._state[1] = self.y
+        self._state[0] = x
+        self._state[1] = y
 
     def destruct(self) -> None:
         pass
