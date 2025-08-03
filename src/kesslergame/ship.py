@@ -239,7 +239,7 @@ class Ship:
     def shoot(self) -> None:
         self.fire = True
 
-    def get_past_position(self, delta_time: float, map_size: tuple[float, float]) -> tuple[float, float]:
+    def get_past_position(self, delta_time: float, map_width: float, map_height: float) -> tuple[float, float]:
         # We have recorded how we did the forward integration, so we use that history to do the backward integration.
         assert self.integration_initial_states, "Cannot rollback ship state without a preceding forward update!"
         # Accumulate the pieces of the integral
@@ -267,7 +267,7 @@ class Ship:
                 dx_sum += dx
                 dy_sum += dy
                 assert end_t - start_t <= 0.0
-        return ((self.x + dx_sum) % map_size[0], (self.y + dy_sum) % map_size[1])
+        return ((self.x + dx_sum) % map_width, (self.y + dy_sum) % map_height)
 
     def update(self, delta_time: float, map_size: tuple[int, int], allow_shooting: bool) -> tuple[Bullet | None, Mine | None]:
         """

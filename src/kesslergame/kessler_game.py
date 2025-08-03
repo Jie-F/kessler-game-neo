@@ -486,7 +486,7 @@ class KesslerGame:
                     # This is VERY IMPORTANT because if a ship was respawning and suddenly it wears off while the ship is inside multiple asteroids,
                     # the tiebreaker will be used, and the ship will collide with whatever is closer. Otherwise, framerate-dependent behavior will leak in,
                     # and asteroid order will then decide how it ends up in the queue and subsequently gets resolved.
-                    ship_past_x, ship_past_y = ship.get_past_position(collision_start_time, (self.map_width, self.map_height))
+                    ship_past_x, ship_past_y = ship.get_past_position(collision_start_time, self.map_width, self.map_height)
                     dx = abs((asteroid.x + asteroid.vx * collision_start_time) - ship_past_x)
                     dy = abs((asteroid.y + asteroid.vy * collision_start_time) - ship_past_y)
                     if dx > 0.5 * self.map_width:
@@ -535,8 +535,8 @@ class KesslerGame:
                         )
                         if not isnan(collision_start_time):
                             assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
-                            ship1_past_x, ship1_past_y = ship1.get_past_position(collision_start_time, (self.map_width, self.map_height))
-                            ship2_past_x, ship2_past_y = ship2.get_past_position(collision_start_time, (self.map_width, self.map_height))
+                            ship1_past_x, ship1_past_y = ship1.get_past_position(collision_start_time, self.map_width, self.map_height)
+                            ship2_past_x, ship2_past_y = ship2.get_past_position(collision_start_time, self.map_width, self.map_height)
                             dx = abs(ship1_past_x - ship2_past_x)
                             dy = abs(ship1_past_y - ship2_past_y)
                             if dx > 0.5 * self.map_width:
@@ -568,8 +568,8 @@ class KesslerGame:
                                         # We reached the end of the interval, so this is hopeless. These ships are not colliding!
                                         break
 
-                                    ship1_past_x, ship1_past_y = ship1.get_past_position(collision_start_time, (self.map_width, self.map_height))
-                                    ship2_past_x, ship2_past_y = ship2.get_past_position(collision_start_time, (self.map_width, self.map_height))
+                                    ship1_past_x, ship1_past_y = ship1.get_past_position(collision_start_time, self.map_width, self.map_height)
+                                    ship2_past_x, ship2_past_y = ship2.get_past_position(collision_start_time, self.map_width, self.map_height)
                                     dx = abs(ship1_past_x - ship2_past_x)
                                     dy = abs(ship1_past_y - ship2_past_y)
                                     if dx > 0.5 * self.map_width:
@@ -628,7 +628,7 @@ class KesslerGame:
                         sy = ship.y
                     else:
                         # Rewind objects
-                        sx, sy = ship.get_past_position(mine.countdown_timer, (self.map_width, self.map_height))
+                        sx, sy = ship.get_past_position(mine.countdown_timer, self.map_width, self.map_height)
                     dx = abs(sx - mine.x)
                     dy = abs(sy - mine.y)
                     if dx > 0.5 * self.map_width:
