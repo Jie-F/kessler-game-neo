@@ -204,10 +204,9 @@ def find_first_leq_zero(
     max_iterations: int = 80 # This is way overkill, and 30 is probably fine. But this is so rare to use more than just a few iterations, that this won't slow down the game.
 ) -> float:
     """
-    Finds the smallest t in [a, b] such that f(t) <= 0,
-    using Newton's method with a bisection fallback for robustness.
-    This can handle discontinuities and jumps in the derivatives
+    Finds the smallest t in [a, b] such that f(t) <= 0, using Newton's method
     Newton's method is made to return the right endpoint, to be safe and return f(t) <= 0 and not > 0
+    This assumes the input function has continuous derivatives, and is smooth!
     
     The function f must return a triple: (f(t), f'(t), f''(t))
     """
@@ -417,10 +416,8 @@ def find_first_leq_zero_robust_slow(
     max_iterations: int = 80
 ) -> float:
     """
-    Finds the smallest t in [a, b] such that f(t) <= 0,
-    using Newton's method with a bisection fallback for robustness.
-    This can handle discontinuities and jumps in the derivatives
-    Newton's method is made to return the right endpoint, to be safe and return f(t) <= 0 and not > 0
+    Finds the smallest t in [a, b] such that f(t) <= 0
+    This is used for debugging and cross-checking the fast function. It is slow!
     
     The function f must return a triple: (f(t), f'(t), f''(t))
     """
@@ -485,6 +482,8 @@ def find_first_leq_zero_no_derivs(
     - Derivative estimation never evaluates f outside [a, b]
     - Returns nan if no such t exists
     """
+
+    # This is UNUSED. Kept for legacy purposes, but this is not robust or good. Please do not use this.
 
     def estimate_derivative(f: Callable[[float], float], t: float, a: float, b: float, h: float = 1e-8) -> float:
         """
