@@ -148,6 +148,14 @@ class Scenario:
             # Unlimited
             return -1
 
+    @property
+    def map_width(self) -> int:
+        return self.map_size[0]
+
+    @property
+    def map_height(self) -> int:
+        return self.map_size[1]
+
     @staticmethod
     def count_asteroids(asteroid_size: int) -> int:
         # Counting based off of each asteroid making 3 children when destroyed

@@ -32,6 +32,7 @@ mypyc_modules = [
 #    "src/kesslergame/controller.py", DO NOT compile the controller.py, because adding the ship_id attribute from the derived class gets really messy and buggy
 #    "src/kesslergame/controller_gamepad.py",
     "src/kesslergame/kessler_game.py",
+    "src/kesslergame/heapq_mypyc.py",
     "src/kesslergame/scenario.py",
     "src/kesslergame/score.py",
     "src/kesslergame/settings_dicts.py",

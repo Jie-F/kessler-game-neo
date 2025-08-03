@@ -92,16 +92,18 @@ class Asteroid:
     def velocity(self) -> tuple[float, float]:
         return (self.vx, self.vy)
 
-    def update(self, delta_time: float, map_size: tuple[int, int]) -> None:
+    def update(self, delta_time: float, map_width: float, map_height: float) -> None:
         """ Move the asteroid based on velocity"""
-        self.x = (self.x + self.vx * delta_time) % map_size[0]
-        self.y = (self.y + self.vy * delta_time) % map_size[1]
+        self.x += self.vx * delta_time
+        self.y += self.vy * delta_time
+        self.x %= map_width
+        self.y %= map_height
         # Update mutable state
         self._state[0] = self.x
         self._state[1] = self.y
         self.angle += delta_time * self.turnrate
 
-    def destruct(self, impactor: Union['Bullet', 'Mine', 'Ship'], map_size: tuple[int, int], random_ast_split: bool) -> list[Asteroid]:
+    def destruct(self, impactor: Bullet | Mine | Ship, map_width: float, map_height: float, random_ast_split: bool) -> list[Asteroid]:
         """ Spawn child asteroids"""
         # Split angle is the angle off of the new velocity vector for the two asteroids to the sides, the center child
         # asteroid continues on the new velocity path
@@ -110,26 +112,26 @@ class Asteroid:
         split_angle_bound: float = 30.0
         if self.size != 1:
             if isinstance(impactor, Mine):
-                if impactor.x - self.x > 0.5 * map_size[0]:
-                    mine_x_wrapped = impactor.x - map_size[0]
-                elif impactor.x - self.x < -0.5 * map_size[0]:
-                    mine_x_wrapped = impactor.x + map_size[0]
+                if impactor.x - self.x > 0.5 * map_width:
+                    mine_x_wrapped = impactor.x - map_width
+                elif impactor.x - self.x < -0.5 * map_width:
+                    mine_x_wrapped = impactor.x + map_width
                 else:
                     mine_x_wrapped = impactor.x
 
-                if impactor.y - self.y > 0.5 * map_size[1]:
-                    mine_y_wrapped = impactor.y - map_size[1]
-                elif impactor.y - self.y < -0.5 * map_size[1]:
-                    mine_y_wrapped = impactor.y + map_size[1]
+                if impactor.y - self.y > 0.5 * map_height:
+                    mine_y_wrapped = impactor.y - map_height
+                elif impactor.y - self.y < -0.5 * map_height:
+                    mine_y_wrapped = impactor.y + map_height
                 else:
                     mine_y_wrapped = impactor.y
 
                 delta_x = mine_x_wrapped - self.x
                 delta_y = mine_y_wrapped - self.y
-                if delta_x > 0.5 * map_size[0]:
-                    delta_x = map_size[0] - delta_x
-                if delta_y > 0.5 * map_size[1]:
-                    delta_y = map_size[1] - delta_y
+                if delta_x > 0.5 * map_width:
+                    delta_x = map_width - delta_x
+                if delta_y > 0.5 * map_height:
+                    delta_y = map_height - delta_y
                 
                 dist = sqrt(delta_x * delta_x + delta_y * delta_y)
                 force = impactor.calculate_blast_force(dist=dist, obj=self)
