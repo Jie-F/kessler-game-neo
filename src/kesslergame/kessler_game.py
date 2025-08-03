@@ -219,7 +219,7 @@ class KesslerGame:
                                 'controller_name': True, 'scale': 1.0}
         self.UI_settings = cast(UISettingsDict, UI_settings)
 
-    def enqueue_bullet_asteroid_collisions(self, bullets: list[Bullet], asteroids: list[Asteroid], asteroid_past_time_clamp: float, asteroid_list_idx_offset: int = 0) -> None:
+    def enqueue_bullet_asteroid_collisions(self, bullets: list[Bullet], asteroids: list[Asteroid], asteroid_past_time_clamp: float, asteroid_list_idx_offset: int = 0, already_a_heap: bool = False) -> None:
         # Collect all potential bullet-asteroid collisions
         # Since bullets do not wrap, we treat the bullet hitbox as being clamped at the map edge.
         # The way to calculate the collision time interval is elegant. It considers two virtual bullets,
@@ -318,10 +318,10 @@ class KesslerGame:
                         # Or else we get weird random indeterminate behavior, and there goes our framerate independence.
                         dot_bullet_vel_ast_vel_tiebreaker = bullet.vx * asteroid.vx + bullet.vy * asteroid.vy
                         collision_event = CollisionEvent(collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID, dot_bullet_vel_ast_vel_tiebreaker)
-                        if asteroid_list_idx_offset == 0:
-                            self.collision_queue.append(collision_event)
-                        else:
+                        if already_a_heap:
                             heappush(self.collision_queue, collision_event)
+                        else:
+                            self.collision_queue.append(collision_event)
                 else:
                     # During the time interval we're checking, either the whole time or a part of the time,
                     # the bullet is at least partially out of bounds and has to have its hitbox clipped at the edge.
@@ -418,12 +418,12 @@ class KesslerGame:
                         # Or else we get weird random indeterminate behavior, and there goes our framerate independence.
                         dot_bullet_vel_ast_vel_tiebreaker = bullet.vx * asteroid.vx + bullet.vy * asteroid.vy
                         collision_event = CollisionEvent(collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID, dot_bullet_vel_ast_vel_tiebreaker)
-                        if asteroid_list_idx_offset == 0:
-                            self.collision_queue.append(collision_event)
-                        else:
+                        if already_a_heap:
                             heappush(self.collision_queue, collision_event)
+                        else:
+                            self.collision_queue.append(collision_event)
 
-    def enqueue_mine_asteroid_collisions(self, mines: list[Mine], asteroids: list[Asteroid], asteroid_list_idx_offset: int = 0) -> None:
+    def enqueue_mine_asteroid_collisions(self, mines: list[Mine], asteroids: list[Asteroid], asteroid_list_idx_offset: int = 0, already_a_heap: bool = False) -> None:
         for mine_idx, mine in enumerate(mines):
             if mine.detonating:
                 for ast_idx, asteroid in enumerate(asteroids):
@@ -439,10 +439,10 @@ class KesslerGame:
                     if sq_dist <= radius_sum * radius_sum:
                         collision_time = 0.0
                         collision_event = CollisionEvent(collision_time, sq_dist, mine_idx, ast_idx + asteroid_list_idx_offset, CollisionType.MINE_ASTEROID)
-                        if asteroid_list_idx_offset == 0:
-                            self.collision_queue.append(collision_event)
-                        else:
+                        if already_a_heap:
                             heappush(self.collision_queue, collision_event)
+                        else:
+                            self.collision_queue.append(collision_event)
 
     def enqueue_mine_ship_collisions(self, mines: list[Mine], ships: list[Ship]) -> None:
         for mine_idx, mine in enumerate(mines):
@@ -465,7 +465,7 @@ class KesslerGame:
                         collision_event = CollisionEvent(collision_time, sq_dist, mine_idx, ship_idx, CollisionType.MINE_SHIP)
                         self.collision_queue.append(collision_event)
 
-    def enqueue_ship_asteroid_collisions(self, ships: list[Ship], asteroids: list[Asteroid], asteroid_past_time_clamp: float, asteroid_list_idx_offset: int = 0) -> None:
+    def enqueue_ship_asteroid_collisions(self, ships: list[Ship], asteroids: list[Asteroid], asteroid_past_time_clamp: float, asteroid_list_idx_offset: int = 0, already_a_heap: bool = False) -> None:
         for ship_idx, ship in enumerate(ships):
             if ship.is_respawning_internal or not ship.alive:
                 continue
@@ -509,10 +509,10 @@ class KesslerGame:
                     ship_heading_collision = radians(ship.heading + ship.turn_rate * collision_start_time)
                     dot_product_tiebreaker_ship_ast = cos(ship_heading_collision) * asteroid.vx + sin(ship_heading_collision) * asteroid.vy
                     collision_event = CollisionEvent(collision_start_time, sq_dist, ship_idx, ast_idx + asteroid_list_idx_offset, CollisionType.SHIP_ASTEROID, dot_product_tiebreaker_ship_ast)
-                    if asteroid_list_idx_offset == 0:
-                        self.collision_queue.append(collision_event)
-                    else:
+                    if already_a_heap:
                         heappush(self.collision_queue, collision_event)
+                    else:
+                        self.collision_queue.append(collision_event)
 
     def enqueue_ship_ship_collisions(self, ships: list[Ship]) -> None:
         num_ships = len(ships)
@@ -867,9 +867,9 @@ class KesslerGame:
                         # Take care of possible collision events from these children asteroids this frame
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             # Only do this if we have time left, and the collision didn't happen at the very end of the frame
-                            self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset)
-                            self.enqueue_mine_asteroid_collisions(mines, new_asteroids, ast_idx_offset)
-                            self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset)
+                            self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_mine_asteroid_collisions(mines, new_asteroids, ast_idx_offset, True)
+                            self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset, True)
                     case CollisionType.MINE_ASTEROID:
                         mine_idx = event.object_a_idx
                         ast_idx = event.object_b_idx
@@ -905,9 +905,9 @@ class KesslerGame:
                         # We do NOT enqueue new collisions, because we treat the mine explosions as basically the last thing that can happen
                         # If we enqueued this further, then the same mine would hit the asteroid, along with all of their children!
                         if abs(dt) > CollisionEvent.TOLERANCE:
-                            self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset)
-                            self.enqueue_mine_asteroid_collisions(mines, new_asteroids, ast_idx_offset)
-                            self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset)
+                            self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_mine_asteroid_collisions(mines, new_asteroids, ast_idx_offset, True)
+                            self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset, True)
                     case CollisionType.MINE_SHIP:
                         mine_idx = event.object_a_idx
                         ship_idx = event.object_b_idx
@@ -966,9 +966,9 @@ class KesslerGame:
                             assert game_state is not None
                             game_state.add_asteroids([a.state for a in new_asteroids])
                         if abs(dt) > CollisionEvent.TOLERANCE:
-                            self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset)
-                            self.enqueue_mine_asteroid_collisions(mines, new_asteroids, ast_idx_offset)
-                            self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset)
+                            self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_mine_asteroid_collisions(mines, new_asteroids, ast_idx_offset, True)
+                            self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset, True)
 
                         if ship.alive:
                             if abs(dt) > CollisionEvent.TOLERANCE:
