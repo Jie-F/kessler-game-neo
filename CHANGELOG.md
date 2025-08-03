@@ -21,6 +21,7 @@
 - Known limitation: assumes integer FPS >= 5 (definitely minimum 2 is required)
 - Known limitation: floating-point imprecision may cause long-run divergence
 - Known limitation: assumes mine detonation time is an integer number of seconds, so it always lands on a frame boundary at an integer FPS
+- Handle controller exceptions in competition safe mode
 
 ## [2.4.0] - 28 July 2025
 - Fixed building MyPyC compiled wheels, so compiled modules are now actually being run to provide a 4-10X+ speed benefit over interpreted
