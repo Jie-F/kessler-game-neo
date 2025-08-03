@@ -53,9 +53,10 @@ class CollisionType(IntEnum):
 
 
 class CollisionEvent:
-    __slots__ = ("time_offset", "distance", "object_a_idx", "object_b_idx", "collision_type", "collision_specific_final_tiebreaker")
+    __slots__ = ("time_offset", "distance", "object_a_idx", "object_b_idx", "collision_type", "collision_specific_final_tiebreaker", "insertion_order")
 
     TOLERANCE: ClassVar[float] = 1e-10
+    _counter: ClassVar[int] = 0  # class-level monotonic counter
 
     def __init__(self, time_offset: float, distance: float, object_a_idx: int, object_b_idx: int, collision_type: CollisionType, specific_tiebreaker: float = 0.0):
         """
@@ -74,8 +75,11 @@ class CollisionEvent:
         self.object_b_idx = object_b_idx
         self.collision_type = collision_type
         self.collision_specific_final_tiebreaker: float = specific_tiebreaker
+        # The sort order is: time offset, collision type, distance, collision specific final tiebreaker, insertion order
 
-        # The sort order is: time offset, collision type, distance, collision specific final tiebreaker
+        # Assign and increment insertion_order
+        self.insertion_order = CollisionEvent._counter
+        CollisionEvent._counter += 1
 
     # Hand-implement each of the comparison dunders for speed, instead of using one for the others
 
@@ -108,7 +112,13 @@ class CollisionEvent:
         if self._greater(self.distance, other.distance):
             return False
 
-        return self._less(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker)
+        if self._less(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker):
+            return True
+        if self._greater(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker):
+            return False
+
+        # Final tiebreaker: insertion order
+        return self.insertion_order < other.insertion_order
 
     def __le__(self, other: CollisionEvent) -> bool:
         if self._less(self.time_offset, other.time_offset):
@@ -126,7 +136,12 @@ class CollisionEvent:
         if self._greater(self.distance, other.distance):
             return False
 
-        return not self._greater(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker)
+        if self._less(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker):
+            return True
+        if self._greater(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker):
+            return False
+
+        return self.insertion_order <= other.insertion_order
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, CollisionEvent):
@@ -136,6 +151,7 @@ class CollisionEvent:
             and self.collision_type == other.collision_type
             and self._equal(self.distance, other.distance)
             and self._equal(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker)
+            and self.insertion_order == other.insertion_order
         )
 
     def __ne__(self, other: object) -> bool:
@@ -146,6 +162,7 @@ class CollisionEvent:
             or self.collision_type != other.collision_type
             or not self._equal(self.distance, other.distance)
             or not self._equal(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker)
+            or self.insertion_order != other.insertion_order
         )
 
     def __gt__(self, other: CollisionEvent) -> bool:
@@ -164,7 +181,12 @@ class CollisionEvent:
         if self._less(self.distance, other.distance):
             return False
 
-        return self._greater(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker)
+        if self._greater(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker):
+            return True
+        if self._less(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker):
+            return False
+
+        return self.insertion_order > other.insertion_order
 
     def __ge__(self, other: CollisionEvent) -> bool:
         if self._greater(self.time_offset, other.time_offset):
@@ -182,10 +204,20 @@ class CollisionEvent:
         if self._less(self.distance, other.distance):
             return False
 
-        return not self._less(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker)
+        if self._greater(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker):
+            return True
+        if self._less(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker):
+            return False
+
+        return self.insertion_order >= other.insertion_order
 
     def __repr__(self) -> str:
-        return f"<CollisionEvent time_offset={self.time_offset}s distance={self.distance} type={self.collision_type} obj_a_idx={self.object_a_idx} obj_b_idx={self.object_b_idx} collision_specific_final_tiebreaker={self.collision_specific_final_tiebreaker}>"
+        return (
+            f"<CollisionEvent time_offset={self.time_offset}s distance={self.distance} "
+            f"type={self.collision_type} obj_a_idx={self.object_a_idx} obj_b_idx={self.object_b_idx} "
+            f"collision_specific_final_tiebreaker={self.collision_specific_final_tiebreaker} "
+            f"insertion_order={self.insertion_order}>"
+        )
 
 
 class KesslerGame:
@@ -829,7 +861,8 @@ class KesslerGame:
             while self.collision_queue:
                 event = heappop(self.collision_queue)
                 dt = event.time_offset
-                assert dt >= last_time_offset, f"The collision events are not monotonic! Last offset={last_time_offset}, current offset={dt}"
+                assert dt + 1e-12 >= last_time_offset, f"The collision events are not monotonic! Last offset={last_time_offset}, current offset={dt}"
+                last_time_offset = dt
                 match event.collision_type:
                     case CollisionType.BULLET_ASTEROID:
                         # Rewind the bullet and asteroid to the time of collision, and handle it.
