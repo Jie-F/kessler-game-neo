@@ -590,8 +590,16 @@ class KesslerGame:
         for mine_idx, mine in enumerate(mines):
             if mine.detonating:
                 for ast_idx, asteroid in enumerate(asteroids):
-                    dx = abs(asteroid.x - mine.x)
-                    dy = abs(asteroid.y - mine.y)
+                    if abs(mine.countdown_timer) <= 1e-12:
+                        # The mine is exploding on a frame boundary, so no need to rewind anything
+                        ax = asteroid.x
+                        ay = asteroid.y
+                    else:
+                        # Rewind objects
+                        ax = asteroid.x + mine.countdown_timer * asteroid.vx
+                        ay = asteroid.y + mine.countdown_timer * asteroid.vy
+                    dx = abs(ax - mine.x)
+                    dy = abs(ay - mine.y)
                     if dx > 0.5 * self.map_width:
                         dx = self.map_width - dx
                     if dy > 0.5 * self.map_height:
@@ -614,8 +622,15 @@ class KesslerGame:
                 for ship_idx, ship in enumerate(ships):
                     if ship.is_respawning_internal or not ship.alive:
                         continue
-                    dx = abs(ship.x - mine.x)
-                    dy = abs(ship.y - mine.y)
+                    if abs(mine.countdown_timer) <= 1e-12:
+                        # The mine is exploding on a frame boundary, so no need to rewind anything
+                        sx = ship.x
+                        sy = ship.y
+                    else:
+                        # Rewind objects
+                        sx, sy = ship.get_past_position(mine.countdown_timer, (self.map_width, self.map_height))
+                    dx = abs(sx - mine.x)
+                    dy = abs(sy - mine.y)
                     if dx > 0.5 * self.map_width:
                         dx = self.map_width - dx
                     if dy > 0.5 * self.map_height:
