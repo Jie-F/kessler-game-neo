@@ -13,7 +13,7 @@ from .state_models import MineDataList
 
 
 class Mine:
-    __slots__ = ('fuse_time', 'detonation_time', 'mass', 'radius', 'blast_radius', 'blast_pressure', 'owner', 'countdown_timer', 'detonating', 'x', 'y', '_state')
+    __slots__ = ('fuse_time', 'detonation_time', 'mass', 'radius', 'blast_radius', 'blast_pressure', 'owner', 'countdown_timer', 'x', 'y', '_state')
     def __init__(self, starting_position: tuple[float, float], owner: Ship) -> None:
         self.fuse_time: float = 3.0 # s
         self.detonation_time: float = 0.25 # s
@@ -24,7 +24,6 @@ class Mine:
 
         self.owner = owner
         self.countdown_timer: float = self.fuse_time
-        self.detonating: bool = False
         self.x, self.y = starting_position
 
         # [x: float, y: float, mass: float, fuse_time: float, remaining_time: float]
@@ -41,15 +40,13 @@ class Mine:
         self.countdown_timer = countdown_timer
         # Sync the mutable state
         self._state[4] = countdown_timer
-        if countdown_timer <= 1e-12:
-            self.detonate()
-
-    def detonate(self) -> None:
-        # perform any detonation stuff here
-        self.detonating = True
 
     def destruct(self) -> None:
         pass
+
+    @property
+    def detonating(self) -> bool:
+        return self.countdown_timer <= 1e-12
 
     @property
     def state(self) -> MineDataList:
