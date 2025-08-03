@@ -8,6 +8,43 @@ from typing import Callable
 
 from .math_utils import solve_quadratic, project_point_onto_segment_and_get_t, analytic_ship_movement_integration, find_first_leq_zero
 
+
+def time_until_exit(x: float, y: float, vx: float, vy: float, map_width: float, map_height: float) -> float:
+    """Returns the time when a point moving at (vx, vy) will fully exit the map."""
+    tx = inf
+    ty = inf
+
+    if vx > 0.0:
+        tx = (map_width - x) / vx
+    elif vx < 0.0:
+        tx = -x / vx
+
+    if vy > 0.0:
+        ty = (map_height - y) / vy
+    elif vy < 0.0:
+        ty = -y / vy
+
+    return min(tx, ty)
+
+
+def time_until_enter(x: float, y: float, vx: float, vy: float, map_width: float, map_height: float) -> float:
+    """Returns the time when a point moving at (vx, vy) will fully enter the map."""
+    tx = -inf
+    ty = -inf
+
+    if vx > 0.0:
+        tx = -x / vx
+    elif vx < 0.0:
+        tx = (map_width - x) / vx
+
+    if vy > 0.0:
+        ty = -y / vy
+    elif vy < 0.0:
+        ty = (map_height - y) / vy
+
+    return max(tx, ty)
+
+
 def debug_plot_function_over_time(
     func: Callable[[float], tuple[float, float, float]],
     time_interval_start: float,

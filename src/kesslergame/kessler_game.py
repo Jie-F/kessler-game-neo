@@ -15,7 +15,7 @@ from enum import Enum, IntEnum
 from .scenario import Scenario
 from .score import Score
 from .controller import KesslerController
-from .collisions import circle_line_collision_continuous, collision_time_interval, ship_asteroid_continuous_collision_time, ship_ship_continuous_collision_time
+from .collisions import circle_line_collision_continuous, collision_time_interval, ship_asteroid_continuous_collision_time, ship_ship_continuous_collision_time, time_until_exit, time_until_enter
 from .graphics import GraphicsType, GraphicsHandler, KesslerGraphics
 from .mines import Mine
 from .asteroid import Asteroid
@@ -229,40 +229,6 @@ class KesslerGame:
         # interval from when the bullet head first hits the edge, until the tail also leaves. This construction
         # is invalid before this time interval!
 
-        def time_until_exit(x: float, y: float, vx: float, vy: float) -> float:
-            """Returns the time when a point moving at (vx, vy) will fully exit the map."""
-            tx = inf
-            ty = inf
-
-            if vx > 0.0:
-                tx = (self.map_width - x) / vx
-            elif vx < 0.0:
-                tx = -x / vx
-
-            if vy > 0.0:
-                ty = (self.map_height - y) / vy
-            elif vy < 0.0:
-                ty = -y / vy
-
-            return min(tx, ty)
-
-        def time_until_enter(x: float, y: float, vx: float, vy: float) -> float:
-            """Returns the time when a point moving at (vx, vy) will fully enter the map."""
-            tx = -inf
-            ty = -inf
-
-            if vx > 0.0:
-                tx = -x / vx
-            elif vx < 0.0:
-                tx = (self.map_width - x) / vx
-
-            if vy > 0.0:
-                ty = -y / vy
-            elif vy < 0.0:
-                ty = (self.map_height - y) / vy
-
-            return max(tx, ty)
-
         # We might not be able to go back a full delta_time if the asteroid wasn't alive for that long yet!
         # So we clamp that time
         collision_past_time_clamp = min(asteroid_past_time_clamp, self.delta_time)
@@ -275,12 +241,12 @@ class KesslerGame:
             bullet_tail_y = bullet.y + bullet.tail_delta_y
 
             # Find when head and tail leave the visible map
-            t_head_exit = time_until_exit(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy)
-            t_tail_exit = time_until_exit(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy)
+            t_head_exit = time_until_exit(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy, self.map_width, self.map_height)
+            t_tail_exit = time_until_exit(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy, self.map_width, self.map_height)
             assert t_head_exit <= t_tail_exit
             # Find when head and tail enter the visible map
-            t_head_enter = time_until_enter(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy)
-            t_tail_enter = time_until_enter(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy)
+            t_head_enter = time_until_enter(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy, self.map_width, self.map_height)
+            t_tail_enter = time_until_enter(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy, self.map_width, self.map_height)
             assert t_head_enter <= t_tail_enter
 
             for ast_idx, asteroid in enumerate(asteroids):
@@ -424,8 +390,8 @@ class KesslerGame:
 
                     # Take the intersection of the intervals
                     # Use nested min/max instead of 3-arg min/max, because this is much faster for MyPyC compilation
-                    t_start = max(-collision_past_time_clamp, max(t1_start, t2_start))
-                    t_end = min(0.0, min(t1_end, t2_end))
+                    t_start = max(max(max(t1_start, t2_start), -collision_past_time_clamp), t_head_enter)
+                    t_end = min(min(min(t1_end, t2_end), 0.0), t_tail_exit)
 
                     if t_start <= t_end:
                         # The interval actually exists
@@ -446,11 +412,6 @@ class KesslerGame:
                         bul_head_y_collision = bullet_head_y + collision_time * bullet.vy
                         bul_tail_x_collision = bullet_tail_x + collision_time * bullet.vx
                         bul_tail_y_collision = bullet_tail_y + collision_time * bullet.vy
-                        if not (((0.0 <= bul_head_x_collision <= self.map_width) and (0.0 <= bul_head_y_collision <= self.map_height))
-                                or ((0.0 <= bul_tail_x_collision <= self.map_width) and (0.0 <= bul_tail_y_collision <= self.map_height))):
-                            # The bullet is completely OoB when the collision first occurs.
-                            # Since the bullet must start inbounds, this means that no later collision can occur, and therefore this bullet will not collide.
-                            continue
 
                         # It happens surprisingly frequently where an asteroid splits, and the three overlapping children asteroids get hit by a bullet. We need a tiebreaker for this situation!
                         # Or else we get weird random indeterminate behavior, and there goes our framerate independence.
@@ -610,11 +571,11 @@ class KesslerGame:
                                 # dips down. If the interval start is negative, then we do NOT nudge this forward, or else wacky stuff
                                 # will happen, and we get edge cases where the ship on the edge of respawn will have framerate dependence due
                                 # to floating point error. Especially in mine-ship collisions which happen on integer seconds.
-                                nudge = 1e-12
+                                nudgification_factor = 1e-12
                                 for i in range(1000):
                                     # Instead of using a while loop, it's better to use a for loop and have an upper bound on this,
                                     # just so we don't infinite loop here in some super weird case
-                                    collision_start_time += nudge
+                                    collision_start_time += nudgification_factor
                                     if collision_start_time > 0.0:
                                         # We reached the end of the interval, so this is hopeless. These ships are not colliding!
                                         break
@@ -631,7 +592,7 @@ class KesslerGame:
                                     if sq_dist + 1e-10 <= radii_sum_sq:
                                         verified_collision = True
                                         break
-                                    nudge *= 2.0 # Exponentially increase the nudge
+                                    nudgification_factor *= 2.0 # Exponentially increase the nudge
 
                             if verified_collision:
                                 collision_event = CollisionEvent(collision_start_time, sq_dist, ship1_idx, ship2_idx, CollisionType.SHIP_SHIP)
@@ -1039,14 +1000,15 @@ class KesslerGame:
             assert len(bullets_to_cull) == len(set(bullets_to_cull))
 
             # Cull bullets that are off the map
+            # It might be tempting to cull a bullet if both the head and tail are out of bounds. And this was the original logic.
+            # But this misses something. What if the tail and head were out of bounds, but the middle of the bullet was still inbounds in the corner of a map?
+            # This is something that is geometrically plausible especially at higher framerates, and the ship is peeking its head into the map when shooting a bullet!
             for bul_idx, bullet in enumerate(bullets):
                 if bul_idx in bullets_to_cull:
                     continue
-                if not (
-                    (0.0 <= bullet.x <= self.map_width and 0.0 <= bullet.y <= self.map_height)
-                    or (0.0 <= bullet.x + bullet.tail_delta_x <= self.map_width and 0.0 <= bullet.y + bullet.tail_delta_y <= self.map_height)
-                ):
-                    # Neither head nor tail are inbounds
+                time_for_tail_to_leave = time_until_exit(bullet.x + bullet.tail_delta_x, bullet.y + bullet.tail_delta_y, bullet.vx, bullet.vy, self.map_width, self.map_height)
+                if time_for_tail_to_leave <= 0.0:
+                    # The bullet has left the map already
                     bullet.destruct()
                     bullets_to_cull.append(bul_idx)
             
