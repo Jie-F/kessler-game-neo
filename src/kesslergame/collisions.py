@@ -186,8 +186,6 @@ def ship_asteroid_continuous_collision_time(ship_x: float, ship_y: float, ship_r
         second_derivative_value = 2.0 * (dist_x * second_deriv_dt_dist_x + deriv_dt_dist_x * deriv_dt_dist_x + dist_y * second_deriv_dt_dist_y + deriv_dt_dist_y * deriv_dt_dist_y)
         
         return function_value, derivative_value, second_derivative_value
-
-    root_t = find_first_leq_zero(squared_separation_between_ship_and_asteroid_at_t, time_interval_start, time_interval_end)
     
     ship_intervals = len(ship_integration_initial_states)
     assert ship_intervals <= 2
@@ -195,11 +193,15 @@ def ship_asteroid_continuous_collision_time(ship_x: float, ship_y: float, ship_r
         # The separation function's second derivative will be discontinuous in 1 spot
         # We need to do the root finding interval-by-interval, and not just the whole thing at once.
         interval_mid = ship_integration_initial_states[0][1]
-        assert time_interval_start <= interval_mid <= time_interval_end
-        root_t = find_first_leq_zero(squared_separation_between_ship_and_asteroid_at_t, time_interval_start, nextafter(interval_mid, -inf))
-        if isnan(root_t):
-            # Try the next interval
-            root_t = find_first_leq_zero(squared_separation_between_ship_and_asteroid_at_t, nextafter(interval_mid, inf), time_interval_end)
+        #assert time_interval_start <= interval_mid <= time_interval_end # nvm this isn't true because the start of the interval can be delayed!
+        if time_interval_start < interval_mid:
+            root_t = find_first_leq_zero(squared_separation_between_ship_and_asteroid_at_t, time_interval_start, nextafter(interval_mid, -inf))
+            if isnan(root_t):
+                # Try the next interval
+                root_t = find_first_leq_zero(squared_separation_between_ship_and_asteroid_at_t, nextafter(interval_mid, inf), time_interval_end)
+        else:
+            # The start of the interval was delayed. It's just one interval then!
+            root_t = find_first_leq_zero(squared_separation_between_ship_and_asteroid_at_t, time_interval_start, time_interval_end)
     else:
         root_t = find_first_leq_zero(squared_separation_between_ship_and_asteroid_at_t, time_interval_start, time_interval_end)
 
@@ -362,14 +364,24 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
         if interval_mid_1 > interval_mid_2:
             # Fix interval order
             interval_mid_1, interval_mid_2 = interval_mid_2, interval_mid_1
-        assert time_interval_start <= interval_mid_1 <= interval_mid_2 <= time_interval_end
-        root_t = find_first_leq_zero(squared_separation_between_ships_at_t, time_interval_start, nextafter(interval_mid_1, -inf))
-        if isnan(root_t):
-            # Try the next interval
-            root_t = find_first_leq_zero(squared_separation_between_ships_at_t, nextafter(interval_mid_1, inf), nextafter(interval_mid_2, -inf))
+        if time_interval_start <= interval_mid_1 <= interval_mid_2 <= time_interval_end:
+            root_t = find_first_leq_zero(squared_separation_between_ships_at_t, time_interval_start, nextafter(interval_mid_1, -inf))
+            if isnan(root_t):
+                # Try the next interval
+                root_t = find_first_leq_zero(squared_separation_between_ships_at_t, nextafter(interval_mid_1, inf), nextafter(interval_mid_2, -inf))
+                if isnan(root_t):
+                    # Try the last interval
+                    root_t = find_first_leq_zero(squared_separation_between_ships_at_t, nextafter(interval_mid_2, inf), time_interval_end)
+        elif interval_mid_1 <= time_interval_start <= interval_mid_2 <= time_interval_end:
+            # Start got delayed, so there's only 2 intervals
+            root_t = find_first_leq_zero(squared_separation_between_ships_at_t, time_interval_start, nextafter(interval_mid_2, -inf))
             if isnan(root_t):
                 # Try the last interval
                 root_t = find_first_leq_zero(squared_separation_between_ships_at_t, nextafter(interval_mid_2, inf), time_interval_end)
+        else:
+            # Start got SUPER delayed, so there's only one interval
+            assert interval_mid_1 <= interval_mid_2 <= time_interval_start <= time_interval_end
+            root_t = find_first_leq_zero(squared_separation_between_ships_at_t, time_interval_start, time_interval_end)
     elif ship1_intervals == 2 or ship2_intervals == 2:
         # The separation function's second derivative will be discontinuous in 1 spot
         # We need to do the root finding interval-by-interval, and not just the whole thing at once.
@@ -377,11 +389,15 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
             interval_mid = ship1_integration_initial_states[0][1]
         else:
             interval_mid = ship2_integration_initial_states[0][1]
-        assert time_interval_start <= interval_mid <= time_interval_end
-        root_t = find_first_leq_zero(squared_separation_between_ships_at_t, time_interval_start, nextafter(interval_mid, -inf))
-        if isnan(root_t):
-            # Try the next interval
-            root_t = find_first_leq_zero(squared_separation_between_ships_at_t, nextafter(interval_mid, inf), time_interval_end)
+        #assert time_interval_start <= interval_mid <= time_interval_end
+        if time_interval_start < interval_mid:
+            root_t = find_first_leq_zero(squared_separation_between_ships_at_t, time_interval_start, nextafter(interval_mid, -inf))
+            if isnan(root_t):
+                # Try the next interval
+                root_t = find_first_leq_zero(squared_separation_between_ships_at_t, nextafter(interval_mid, inf), time_interval_end)
+        else:
+            # The start got delayed, so that there's only one valid interval now
+            root_t = find_first_leq_zero(squared_separation_between_ships_at_t, time_interval_start, time_interval_end)
     else:
         root_t = find_first_leq_zero(squared_separation_between_ships_at_t, time_interval_start, time_interval_end)
     
