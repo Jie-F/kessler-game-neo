@@ -379,7 +379,7 @@ def find_first_leq_zero(
             fmin, _, _ = f(t_min)
             if fmin <= 0.0:
                 return newton_root(f, a, t_min)
-        elif fb <= 0.0:
+        if fb <= 0.0:
             # We know fi is positive, so this brackets a root!
             return newton_root(f, t_inflect, b)
         elif di < 0.0 and db > 0.0:
