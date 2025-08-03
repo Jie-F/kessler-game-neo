@@ -602,7 +602,7 @@ class KesslerGame:
                                 # will happen, and we get edge cases where the ship on the edge of respawn will have framerate dependence due
                                 # to floating point error. Especially in mine-ship collisions which happen on integer seconds.
                                 nudgification_factor = 1e-12
-                                for i in range(1000):
+                                for i in range(64):
                                     # Instead of using a while loop, it's better to use a for loop and have an upper bound on this,
                                     # just so we don't infinite loop here in some super weird case
                                     collision_start_time += nudgification_factor
@@ -861,7 +861,7 @@ class KesslerGame:
             while self.collision_queue:
                 event = heappop(self.collision_queue)
                 dt = event.time_offset
-                assert dt + 1e-12 >= last_time_offset, f"The collision events are not monotonic! Last offset={last_time_offset}, current offset={dt}"
+                assert dt + CollisionEvent.TOLERANCE >= last_time_offset, f"The collision events are not monotonic! Last offset={last_time_offset}, current offset={dt}"
                 last_time_offset = dt
                 match event.collision_type:
                     case CollisionType.BULLET_ASTEROID:
