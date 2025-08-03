@@ -3,7 +3,7 @@
 # NOTICE: This file is subject to the license agreement defined in file 'LICENSE', which is part of
 # this source code package.
 
-from math import sin, cos, nan, inf, copysign, sqrt, isclose, isnan
+from math import sin, cos, nan, inf, copysign, sqrt, isnan
 from typing import Callable
 
 
@@ -168,7 +168,7 @@ def circle_circle_collision_time_interval(
     sep_sq = separation * separation
 
     # Both stationary. Either overlapping forever or never
-    if isclose(speed_sq, 0.0):
+    if abs(speed_sq) < 1e-12:
         if dist_sq <= sep_sq:
             return -inf, inf # Always overlapping
         else:
