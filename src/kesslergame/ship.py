@@ -130,38 +130,41 @@ class Ship:
 
     def update_state(self) -> None:
         """Update flat state and ownstate lists."""
-        self._state[0] = self.x
-        self._state[1] = self.y
-        self._state[2] = self.vx
-        self._state[3] = self.vy
-        self._state[4] = self.speed
-        self._state[5] = self.heading
-        #self._state[6] = self.mass
-        #self._state[7] = self.radius
-        #self._state[8] = self.id
-        #self._state[9] = self.team
-        self._state[10] = self.is_respawning
-        self._state[11] = self.lives
-        self._state[12] = self.deaths
+        # Cache the class attribute lookup into local variables
+        state = self._state
+        state[0] = self.x
+        state[1] = self.y
+        state[2] = self.vx
+        state[3] = self.vy
+        state[4] = self.speed
+        state[5] = self.heading
+        #state[6] = self.mass
+        #state[7] = self.radius
+        #state[8] = self.id
+        #state[9] = self.team
+        state[10] = self.is_respawning
+        state[11] = self.lives
+        state[12] = self.deaths
 
         # Extend the state list with the ownstate fields
-        self._ownstate[0:13] = self._state  # Shared part
-        self._ownstate[13] = self.bullets_remaining
-        self._ownstate[14] = self.mines_remaining
-        self._ownstate[15] = self.can_fire
-        self._ownstate[16] = self.fire_wait_time
-        #self._ownstate[17] = self.fire_rate
-        self._ownstate[18] = self.can_deploy_mine
-        self._ownstate[19] = self.mine_wait_time
-        #self._ownstate[20] = self.mine_deploy_rate
-        self._ownstate[21] = self.respawn_time_left
-        #self._ownstate[22] = self.respawn_time
-        #self._ownstate[23] = self.thrust_range[0]
-        #self._ownstate[24] = self.thrust_range[1]
-        #self._ownstate[25] = self.turn_rate_range[0]
-        #self._ownstate[26] = self.turn_rate_range[1]
-        #self._ownstate[27] = self.max_speed
-        #self._ownstate[28] = self.drag
+        ownstate = self._ownstate
+        ownstate[0:13] = state  # Shared part
+        ownstate[13] = self.bullets_remaining
+        ownstate[14] = self.mines_remaining
+        ownstate[15] = self.can_fire
+        ownstate[16] = self.fire_wait_time
+        #ownstate[17] = self.fire_rate
+        ownstate[18] = self.can_deploy_mine
+        ownstate[19] = self.mine_wait_time
+        #ownstate[20] = self.mine_deploy_rate
+        ownstate[21] = self.respawn_time_left
+        #ownstate[22] = self.respawn_time
+        #ownstate[23] = self.thrust_range[0]
+        #ownstate[24] = self.thrust_range[1]
+        #ownstate[25] = self.turn_rate_range[0]
+        #ownstate[26] = self.turn_rate_range[1]
+        #ownstate[27] = self.max_speed
+        #ownstate[28] = self.drag
 
     @property
     def position(self) -> tuple[float, float]:

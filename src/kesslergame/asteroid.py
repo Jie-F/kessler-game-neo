@@ -102,9 +102,10 @@ class Asteroid:
         y %= map_height
         self.x = x
         self.y = y
-        # Update mutable state
-        self._state[0] = x
-        self._state[1] = y
+        # Update mutable state (cache the lookup first)
+        state = self._state
+        state[0] = x
+        state[1] = y
         self.angle += delta_time * self.turnrate
 
     def destruct(self, impactor: Bullet | Mine | Ship, map_width: float, map_height: float, random_ast_split: bool) -> list[Asteroid]:

@@ -48,8 +48,10 @@ class Bullet:
         self.x = x
         self.y = y
         # Keep _state in sync
-        self._state[0] = x
-        self._state[1] = y
+        # Cache class attribute lookup
+        state = self._state
+        state[0] = x
+        state[1] = y
 
     def destruct(self) -> None:
         pass
