@@ -56,6 +56,7 @@ class CollisionEvent:
     __slots__ = ("time_offset", "distance", "object_a_idx", "object_b_idx", "collision_type", "collision_specific_final_tiebreaker", "insertion_order")
 
     TOLERANCE: ClassVar[float] = 1e-10
+    WEAK_TOLERANCE: ClassVar[float] = 1e-6
     _counter: ClassVar[int] = 0  # class-level monotonic counter
 
     def __init__(self, time_offset: float, distance: float, object_a_idx: int, object_b_idx: int, collision_type: CollisionType, specific_tiebreaker: float = 0.0):
@@ -96,6 +97,18 @@ class CollisionEvent:
     def _equal(a: float, b: float) -> bool:
         return abs(a - b) <= CollisionEvent.TOLERANCE
 
+    @staticmethod
+    def _weak_less(a: float, b: float) -> bool:
+        return a < b - CollisionEvent.WEAK_TOLERANCE
+
+    @staticmethod
+    def _weak_greater(a: float, b: float) -> bool:
+        return a > b + CollisionEvent.WEAK_TOLERANCE
+
+    @staticmethod
+    def _weak_equal(a: float, b: float) -> bool:
+        return abs(a - b) <= CollisionEvent.WEAK_TOLERANCE
+
     def __lt__(self, other: CollisionEvent) -> bool:
         if self._less(self.time_offset, other.time_offset):
             return True
@@ -107,9 +120,9 @@ class CollisionEvent:
         if self.collision_type > other.collision_type:
             return False
 
-        if self._less(self.distance, other.distance):
+        if self._weak_less(self.distance, other.distance):
             return True
-        if self._greater(self.distance, other.distance):
+        if self._weak_greater(self.distance, other.distance):
             return False
 
         if self._less(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker):
@@ -131,9 +144,9 @@ class CollisionEvent:
         if self.collision_type > other.collision_type:
             return False
 
-        if self._less(self.distance, other.distance):
+        if self._weak_less(self.distance, other.distance):
             return True
-        if self._greater(self.distance, other.distance):
+        if self._weak_greater(self.distance, other.distance):
             return False
 
         if self._less(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker):
@@ -149,7 +162,7 @@ class CollisionEvent:
         return (
             self._equal(self.time_offset, other.time_offset)
             and self.collision_type == other.collision_type
-            and self._equal(self.distance, other.distance)
+            and self._weak_equal(self.distance, other.distance)
             and self._equal(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker)
             and self.insertion_order == other.insertion_order
         )
@@ -160,7 +173,7 @@ class CollisionEvent:
         return (
             not self._equal(self.time_offset, other.time_offset)
             or self.collision_type != other.collision_type
-            or not self._equal(self.distance, other.distance)
+            or not self._weak_equal(self.distance, other.distance)
             or not self._equal(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker)
             or self.insertion_order != other.insertion_order
         )
@@ -176,9 +189,9 @@ class CollisionEvent:
         if self.collision_type < other.collision_type:
             return False
 
-        if self._greater(self.distance, other.distance):
+        if self._weak_greater(self.distance, other.distance):
             return True
-        if self._less(self.distance, other.distance):
+        if self._weak_less(self.distance, other.distance):
             return False
 
         if self._greater(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker):
@@ -199,9 +212,9 @@ class CollisionEvent:
         if self.collision_type < other.collision_type:
             return False
 
-        if self._greater(self.distance, other.distance):
+        if self._weak_greater(self.distance, other.distance):
             return True
-        if self._less(self.distance, other.distance):
+        if self._weak_less(self.distance, other.distance):
             return False
 
         if self._greater(self.collision_specific_final_tiebreaker, other.collision_specific_final_tiebreaker):
