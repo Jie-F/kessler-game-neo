@@ -28,7 +28,7 @@ game = KesslerGame(settings=game_settings)
 | `frame_skip`            | `int`                     | `max(1, round(realtime_multiplier))` | Renders 1 out of every frame_skip frames. Helps graphics keep up with higher game speeds |
 | `time_limit`            | `float`                   | `inf`                        | Time (s) after which the scenario stops. Overrides limit defined in Scenario.                 |
 | `random_ast_splits`     | `bool`                    | `False`                           | Whether asteroids split at random angles upon destruction                                     |
-| `competition_safe_mode` | `bool`                    | `True`                            | False sends mutable game_state and ship_state. This is a bit faster, but riskier             |
+| `competition_safe_mode` | `bool`                    | `True`                            | False sends mutable game_state and ship_state. This is faster, but riskier. Also this handles controller exceptions and lets the game move on. |
 
 ---
 

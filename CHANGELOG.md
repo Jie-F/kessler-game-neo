@@ -2,11 +2,11 @@
 
 ## [2.5.0] - (INSERT DATE HERE) 2025
 - Fully overhauled physics and collision system for continuous, framerate-independent simulation
-- Unified game loop with globally chronological collision handling using a priority queue
+- Unified game loop with globally chronological collision handling using a priority queue (typed version of Python heapq)
 - Continuous collision detection and resolution now occurs precisely at impact times within each frame
 - Ship respawn time can now begin and end mid-frame
 - If a ship gets hit at the instant is loses its respawn shield, it will still be protected
-- Robust numeric root finding to solve transcendental equation to detect ship-asteroid and ship-ship collisions
+- Robust numeric root finding to solve transcendental equations to detect ship-asteroid and ship-ship collisions
 - True continuous toroidal edge wrapping for all object hitboxes, including seamless corner wrapping
 - Objects can now wrap across multiple edges simultaneously, and collisions still work accurately
 - Chain reactions (e.g. bullet -> asteroid -> child asteroid -> bullet) within the same frame are supported
@@ -22,6 +22,7 @@
 - Known limitation: floating-point imprecision may cause long-run divergence
 - Known limitation: assumes mine detonation time is an integer number of seconds, so it always lands on a frame boundary at an integer FPS
 - Handle controller exceptions in competition safe mode
+- Added arbitrary mine fuse times, even ones that do not land on a frame boundary. This is not used in practice, but is supported.
 
 ## [2.4.0] - 28 July 2025
 - Fixed building MyPyC compiled wheels, so compiled modules are now actually being run to provide a 4-10X+ speed benefit over interpreted
