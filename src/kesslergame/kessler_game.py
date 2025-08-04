@@ -589,7 +589,7 @@ class KesslerGame:
     def enqueue_mine_asteroid_collisions(self, mines: list[Mine], asteroids: list[Asteroid], asteroid_past_time_clamp: float, asteroid_list_idx_offset: int = 0, already_a_heap: bool = False) -> None:
         for mine_idx, mine in enumerate(mines):
             if mine.detonating:
-                if mine.countdown_timer < -asteroid_past_time_clamp:
+                if mine.countdown_timer < -asteroid_past_time_clamp + CollisionEvent.TOLERANCE:
                     # The mine blows up earlier than we're allowed to check for it
                     continue
                 for ast_idx, asteroid in enumerate(asteroids):
@@ -602,7 +602,7 @@ class KesslerGame:
                         # Rewind objects
                         ax = asteroid.x + mine.countdown_timer * asteroid.vx
                         ay = asteroid.y + mine.countdown_timer * asteroid.vy
-                        collision_time = min(0.0, mine.countdown_timer) # This min should be unnecessary, but just in case
+                        collision_time = min(0.0, mine.countdown_timer) # This min clamp should be unnecessary, but just in case
                     dx = abs(ax - mine.x)
                     dy = abs(ay - mine.y)
                     if dx > 0.5 * self.map_width:
@@ -625,6 +625,9 @@ class KesslerGame:
                 # For each live, non-respawning ship, apply damage only from the closest mine within range
                 for ship_idx, ship in enumerate(ships):
                     if ship.is_respawning_internal or not ship.alive:
+                        continue
+                    if ship.respawn_time_internal + CollisionEvent.TOLERANCE >= mine.countdown_timer:
+                        # The mine blew up before the ship got out of respawn invincibility
                         continue
                     if abs(mine.countdown_timer) <= 1e-12:
                         # The mine is exploding on a frame boundary, so no need to rewind anything
@@ -1036,9 +1039,9 @@ class KesslerGame:
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             # Enqueue new collisions, but be super careful not to allow this same mine to hit the asteroids' children again!
                             # Add a bit of a time nudge into the future of when we can start checking collisions again
-                            self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt - CollisionEvent.TOLERANCE, ast_idx_offset, True)
-                            self.enqueue_mine_asteroid_collisions(mines, new_asteroids, -dt - CollisionEvent.TOLERANCE, ast_idx_offset, True)
-                            self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt - CollisionEvent.TOLERANCE, ast_idx_offset, True)
+                            self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_mine_asteroid_collisions(mines, new_asteroids, -dt - 2.0 * CollisionEvent.TOLERANCE, ast_idx_offset, True)
+                            self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset, True)
                     case CollisionType.MINE_SHIP:
                         mine_idx = event.object_a_idx
                         ship_idx = event.object_b_idx
