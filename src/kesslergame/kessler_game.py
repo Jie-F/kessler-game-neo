@@ -897,6 +897,7 @@ class KesslerGame:
             while self.collision_queue:
                 event = heappop(self.collision_queue)
                 dt = event.time_offset
+                assert -self.delta_time <= dt <= 0.0 # All events must happen within the previous frame
                 assert dt + CollisionEvent.TOLERANCE >= last_time_offset, f"The collision events are not monotonic! Last offset={last_time_offset}, current offset={dt}"
                 last_time_offset = dt
                 match event.collision_type:
@@ -952,8 +953,6 @@ class KesslerGame:
                             continue
                         asteroid = asteroids[ast_idx]
                         # Rewind
-                        assert abs(dt) <= self.delta_time
-                        assert dt <= 0.0
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             ship.update(dt, scenario.map_size, False)
                             asteroid.update(dt, self.map_width, self.map_height)
@@ -1053,7 +1052,7 @@ class KesslerGame:
                             # Enqueue new collisions, but be super careful not to allow this same mine to hit the asteroids' children again!
                             # Add a bit of a time nudge into the future of when we can start checking collisions again
                             self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset, True)
-                            self.enqueue_mine_asteroid_collisions(mines, new_asteroids, -dt - 2.0 * CollisionEvent.TOLERANCE, ast_idx_offset, True)
+                            self.enqueue_mine_asteroid_collisions(mines, new_asteroids, -dt, ast_idx_offset, True)
                             self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset, True)
                     case CollisionType.MINE_SHIP:
                         mine_idx = event.object_a_idx
@@ -1087,15 +1086,13 @@ class KesslerGame:
                             ship.update(-dt, scenario.map_size, False)
 
             # Now that all collisions are handled and resolved, the final step is to cull the removed objects
-            assert len(asteroids_to_cull) == len(set(asteroids_to_cull))
+            # Cull asteroids using swap and pop. The list of indices to cull is unique
             for ast_idx in sorted(asteroids_to_cull, reverse=True):
                 asteroids[ast_idx] = asteroids[-1]
                 asteroids.pop()
                 if not self.competition_safe_mode:
                     assert game_state is not None
                     game_state.remove_asteroid(ast_idx)
-            
-            assert len(bullets_to_cull) == len(set(bullets_to_cull))
 
             # Cull bullets that are off the map
             # It might be tempting to cull a bullet if both the head and tail are out of bounds. And this was the original logic.
@@ -1110,6 +1107,7 @@ class KesslerGame:
                     bullet.destruct()
                     bullets_to_cull.append(bul_idx)
             
+            # Cull bullets using swap and pop
             for bul_idx in sorted(bullets_to_cull, reverse=True):
                 bullets[bul_idx] = bullets[-1]
                 bullets.pop()
@@ -1117,12 +1115,13 @@ class KesslerGame:
                     assert game_state is not None
                     game_state.remove_bullet(bul_idx)
             
+            # Cull mines
             mines_to_cull.clear()
             for mine_idx, mine in enumerate(mines):
                 if mine.detonating:
                     mines_to_cull.append(mine_idx)
                     mine.destruct() # The mine destruct method does nothing
-            mines_to_cull.reverse()
+            mines_to_cull.reverse() # It's in sorted ascending order, but we need it in descending order
             for mine_idx in mines_to_cull:
                 mines[mine_idx] = mines[-1]
                 mines.pop()
@@ -1152,7 +1151,6 @@ class KesslerGame:
                 prev = time.perf_counter()
             else:
                 score.update(ships, sim_time)
-
 
             # --- UPDATE GRAPHICS --------------------------------------------------------------------------------------
             if sim_frame % self.frame_skip == 0:
