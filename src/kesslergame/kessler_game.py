@@ -1050,7 +1050,7 @@ class KesslerGame:
                             game_state.add_asteroids([a.state for a in new_asteroids])
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             # Enqueue new collisions, but be super careful not to allow this same mine to hit the asteroids' children again!
-                            # Add a bit of a time nudge into the future of when we can start checking collisions again
+                            # But the mine collision check should be avoiding this case where the time interval is the explosion time. So it should be fine.
                             self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset, True)
                             self.enqueue_mine_asteroid_collisions(mines, new_asteroids, -dt, ast_idx_offset, True)
                             self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset, True)
