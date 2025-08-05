@@ -1221,6 +1221,7 @@ class TrainerEnvironment(KesslerGame):
             'prints_on': settings.get("prints_on", False),
             'graphics_type': GraphicsType.NoGraphics,
             'realtime_multiplier': 0.0,
+            'competition_safe_mode': False, # This is faster. But must be careful to not mutate the game state given to the controller if this is used!
             'time_limit': settings.get("time_limit", inf)
         }
         super().__init__(trainer_settings)
