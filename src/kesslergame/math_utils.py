@@ -3,7 +3,7 @@
 # NOTICE: This file is subject to the license agreement defined in file 'LICENSE', which is part of
 # this source code package.
 
-from math import sin, cos, nan, inf, copysign, sqrt, isnan
+from math import sin, cos, nan, inf, copysign, sqrt, isnan, ceil
 from typing import Callable
 
 
@@ -406,6 +406,37 @@ def find_first_leq_zero(
     '''
     # Dang, couldn't find anything :(
     return nan
+
+
+def find_first_leq_zero_segmented(
+    f: Callable[[float], tuple[float, float, float]],
+    a: float,
+    b: float,
+    tol: float = 1e-12,
+    max_iterations: int = 80,
+    max_interval_size: float = 0.02
+) -> float:
+    """
+    Wrapper for find_first_leq_zero that segments the interval [a, b]
+    into smaller intervals of size <= max_interval_size, to improve robustness
+    for poorly-behaved functions.
+    """
+
+    if a >= b:
+        return nan  # Invalid interval
+
+    n_segments: int = ceil((b - a) / max_interval_size)
+    seg_size: float = (b - a) / n_segments
+
+    for i in range(n_segments):
+        x0 = a + i * seg_size
+        x1 = a + (i + 1) * seg_size
+        x1 = min(x1, b)  # Clamp to b, just in case of floating point shenanigans
+
+        result = find_first_leq_zero(f, x0, x1, tol=tol, max_iterations=max_iterations)
+        if not isnan(result):
+            return result
+    return nan  # No zero-crossing found
 
 
 def find_first_leq_zero_robust_slow(
