@@ -116,20 +116,7 @@ class Asteroid:
         # angle will be half of the bound
         split_angle_bound: float = 30.0
         if self.size != 1:
-            if isinstance(impactor, Bullet):
-                # Calculating new velocity vector of asteroid children based on bullet-asteroid collision/momentum
-                # Currently collisions are considered perfectly inelastic i.e. the bullet is absorbed by the asteroid
-                # This assumption doesn't matter much now due to the fact that bullets are "destroyed" by impact with the
-                # asteroid and the bullet mass is significantly smaller than the asteroid. If this changes, these calculations
-                # may need to change
-                total_mass = impactor.mass + self.mass
-                vfx = (impactor.mass * impactor.vx + self.mass * self.vx) / total_mass
-                vfy = (impactor.mass * impactor.vy + self.mass * self.vy) / total_mass
-
-                # Calculate speed of resultant asteroid(s) based on velocity vector
-                v = sqrt(vfx * vfx + vfy * vfy)
-            else:
-                assert isinstance(impactor, Mine)
+            if isinstance(impactor, Mine):
                 if impactor.x - self.x > 0.5 * map_width:
                     mine_x_wrapped = impactor.x - map_width
                 elif impactor.x - self.x < -0.5 * map_width:
@@ -169,6 +156,19 @@ class Asteroid:
                         sin_theta = 0.0
                 vfx = self.vx + a * cos_theta
                 vfy = self.vy + a * sin_theta
+
+                # Calculate speed of resultant asteroid(s) based on velocity vector
+                v = sqrt(vfx * vfx + vfy * vfy)
+            else:
+                # Impactor is a bullet or ship
+                # Calculating new velocity vector of asteroid children based on bullet-asteroid collision/momentum
+                # Currently collisions are considered perfectly inelastic i.e. the bullet is absorbed by the asteroid
+                # This assumption doesn't matter much now due to the fact that bullets are "destroyed" by impact with the
+                # asteroid and the bullet mass is significantly smaller than the asteroid. If this changes, these calculations
+                # may need to change
+                total_mass = impactor.mass + self.mass
+                vfx = (impactor.mass * impactor.vx + self.mass * self.vx) / total_mass
+                vfy = (impactor.mass * impactor.vy + self.mass * self.vy) / total_mass
 
                 # Calculate speed of resultant asteroid(s) based on velocity vector
                 v = sqrt(vfx * vfx + vfy * vfy)
