@@ -116,7 +116,20 @@ class Asteroid:
         # angle will be half of the bound
         split_angle_bound: float = 30.0
         if self.size != 1:
-            if isinstance(impactor, Mine):
+            if isinstance(impactor, Bullet):
+                # Calculating new velocity vector of asteroid children based on bullet-asteroid collision/momentum
+                # Currently collisions are considered perfectly inelastic i.e. the bullet is absorbed by the asteroid
+                # This assumption doesn't matter much now due to the fact that bullets are "destroyed" by impact with the
+                # asteroid and the bullet mass is significantly smaller than the asteroid. If this changes, these calculations
+                # may need to change
+                total_mass = impactor.mass + self.mass
+                vfx = (impactor.mass * impactor.vx + self.mass * self.vx) / total_mass
+                vfy = (impactor.mass * impactor.vy + self.mass * self.vy) / total_mass
+
+                # Calculate speed of resultant asteroid(s) based on velocity vector
+                v = sqrt(vfx * vfx + vfy * vfy)
+            else:
+                assert isinstance(impactor, Mine)
                 if impactor.x - self.x > 0.5 * map_width:
                     mine_x_wrapped = impactor.x - map_width
                 elif impactor.x - self.x < -0.5 * map_width:
@@ -133,10 +146,6 @@ class Asteroid:
 
                 delta_x = mine_x_wrapped - self.x
                 delta_y = mine_y_wrapped - self.y
-                if delta_x > 0.5 * map_width:
-                    delta_x = map_width - delta_x
-                if delta_y > 0.5 * map_height:
-                    delta_y = map_height - delta_y
                 
                 dist = sqrt(delta_x * delta_x + delta_y * delta_y)
                 force = impactor.calculate_blast_force(dist=dist, obj=self)
@@ -145,30 +154,21 @@ class Asteroid:
                 if dist != 0.0:
                     cos_theta = (self.x - mine_x_wrapped) / dist
                     sin_theta = (self.y - mine_y_wrapped) / dist
-                    vfx = self.vx + a * cos_theta
-                    vfy = self.vy + a * sin_theta
-
-                    # Calculate speed of resultant asteroid(s) based on velocity vector
-                    v = sqrt(vfx * vfx + vfy * vfy)
                 else:
-                    vfx = self.vx
-                    vfy = self.vy
-                    
-                    # Calculate speed of resultant asteroid(s) based on velocity vector
-                    # This v calculation matches the speed you would get in the nonzero dist case, if you take the limit as dist -> 0
-                    v = sqrt(vfx * vfx + vfy * vfy + a * a)
-                    # Split angle is the angle off of the new velocity vector for the two asteroids to the sides, the center child
-                    # asteroid continues on the new velocity path
-                    split_angle_bound *= 8.0
-            else:
-                # Calculating new velocity vector of asteroid children based on bullet-asteroid collision/momentum
-                # Currently collisions are considered perfectly inelastic i.e. the bullet is absorbed by the asteroid
-                # This assumption doesn't matter much now due to the fact that bullets are "destroyed" by impact with the
-                # asteroid and the bullet mass is significantly smaller than the asteroid. If this changes, these calculations
-                # may need to change
-
-                vfx = (1.0 / (impactor.mass + self.mass)) * (impactor.mass * impactor.vx + self.mass * self.vx)
-                vfy = (1.0 / (impactor.mass + self.mass)) * (impactor.mass * impactor.vy + self.mass * self.vy)
+                    # Dist is 0! The mine is coincident with the asteroid. Just pretend the mine is right behind the asteroid
+                    ast_speed = sqrt(self.vx * self.vx + self.vy * self.vy)
+                    if ast_speed != 0.0:
+                        cos_theta = self.vx / ast_speed
+                        sin_theta = self.vy / ast_speed
+                    else:
+                        # NO WAY. The mine is coincident with the asteroid, AND the asteroid was stationary.
+                        # How is that even possible? I'm baffled.
+                        # Go buy a lottery ticket!
+                        # Anyway, just pretend the angle is 0 in this case, and calculate the cos/sin of that
+                        cos_theta = 1.0
+                        sin_theta = 0.0
+                vfx = self.vx + a * cos_theta
+                vfy = self.vy + a * sin_theta
 
                 # Calculate speed of resultant asteroid(s) based on velocity vector
                 v = sqrt(vfx * vfx + vfy * vfy)
