@@ -334,10 +334,9 @@ class Ship:
             #    To handle, we split up the integration into period 1 with thrust + drag, and period 2 with thrust - drag, where these two quantities have the same sign
             # 2. Net acc changes sign, meaning the ship will infinitely oscillate across the 0 boundary every infinitesimal timestep forward.
             #    To handle this, we split up the integration into period 1 with net_acc, and period 2 with 0 acceleration to simulate the infinite oscillations
-            net_acc = self.thrust + drag_acc  # m/s²
-            if abs(drag_acc) > abs(self.thrust):
+            net_acc = self.thrust + drag_acc  # m/s^2
+            if not is_moving and abs(drag_acc) > abs(self.thrust):
                 net_acc = 0.0
-            #print(f"{net_acc=}")
             # We perform analytic position integration, which is framerate independent
             # The shape that the ship traces out with a constant turn rate and thrust over the previous frame is a type of spiral
             # This spiral can be analytically integrated! Yay!
@@ -353,7 +352,6 @@ class Ship:
 
             if is_moving and net_acc * initial_speed < 0.0:  # Net accel is opposite sign from direction of movement
                 # Case 1: drag will bring us to a stop
-                #print('case 1')
                 assert net_acc != 0.0
                 t_to_stop = -initial_speed / net_acc # This is a positive number, and net_acc is nonzero
                 assert t_to_stop >= 0.0
