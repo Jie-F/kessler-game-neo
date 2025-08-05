@@ -10,6 +10,24 @@ from math import isclose, inf
 from .ship import Ship
 from .asteroid import Asteroid
 
+def wrap_asteroid(asteroid_dict: dict[str, Any], map_size: tuple[int, int]) -> dict[str, Any]:
+    """
+    Wrap the asteroid inbounds.
+    Scenarios may be validly defined with asteroids out of bounds, and in these cases, the AI agent will see
+    the asteroids out of bounds on frame 0, and inbounds (wrapped) on all subsequent frames.
+    By wrapping the asteroids as a preprocessing stage, the agents can always assume asteroids are inbounds,
+    reducing confusion, especially on the first critical frame of analyzing the map situation.
+    """
+    if "position" not in asteroid_dict:
+        # Invalid asteroid, do not process
+        return asteroid_dict
+    x, y = asteroid_dict["position"]
+    width, height = map_size
+    x %= width
+    y %= height
+    asteroid_dict["position"] = (x, y)
+    return asteroid_dict
+
 def nudge_asteroid_away_from_border(asteroid_dict: dict[str, Any], map_size: tuple[int, int]) -> dict[str, Any]:
     """
     Due to the way the wrapping is done, it's possible for asteroids to oscillate between a boundary instead of smoothly passing through.
@@ -175,6 +193,7 @@ class Scenario:
         # Loop through and create AsteroidSprites based on starting state
         for asteroid_state in self.asteroid_states:
             if asteroid_state:
+                asteroid_state = wrap_asteroid(asteroid_state, self.map_size)
                 asteroid_state = nudge_asteroid_away_from_border(asteroid_state, self.map_size)
                 asteroids.append(Asteroid(**asteroid_state))
             else:

@@ -23,6 +23,7 @@
 - Known limitation: assumes mine detonation time is an integer number of seconds, so it always lands on a frame boundary at an integer FPS
 - Handle controller exceptions in competition safe mode
 - Added arbitrary mine fuse times, even ones that do not land on a frame boundary. This is not used in practice, but is supported.
+- Preprocess scenarios to wrap their asteroids inbounds. This is less confusing for agents, otherwise they will see out of bounds asteroids on frame 0, and inbounds asteroids on all subsequent frames
 
 ## [2.4.0] - 28 July 2025
 - Fixed building MyPyC compiled wheels, so compiled modules are now actually being run to provide a 4-10X+ speed benefit over interpreted
