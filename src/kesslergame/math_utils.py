@@ -170,9 +170,9 @@ def circle_circle_collision_time_interval(
     # Both stationary. Either overlapping forever or never
     if abs(speed_sq) < 1e-12:
         if dist_sq <= sep_sq:
-            return -inf, inf # Always overlapping
+            return -inf, inf  # Always overlapping
         else:
-            return nan, nan # Never collide
+            return nan, nan  # Never collide
 
     # Already outside and moving away (or tangent and moving apart)
     if dot >= 0.0 and dist_sq > sep_sq:
@@ -201,7 +201,7 @@ def find_first_leq_zero(
     a: float,
     b: float,
     tol: float = 1e-12,
-    max_iterations: int = 80 # This is way overkill, and 30 is probably fine. But this is so rare to use more than just a few iterations, that this won't slow down the game.
+    max_iterations: int = 80  # This is way overkill, and 30 is probably fine. But this is so rare to use more than just a few iterations, that this won't slow down the game.
 ) -> float:
     """
     Finds the smallest t in [a, b] such that f(t) <= 0, using Newton's method
@@ -221,7 +221,7 @@ def find_first_leq_zero(
         # More precisely, it finds the smallest x such that f(x) < 0, so slightly past the root!
         x_low, x_high = x0, x1
         x = 0.5 * (x0 + x1)  # Start in the middle
-        fx, dfx, _ = f(x) # Initial evaluation
+        fx, dfx, _ = f(x)  # Initial evaluation
         for _ in range(max_iterations):
             if -tol < fx <= 0.0:
                 return x  # Close enough!
@@ -230,7 +230,7 @@ def find_first_leq_zero(
                 # If the slope is 0 or NaN, just do a bisection step
                 x_new = 0.5 * (x_low + x_high)
             else:
-                x_new = x - fx / dfx # Newton update!
+                x_new = x - fx / dfx  # Newton update!
                 # Make sure it's still in [x0, x1]
                 if not (x0 <= x_new <= x1):
                     # It's not, so fallback to bisection
@@ -252,7 +252,7 @@ def find_first_leq_zero(
             # Check for convergence
             if abs(x_high - x_low) < tol:
                 return x_high
-        return x_high # Didn't converge, but just return x_high anyway and hope nothing goes wrong ¯\_(ツ)_/¯
+        return x_high  # Didn't converge, but just return x_high anyway and hope nothing goes wrong ¯\_(ツ)_/¯
 
     # Root-finding for f'(x) using Newton's method, with bisection fallback if Newton update jumps out of bounds
     def newton_minimum(f: Callable[[float], tuple[float, float, float]], x0: float, x1: float) -> float:
@@ -262,7 +262,7 @@ def find_first_leq_zero(
         # Assume that f'(x0) < 0 and f'(x1) > 0, so this is an increasing function
         x_low, x_high = x0, x1
         x = 0.5 * (x0 + x1)  # Start in the middle
-        _, dfx, ddfx = f(x) # Initial evaluation
+        _, dfx, ddfx = f(x)  # Initial evaluation
         for _ in range(max_iterations):
             _, dfx, ddfx = f(x)
             if abs(dfx) < tol:
@@ -294,7 +294,7 @@ def find_first_leq_zero(
             # Check for convergence
             if abs(x_high - x_low) < tol:
                 return x
-        return x # Didn't converge, but just return x anyway and hope nothing goes wrong ¯\_(ツ)_/¯
+        return x  # Didn't converge, but just return x anyway and hope nothing goes wrong ¯\_(ツ)_/¯
 
     # Classic bisection method. Slower but guaranteed if f changes sign
     def bisection_root(f: Callable[[float], tuple[float, float, float]], x0: float, x1: float) -> float:
@@ -345,7 +345,7 @@ def find_first_leq_zero(
     # Main logic
     fa, da, dda = f(a)
     if fa <= 0.0:
-        return a # Already satisfies condition at the left endpoint
+        return a  # Already satisfies condition at the left endpoint
 
     fb, db, ddb = f(b)
 
@@ -387,7 +387,7 @@ def find_first_leq_zero(
             t_min = newton_minimum(f, t_inflect, b)
             fmin, _, _ = f(t_min)
             if fmin <= 0.0:
-                return newton_root(f, a, t_min) # Tempting to do Newton between t_inflect and t_min, but this is safer
+                return newton_root(f, a, t_min)  # Tempting to do Newton between t_inflect and t_min, but this is safer
 
     # Hail Mary fallback: brute force sample the interval a bunch lol
     # Nvm, just give up at this point. The juice is not worth the squeeze!
@@ -479,7 +479,7 @@ def find_first_leq_zero_robust_slow(
 
     fa, da, dda = f(a)
     if fa <= 0.0:
-        return a # Already satisfies condition at the left endpoint
+        return a  # Already satisfies condition at the left endpoint
 
     # Brute force sample a bunch of intervals
     N = 1000  # Subdivide the interval finely

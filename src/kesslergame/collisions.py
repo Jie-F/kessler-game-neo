@@ -141,7 +141,7 @@ def ship_asteroid_continuous_collision_time(ship_x: float, ship_y: float, ship_r
                 dx, dy = analytic_ship_movement_integration(v0, a, theta0, omega, t - start_t)
                 dx_sum += dx
                 dy_sum += dy
-                break # Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
+                break  # Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
             else:
                 # This interval is fully included within t. Add the full integral amount
                 assert t <= end_t
@@ -263,7 +263,7 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
                 dx, dy = analytic_ship_movement_integration(v0, a, theta0, omega, t - start_t)
                 dx1_sum += dx
                 dy1_sum += dy
-                break # Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
+                break  # Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
             else:
                 # This interval is fully included within t. Add the full integral amount
                 assert t <= end_t
@@ -278,7 +278,7 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
                 dx, dy = analytic_ship_movement_integration(v0, a, theta0, omega, t - start_t)
                 dx2_sum += dx
                 dy2_sum += dy
-                break # Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
+                break  # Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
             else:
                 # This interval is fully included within t. Add the full integral amount
                 assert t <= end_t
@@ -359,8 +359,8 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
     if ship1_intervals == 2 and ship2_intervals == 2:
         # The separation function's second derivative will be discontinuous in 2 spots
         # We need to do the root finding interval-by-interval, and not just the whole thing at once.
-        interval_mid_1 = ship1_integration_initial_states[0][1] # end_t
-        interval_mid_2 = ship2_integration_initial_states[0][1] # end_t
+        interval_mid_1 = ship1_integration_initial_states[0][1]  # end_t
+        interval_mid_2 = ship2_integration_initial_states[0][1]  # end_t
         if interval_mid_1 > interval_mid_2:
             # Fix interval order
             interval_mid_1, interval_mid_2 = interval_mid_2, interval_mid_1
@@ -414,17 +414,17 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
 
 
 def collision_time_interval(
-    ax: float, # Line seg start
+    ax: float,  # Line seg start
     ay: float,
-    bx: float, # Line seg end
+    bx: float,  # Line seg end
     by: float,
-    vx: float, # Line vel
+    vx: float,  # Line vel
     vy: float,
-    cx: float, # Circle center
+    cx: float,  # Circle center
     cy: float,
-    cvx: float, # Circle vel
+    cvx: float,  # Circle vel
     cvy: float,
-    r: float # Circle radius
+    r: float  # Circle radius
 ) -> tuple[float, float]:
     """
     Figure out when a moving line segment and moving circle are actually colliding.
@@ -455,7 +455,7 @@ def collision_time_interval(
     # Direction and length of the segment
     seg_dx = b0x - a0x
     seg_dy = b0y - a0y
-    seg_len = sqrt(seg_dx * seg_dx + seg_dy * seg_dy) # Should be 12.0 for a bullet, but calculate it to be general, and to allow for "virtual bullets"
+    seg_len = sqrt(seg_dx * seg_dx + seg_dy * seg_dy)  # Should be 12.0 for a bullet, but calculate it to be general, and to allow for "virtual bullets"
 
     # Degenerate segment, just a point
     if seg_len == 0.0:
@@ -576,12 +576,7 @@ def project_origin_onto_segment_dist_sq(x1: float, y1: float, x2: float, y2: flo
     # where t=0 yields (x1, y1) and t=1 yields (x2, y2).
     # Clamp t to [0, 1] to stay on the segment.
     t = -(x1 * dx + y1 * dy) / len_sq
-    # Avoid max/min to optimize for mypyc compilation
-    if t > 1.0:
-        t = 1.0
-    elif t < 0.0:
-        t = 0.0
-    #t = max(0.0, min(1.0, t))
+    t = max(0.0, min(1.0, t))
 
     # Compute the closest point's coordinates.
     px = x1 + t * dx
@@ -614,7 +609,7 @@ def circle_line_collision_continuous(
     # Find the min and max x and y coordinates that any endpoint of the line segment can take on over the past frame
 
     # X
-    vx = (line_vel_x - circle_vel_x) * delta_time # Per frame velocities
+    vx = (line_vel_x - circle_vel_x) * delta_time  # Per frame velocities
     if ax0 < bx0:
         if vx >= 0.0:
             min_x = ax0 - vx
@@ -771,12 +766,7 @@ def circle_line_collision_discrete(line_A: tuple[float, float], line_B: tuple[fl
         # Compute projection parameter t of origin onto line defined by segment A-B
         # Clamp t to [0, 1] to project onto the actual segment
         t = -(ax * dx + ay * dy) / len_sq
-        # Avoid max/min to optimize for mypyc compilation
-        if t > 1.0:
-            t = 1.0
-        elif t < 0.0:
-            t = 0.0
-        #t = max(0.0, min(1.0, t))
+        t = max(0.0, min(1.0, t))
 
         # Compute closest point on segment to the circle's center (which is now at origin)
         px = ax + t * dx

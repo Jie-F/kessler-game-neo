@@ -615,7 +615,7 @@ class KesslerGame:
                         # Rewind objects
                         ax = asteroid.x + mine.countdown_timer * asteroid.vx
                         ay = asteroid.y + mine.countdown_timer * asteroid.vy
-                        collision_time = min(0.0, mine.countdown_timer) # This min clamp should be unnecessary, but just in case
+                        collision_time = min(0.0, mine.countdown_timer)  # This min clamp should be unnecessary, but just in case
                     dx = abs(ax - mine.x)
                     dy = abs(ay - mine.y)
                     if dx > 0.5 * self.map_width:
@@ -863,7 +863,7 @@ class KesslerGame:
                         game_state.add_mine(new_mine.state)
             # The bullet and mine that the ship shot will get updated from the start of the frame to the end
             for asteroid in asteroids:
-                asteroid.update(self.delta_time, self.map_width, self.map_height)
+                asteroid.update(self.delta_time, scenario.map_size)
             for bullet in bullets:
                 bullet.update(self.delta_time)
             for mine in mines:
@@ -915,7 +915,7 @@ class KesslerGame:
                         # Rewind
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             bullet.update(dt)
-                            asteroid.update(dt, self.map_width, self.map_height)
+                            asteroid.update(dt, scenario.map_size)
                         # Handle collision
                         bullets_to_cull.append(bul_idx)
                         asteroids_to_cull.append(ast_idx)
@@ -923,12 +923,12 @@ class KesslerGame:
                         bullet.owner.bullets_hit += 1
                         bullet.owner.asteroids_hit += 1
 
-                        new_asteroids = asteroid.destruct(impactor=bullet, map_width=self.map_width, map_height=self.map_height, random_ast_split=self.random_ast_splits)
+                        new_asteroids = asteroid.destruct(impactor=bullet, map_size=scenario.map_size, random_ast_split=self.random_ast_splits)
                         bullet.destruct()
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             for a in new_asteroids:
                                 # This is a forward update, from the time of collision to the end of the frame!
-                                a.update(-dt, self.map_width, self.map_height)
+                                a.update(-dt, scenario.map_size)
                         ast_idx_offset = len(asteroids)
                         asteroids.extend(new_asteroids)
                         if not self.competition_safe_mode:
@@ -955,17 +955,17 @@ class KesslerGame:
                         # Rewind
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             ship.update(dt, scenario.map_size, False)
-                            asteroid.update(dt, self.map_width, self.map_height)
+                            asteroid.update(dt, scenario.map_size)
                         # Handle collision
                         ship.asteroids_hit += 1
 
-                        new_asteroids = asteroid.destruct(impactor=ship, map_width=self.map_width, map_height=self.map_height, random_ast_split=self.random_ast_splits)
+                        new_asteroids = asteroid.destruct(impactor=ship, map_size=scenario.map_size, random_ast_split=self.random_ast_splits)
                         ship.destruct(map_size=scenario.map_size)
 
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             for a in new_asteroids:
                                 # This is a forward update, from the time of collision to the end of the frame!
-                                a.update(-dt, self.map_width, self.map_height)
+                                a.update(-dt, scenario.map_size)
                         ast_idx_offset = len(asteroids)
                         asteroids.extend(new_asteroids)
                         if not self.competition_safe_mode:
@@ -1026,7 +1026,7 @@ class KesslerGame:
                         # Rewind if necessary
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             mine.update(dt)
-                            asteroid.update(dt, self.map_width, self.map_height)
+                            asteroid.update(dt, scenario.map_size)
                         
                         # Handle collision
                         mine.owner.mines_hit += 1
@@ -1034,14 +1034,14 @@ class KesslerGame:
 
                         asteroids_to_cull.append(ast_idx)
 
-                        new_asteroids = asteroid.destruct(impactor=mine, map_width=self.map_width, map_height=self.map_height, random_ast_split=self.random_ast_splits)
+                        new_asteroids = asteroid.destruct(impactor=mine, map_size=scenario.map_size, random_ast_split=self.random_ast_splits)
 
                         # Move the things back to the present
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             mine.update(-dt)
                             for a in new_asteroids:
                                 # This is a forward update, from the time of collision to the end of the frame!
-                                a.update(-dt, self.map_width, self.map_height)
+                                a.update(-dt, scenario.map_size)
                         
                         ast_idx_offset = len(asteroids)
                         asteroids.extend(new_asteroids)

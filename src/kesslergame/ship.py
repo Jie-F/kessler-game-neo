@@ -76,12 +76,12 @@ class Ship:
         self.mass: float = 300.0  # kg - reasonable? max asteroid mass currently is ~490 kg
 
         # Manage respawns/firing via timers
-        self._respawning: float = 0.0 # seconds
-        self._respawn_time: float = 3.0 # seconds
-        self._fire_limiter: float = 0.0 # seconds
-        self._fire_time: float = 1.0 / 10.0 # seconds
-        self._mine_limiter: float = 0.0 # second
-        self._mine_deploy_time: float = 1.0 # seconds
+        self._respawning: float = 0.0  # seconds
+        self._respawn_time: float = 3.0  # seconds
+        self._fire_limiter: float = 0.0  # seconds
+        self._fire_time: float = 1.0 / 10.0  # seconds
+        self._mine_limiter: float = 0.0  # second
+        self._mine_deploy_time: float = 1.0  # seconds
 
         # Track bullet/mine statistics
         self.mines_remaining: int = mines_remaining
@@ -263,7 +263,7 @@ class Ship:
                 dx_sum += dx
                 dy_sum += dy
                 assert delta_time - start_t <= 0.0
-                break # Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
+                break  # Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
             else:
                 # This interval is fully included within t. Add the full integral amount
                 assert delta_time <= end_t
@@ -276,8 +276,8 @@ class Ship:
         """
         Update our position and other particulars.
         """
-        #if self.id == 3:
-        #    print(f"ID is 3 and we're doing actions: {self.fire=} {self.drop_mine=}")
+
+        # Handle shooting and mining
         if allow_shooting:
             new_bullet = self.fire_bullet(map_size) if self.fire else None
             new_mine = self.deploy_mine() if self.drop_mine else None
@@ -351,7 +351,7 @@ class Ship:
             v1: float = 0.0
             accel_phase2 = 0.0  # default to coasting at max speed, or stopped in second phase
 
-            if is_moving and net_acc * initial_speed < 0.0: # Net accel is opposite sign from direction of movement
+            if is_moving and net_acc * initial_speed < 0.0:  # Net accel is opposite sign from direction of movement
                 # Case 1: drag will bring us to a stop
                 #print('case 1')
                 assert net_acc != 0.0
@@ -374,7 +374,6 @@ class Ship:
                 max_speed = copysign(self.max_speed, initial_speed + net_acc * delta_time)
                 if net_acc != 0.0 and delta_time != 0.0:
                     to_max = (max_speed - initial_speed) / net_acc
-                    #print('case 2', to_max)
                     assert to_max >= 0.0
                     # If we'll achieve and exceed max speed within this frame
                     if 0.0 <= to_max < delta_time:
@@ -466,15 +465,15 @@ class Ship:
                     dx, dy = analytic_ship_movement_integration(v0, a, theta0, omega, delta_time - start_t)
                     dx_sum += dx
                     dy_sum += dy
-                    speed_sum += a * (delta_time - start_t) # This time diff results in a negative number
+                    speed_sum += a * (delta_time - start_t)  # This time diff results in a negative number
                     assert delta_time - start_t <= 0.0
-                    break # Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
+                    break  # Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
                 else:
                     # This interval is fully included within t. Add the full integral amount
                     assert delta_time <= end_t
                     dx_sum += dx
                     dy_sum += dy
-                    speed_sum += a * (end_t - start_t) # This time diff results in a negative number
+                    speed_sum += a * (end_t - start_t)  # This time diff results in a negative number
                     assert end_t - start_t <= 0.0
             
             self.x += dx_sum

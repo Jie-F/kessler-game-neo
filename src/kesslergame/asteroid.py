@@ -92,14 +92,11 @@ class Asteroid:
     def velocity(self) -> tuple[float, float]:
         return (self.vx, self.vy)
 
-    def update(self, delta_time: float, map_width: float, map_height: float) -> None:
+    def update(self, delta_time: float, map_size: tuple[int, int]) -> None:
         """ Move the asteroid based on velocity"""
         # Avoid attribute lookup using local var
-        x, y = self.x, self.y
-        x += self.vx * delta_time
-        y += self.vy * delta_time
-        x %= map_width
-        y %= map_height
+        x = (self.x + self.vx * delta_time) % map_size[0]
+        y = (self.y + self.vy * delta_time) % map_size[1]
         self.x = x
         self.y = y
         # Update mutable state (cache the lookup first)
@@ -108,7 +105,7 @@ class Asteroid:
         state[1] = y
         self.angle += delta_time * self.turnrate
 
-    def destruct(self, impactor: Bullet | Mine | Ship, map_width: float, map_height: float, random_ast_split: bool) -> list[Asteroid]:
+    def destruct(self, impactor: Bullet | Mine | Ship, map_size: tuple[int, int], random_ast_split: bool) -> list[Asteroid]:
         """ Spawn child asteroids"""
         # Split angle is the angle off of the new velocity vector for the two asteroids to the sides, the center child
         # asteroid continues on the new velocity path
@@ -117,17 +114,17 @@ class Asteroid:
         split_angle_bound: float = 30.0
         if self.size != 1:
             if isinstance(impactor, Mine):
-                if impactor.x - self.x > 0.5 * map_width:
-                    mine_x_wrapped = impactor.x - map_width
-                elif impactor.x - self.x < -0.5 * map_width:
-                    mine_x_wrapped = impactor.x + map_width
+                if impactor.x - self.x > 0.5 * map_size[0]:
+                    mine_x_wrapped = impactor.x - map_size[0]
+                elif impactor.x - self.x < -0.5 * map_size[0]:
+                    mine_x_wrapped = impactor.x + map_size[0]
                 else:
                     mine_x_wrapped = impactor.x
 
-                if impactor.y - self.y > 0.5 * map_height:
-                    mine_y_wrapped = impactor.y - map_height
-                elif impactor.y - self.y < -0.5 * map_height:
-                    mine_y_wrapped = impactor.y + map_height
+                if impactor.y - self.y > 0.5 * map_size[1]:
+                    mine_y_wrapped = impactor.y - map_size[1]
+                elif impactor.y - self.y < -0.5 * map_size[1]:
+                    mine_y_wrapped = impactor.y + map_size[1]
                 else:
                     mine_y_wrapped = impactor.y
 
