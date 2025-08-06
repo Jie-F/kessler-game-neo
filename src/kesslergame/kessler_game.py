@@ -1179,7 +1179,7 @@ class KesslerGame:
             ):
                 # All live ships are out of bullets and no bullets are on map
                 stop_reason = StopReason.out_of_bullets
-            elif sim_frame >= ceil(time_limit * self.frequency):
+            elif isfinite(time_limit) and sim_frame >= ceil(time_limit * self.frequency):
                 # Out of time
                 stop_reason = StopReason.time_expired
 
