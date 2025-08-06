@@ -110,16 +110,24 @@ class Scenario:
 
         self._ammo_limit_multiplier = ammo_limit_multiplier
 
-        if bullet_limit is not None and bullet_limit < -1:
-            raise ValueError("Bullet limit must be -1 for unlimited, or a nonnegative integer")
+        # Validate bullet_limit
+        if bullet_limit is not None:
+            if not isinstance(bullet_limit, int):
+                raise ValueError(f"bullet_limit must be an integer, got {type(bullet_limit).__name__}")
+            if bullet_limit < -1:
+                raise ValueError("bullet_limit must be -1 for unlimited, or a nonnegative integer")
         self.bullet_limit = bullet_limit
 
         if self._ammo_limit_multiplier is not None:
             assert self.bullet_limit is None
             self.bullet_limit = max(1, round(self.max_asteroids * self._ammo_limit_multiplier))
 
-        if mine_limit is not None and mine_limit < -1:
-            raise ValueError("Mine limit must be -1 for unlimited, or a nonnegative integer")
+        # Validate mine_limit
+        if mine_limit is not None:
+            if not isinstance(mine_limit, int):
+                raise ValueError(f"mine_limit must be an integer, got {type(mine_limit).__name__}")
+            if mine_limit < -1:
+                raise ValueError("mine_limit must be -1 for unlimited, or a nonnegative integer")
         self.mine_limit = mine_limit
 
         # Validate that bullets are specified either nowhere, in the ship state, or in the scenario. But not both!
