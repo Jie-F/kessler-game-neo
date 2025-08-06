@@ -34,7 +34,7 @@ class Asteroid:
         """
 
         # Set size to 4 if none is specified. Notify if out of size range
-        if size:
+        if size is not None:
             if 1 <= size <= 4:
                 self.size = size
             else:

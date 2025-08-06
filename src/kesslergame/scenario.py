@@ -5,7 +5,7 @@
 
 from typing import Any
 import random
-from math import isclose, inf
+from math import isclose, inf, hypot, degrees, atan2
 
 from .ship import Ship
 from .asteroid import Asteroid
@@ -204,11 +204,37 @@ class Scenario:
 
         # Loop through and create AsteroidSprites based on starting state
         for asteroid_state in self.asteroid_states:
-            if asteroid_state:
+            if asteroid_state: # Not an empty dictionary
+                # Copy to avoid mutating original input
+                asteroid_state = dict(asteroid_state)
+
+                has_velocity = "velocity" in asteroid_state
+                has_speed = "speed" in asteroid_state
+                has_angle = "angle" in asteroid_state
+
+                if has_velocity:
+                    if has_speed or has_angle:
+                        raise ValueError(
+                            "Asteroid state cannot contain both 'velocity' and 'speed' or 'angle'. "
+                            "If specifying 'velocity', please omit 'speed/angle'"
+                        )
+                    vx, vy = asteroid_state.pop("velocity")
+                    speed = hypot(vx, vy)
+                    angle = degrees(atan2(vy, vx)) % 360.0
+                    asteroid_state["speed"] = speed
+                    asteroid_state["angle"] = angle
+
+                # No need to change anything if velocity wasn't specified,
+                # because the Asteroid constructor handles optional speed/angle
+
+                # Apply position preprocessing as needed
                 asteroid_state = wrap_asteroid(asteroid_state, self.map_size)
                 asteroid_state = nudge_asteroid_away_from_border(asteroid_state, self.map_size)
+                
+                # Create the asteroid object
                 asteroids.append(Asteroid(**asteroid_state))
             else:
+                # Empty dict. Initialize a default random asteroid.
                 asteroids.append(
                     Asteroid(position=(random.randrange(0, self.map_size[0]),
                                        random.randrange(0, self.map_size[1])),
