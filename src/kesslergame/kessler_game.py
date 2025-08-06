@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 import warnings
 
-from math import inf, nan, isfinite, isnan, ceil, sqrt, radians, sin, cos
+from math import inf, isfinite, isnan, ceil, radians, sin, cos
 from typing import Any, TypedDict, cast, ClassVar
 from enum import Enum, IntEnum
 
@@ -23,7 +23,7 @@ from .ship import Ship
 from .bullet import Bullet
 from .settings_dicts import SettingsDict, UISettingsDict
 from .state_models import GameState, ShipState
-from .heapq_mypyc import heappush, heappop, heapify, heapreplace, merge, nlargest, nsmallest, heappushpop
+from .heapq_mypyc import heappush, heappop, heapify
 
 
 class StopReason(Enum):
