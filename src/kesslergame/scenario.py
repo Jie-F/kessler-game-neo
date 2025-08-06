@@ -87,7 +87,17 @@ class Scenario:
         self.name = name
 
         # Store map size
-        self.map_size = map_size if map_size is not None else (1000, 800)
+        if map_size is None:
+            self.map_size = (1000, 800)
+        else:
+            if not (
+                isinstance(map_size, tuple) and
+                len(map_size) == 2 and
+                all(isinstance(x, int) for x in map_size)
+            ):
+                raise ValueError(f"map_size must be a tuple of two integers, got {map_size!r}")
+            self.map_size = map_size
+
 
         # Store ship states if not None, otherwise, create one ship at center
         self.ship_states = ship_states if ship_states is not None else [{"position": (self.map_size[0] / 2, self.map_size[1] / 2)}]
