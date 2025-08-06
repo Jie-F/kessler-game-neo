@@ -103,7 +103,7 @@ class Scenario:
 
         # Set the ammo limit multiplier
         if ammo_limit_multiplier is not None and ammo_limit_multiplier < 0.0:
-            raise ValueError("Ammo limit multiplier must be > 0. If unlimited ammo is desired, do not pass the ammo limit multiplier")
+            raise ValueError("Ammo limit multiplier must be > 0. If unlimited ammo is desired, use 0.0, or do not pass the ammo limit multiplier")
 
         if ammo_limit_multiplier is not None and bullet_limit is not None:
             raise ValueError("Both 'ammo_limit_multiplier' and 'bullet_limit' are specified for Scenario() constructor. Please define at most one of these arguments.")
