@@ -36,21 +36,45 @@ class Score:
     def update(self, ships: list[Ship], sim_time: float, controller_perf: list[float] | None = None) -> None:
         self.sim_time = sim_time
         for team in self.teams:
-            ast_hit, bul_hit, shots, bullets, mine_hit, mines_dropped, mines, deaths, lives = (0, 0, 0, 0, 0, 0, 0, 0, 0)
+            bullet_asteroid_hits = 0
+            ship_asteroid_hits = 0
+            ship_ship_hits = 0
+            mine_ship_hits = 0
+            mine_asteroid_hits = 0
+            shots = 0
+            bullets = 0
+            mines_dropped = 0
+            mines = 0
+            deaths = 0
+            lives = 0
+
             for idx, ship in enumerate(ships):
                 if team.team_id == ship.team:
-                    ast_hit += ship.asteroids_hit
-                    bul_hit += ship.bullet_hits
+                    bullet_asteroid_hits += ship.bullet_asteroid_hits
+                    ship_asteroid_hits += ship.ship_asteroid_hits
+                    ship_ship_hits += ship.ship_ship_hits
+                    mine_ship_hits += ship.mine_ship_hits
+                    mine_asteroid_hits += ship.mine_asteroid_hits
                     shots += ship.bullets_shot
                     bullets += ship.bullets_remaining
-                    mine_hit += ship.mine_hits
                     mines_dropped += ship.mines_dropped
                     mines += ship.mines_remaining
                     deaths += ship.deaths
                     lives += ship.lives
                     if controller_perf is not None and controller_perf[idx] > 0:
                         team.eval_times.append(controller_perf[idx])
-            team.asteroids_hit, team.bullet_hits, team.shots_fired, team.bullets_remaining, team.mine_hits, team.mines_dropped, team.mines_remaining, team.deaths, team.lives_remaining = (ast_hit, bul_hit, shots, bullets, mine_hit, mines_dropped, mines, deaths, lives)
+
+            team.bullet_asteroid_hits = bullet_asteroid_hits
+            team.ship_asteroid_hits = ship_asteroid_hits
+            team.ship_ship_hits = ship_ship_hits
+            team.mine_ship_hits = mine_ship_hits
+            team.mine_asteroid_hits = mine_asteroid_hits
+            team.shots_fired = shots
+            team.bullets_remaining = bullets
+            team.mines_dropped = mines_dropped
+            team.mines_remaining = mines
+            team.deaths = deaths
+            team.lives_remaining = lives
 
     def finalize(self, sim_time: float, stop_reason: StopReason, ships: list[Ship]) -> None:
         self.sim_time = sim_time
@@ -62,11 +86,15 @@ class Score:
         for team in self.teams:
             summary = (
                 f"Team {team.team_id} ({team.team_name}): "
-                f"Asteroids Hit={team.asteroids_hit}, Bullet Hits={team.bullet_hits}, "
+                f"Asteroids Hit={team.asteroids_hit}, Bullet-Asteroid Hits={team.bullet_asteroid_hits}, "
                 f"Shots Fired={team.shots_fired}, Bullets Remaining={team.bullets_remaining}, "
-                f"Mine Hits={team.mine_hits}, Mines Dropped={team.mines_dropped}, "
-                f"Mines Remaining={team.mines_remaining}, Deaths={team.deaths}, "
-                f"Lives Remaining={team.lives_remaining}"
+                f"Mine-Asteroid Hits={team.mine_asteroid_hits}, Mines Dropped={team.mines_dropped}, "
+                f"Mines Remaining={team.mines_remaining}, "
+                f"Ship-Asteroid Hits={team.ship_asteroid_hits}, Ship-Ship Hits={team.ship_ship_hits}, "
+                f"Mine-Ship Hits={team.mine_ship_hits}, "
+                f"Deaths={team.deaths}, "
+                f"Lives Remaining={team.lives_remaining}, "
+                f"Eval Times={team.eval_times}"
             )
             team_summaries.append(summary)
         

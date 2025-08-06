@@ -920,8 +920,7 @@ class KesslerGame:
                         bullets_to_cull.append(bul_idx)
                         asteroids_to_cull.append(ast_idx)
 
-                        bullet.owner.bullet_hits += 1
-                        bullet.owner.asteroids_hit += 1
+                        bullet.owner.bullet_asteroid_hits += 1
 
                         new_asteroids = asteroid.destruct(impactor=bullet, map_size=scenario.map_size, random_ast_split=self.random_ast_splits)
                         bullet.destruct()
@@ -957,7 +956,7 @@ class KesslerGame:
                             ship.update(dt, scenario.map_size, False)
                             asteroid.update(dt, scenario.map_size)
                         # Handle collision
-                        ship.asteroids_hit += 1
+                        ship.ship_asteroid_hits += 1
 
                         new_asteroids = asteroid.destruct(impactor=ship, map_size=scenario.map_size, random_ast_split=self.random_ast_splits)
                         ship.destruct(map_size=scenario.map_size)
@@ -1002,6 +1001,10 @@ class KesslerGame:
                         # Handle collision
                         ship1.destruct(map_size=scenario.map_size)
                         ship2.destruct(map_size=scenario.map_size)
+
+                        ship1.ship_ship_hits += 1
+                        ship2.ship_ship_hits += 1
+
                         # Roll forward to the end of the frame again if alive
                         if ship1.alive:
                             if abs(dt) > CollisionEvent.TOLERANCE:
@@ -1029,8 +1032,7 @@ class KesslerGame:
                             asteroid.update(dt, scenario.map_size)
                         
                         # Handle collision
-                        mine.owner.mine_hits += 1
-                        mine.owner.asteroids_hit += 1
+                        mine.owner.mine_asteroid_hits += 1
 
                         asteroids_to_cull.append(ast_idx)
 
@@ -1076,6 +1078,8 @@ class KesslerGame:
                         # Handle collision
                         mine.destruct()
                         ship.destruct(map_size=scenario.map_size)
+
+                        ship.mine_ship_hits += 1
                         
                         if not ship.alive:
                             ships_to_cull.append(ship_idx)

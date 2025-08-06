@@ -19,10 +19,10 @@ class Ship:
         'vx', 'vy', 'heading', 'lives', 'deaths', 'team', 'team_name',
         'fire', 'drop_mine', 'thrust_range', 'turn_rate_range', 'max_speed',
         'drag', 'radius', 'mass', '_respawning', '_respawn_time',
-        '_fire_limiter', '_fire_time', '_mine_limiter', '_mine_deploy_time', 'mines_remaining',
-        'bullets_remaining', 'bullets_shot', 'mines_dropped', 'bullet_hits',
-        'mine_hits', 'asteroids_hit', 'custom_sprite_path', 'integration_initial_states',
-        '_state', '_ownstate'
+        '_fire_limiter', '_fire_time', '_mine_limiter', '_mine_deploy_time', 'bullets_remaining',
+        'mines_remaining', 'bullets_shot', 'mines_dropped', 'bullet_asteroid_hits',
+        'ship_asteroid_hits', 'ship_ship_hits', 'mine_ship_hits', 'mine_asteroid_hits',
+        'custom_sprite_path', 'integration_initial_states', '_state', '_ownstate'
     )
     def __init__(self, ship_id: int,
                  position: tuple[float, float],
@@ -90,9 +90,12 @@ class Ship:
         self.mines_remaining: int = mines_remaining
         self.bullets_shot: int = 0
         self.mines_dropped: int = 0
-        self.bullet_hits: int = 0    # Number of asteroids hit by bullets
-        self.mine_hits: int = 0      # Number of asteroids hit by mines
-        self.asteroids_hit: int = 0  # Number of asteroids hit (including ship collision)
+
+        self.bullet_asteroid_hits: int = 0
+        self.ship_asteroid_hits: int = 0
+        self.ship_ship_hits: int = 0
+        self.mine_ship_hits: int = 0
+        self.mine_asteroid_hits: int = 0
 
         # [x: float, y: float, vx: float, vy: float, speed: float, heading: float, mass: float, radius: float, id: int, team: int, is_respawning: bool, lives_remaining: int, deaths: int]
         self._state: ShipDataList = [
@@ -240,6 +243,14 @@ class Ship:
     @property
     def mine_wait_time(self) -> float:
         return self._mine_limiter
+
+    @property
+    def asteroids_hit(self) -> int:
+        return self.bullet_asteroid_hits + self.ship_asteroid_hits + self.mine_asteroid_hits
+
+    @property
+    def ships_hit(self) -> int:
+        return self.ship_ship_hits + self.mine_ship_hits
 
     def shoot(self) -> None:
         self.fire = True
