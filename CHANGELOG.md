@@ -24,6 +24,11 @@
 - Handle controller exceptions in competition safe mode
 - Added arbitrary mine fuse times, even ones that do not land on a frame boundary. This is not used in practice, but is supported.
 - Preprocess scenarios to wrap their asteroids inbounds. This is less confusing for agents, otherwise they will see out of bounds asteroids on frame 0, and inbounds asteroids on all subsequent frames
+- Simpler handling for when mine-asteroid collision distance is 0
+- More flexible bullet/mine limit definitions in both Scenario constructor, and Ship state dicts
+- Improved input data validation for scenario and game setting definitions
+- Allow defining scenario asteroid states by both speed/angle, as well as velocity (vx, vy) components
+- Added comprehensive score tracking for all 5 collision types (bullet-asteroid, ship-asteroid, ship-ship, mine-ship, mine-asteroid)
 
 ## [2.4.0] - 28 July 2025
 - Fixed building MyPyC compiled wheels, so compiled modules are now actually being run to provide a 4-10X+ speed benefit over interpreted

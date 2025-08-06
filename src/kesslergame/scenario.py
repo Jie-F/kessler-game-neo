@@ -71,15 +71,15 @@ class Scenario:
                  mine_limit: int | None = None, stop_if_no_ammo: bool | None = None, stop_if_no_asteroids: bool | None = None,
                  stop_if_no_ships: bool | None = None) -> None:
         """
-        Specify the starting state of the environment, including map dimensions and optional features
+        Represents the configuration and initial state of a game scenario,
+        including ships, asteroids, map size, ammo limits, and victory conditions.
 
         Make sure to only set either 'num_asteroids' or 'asteroid_states'.
 
         :param name: Optional, name of the scenario
         :param num_asteroids: Optional, Number of asteroids
-        :param asteroid_states: Optional, Asteroid Starting states
+        :param asteroid_states: Optional, list of dictionaries representing asteroid starting states
         :param ship_states: Optional, Ship Starting states (list of dictionaries)
-        :param game_map: Game Map using 'Map' object
         :param seed: Optional seeding value to pass to random.seed() which is called before asteroid creation
         :param time_limit: Optional value for limiting the total duration of the scenario, will be set to infinity if not defined
         :param ammo_limit_multiplier: Optional value for limiting the number of bullets each ship will have
@@ -209,6 +209,10 @@ class Scenario:
 
     @property
     def is_random(self) -> bool:
+        """
+        Indicates whether the scenario has randomized asteroids.
+        Returns True if any asteroid state is unspecified (empty dict), else False.
+        """
         return not all(state for state in self.asteroid_states) if self.asteroid_states else True
 
     @property
@@ -230,7 +234,7 @@ class Scenario:
 
     def asteroids(self) -> list[Asteroid]:
         """
-        Create asteroid sprites
+        Create asteroid instances based on initial state definitions.
         :return: list of Asteroids
         """
         asteroids = []
@@ -281,9 +285,8 @@ class Scenario:
 
     def ships(self) -> list[Ship]:
         """
-        Create ship sprites
-        :param frequency: Operating frequency of the game
-        :return: list of ShipSprites
+        Create ship game objects
+        :return: list of Ship objects
         """
         # Loop through and create ShipSprites based on starting state
         return [Ship(idx + 1, **ship_state) for idx, ship_state in enumerate(self.ship_states)]
