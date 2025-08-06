@@ -920,7 +920,7 @@ class KesslerGame:
                         bullets_to_cull.append(bul_idx)
                         asteroids_to_cull.append(ast_idx)
 
-                        bullet.owner.bullets_hit += 1
+                        bullet.owner.bullet_hits += 1
                         bullet.owner.asteroids_hit += 1
 
                         new_asteroids = asteroid.destruct(impactor=bullet, map_size=scenario.map_size, random_ast_split=self.random_ast_splits)
@@ -1029,7 +1029,7 @@ class KesslerGame:
                             asteroid.update(dt, scenario.map_size)
                         
                         # Handle collision
-                        mine.owner.mines_hit += 1
+                        mine.owner.mine_hits += 1
                         mine.owner.asteroids_hit += 1
 
                         asteroids_to_cull.append(ast_idx)
@@ -1173,8 +1173,7 @@ class KesslerGame:
                 stop_reason = StopReason.no_ships
             elif (
                 scenario.stop_if_no_ammo
-                and sum(ship.bullets_remaining for ship in liveships) == 0
-                and sum(ship.mines_remaining for ship in liveships) == 0
+                and all(ship.bullets_remaining == 0 and ship.mines_remaining == 0 for ship in liveships)
                 and not (bullets or mines)
             ):
                 # All live ships are out of bullets and no bullets are on map

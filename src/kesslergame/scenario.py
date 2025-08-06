@@ -60,15 +60,15 @@ def nudge_asteroid_away_from_border(asteroid_dict: dict[str, Any], map_size: tup
     return asteroid_dict
 
 class Scenario:
-    def __init__(self, name: str = "Unnamed", num_asteroids: int = 0, asteroid_states: list[dict[str, Any]] | None = None,
+    def __init__(self, name: str = "Scenario", num_asteroids: int | None = None, asteroid_states: list[dict[str, Any]] | None = None,
                  ship_states: list[dict[str, Any]] | None = None, map_size: tuple[int, int] | None = None, seed: int | None = None,
-                 time_limit: float = inf, ammo_limit_multiplier: float = 0.0, stop_if_no_ammo: bool = False,
-                 stop_if_no_asteroids: bool = True, stop_if_no_ships: bool = True) -> None:
+                 time_limit: float | None = None, ammo_limit_multiplier: float | None = None, bullet_limit: int | None = None,
+                 mine_limit: int | None = None, stop_if_no_ammo: bool | None = None, stop_if_no_asteroids: bool | None = None,
+                 stop_if_no_ships: bool | None = None) -> None:
         """
         Specify the starting state of the environment, including map dimensions and optional features
 
-        Make sure to only set either ``num_asteroids`` or ``asteroid_states``. If neither are set, the
-        Scenario defaults to 3 randomly placed asteroids
+        Make sure to only set either ``num_asteroids`` or ``asteroid_states``.
 
         :param name: Optional, name of the scenario
         :param num_asteroids: Optional, Number of asteroids
@@ -87,13 +87,13 @@ class Scenario:
         self.name = name
 
         # Store map size
-        self.map_size = map_size if map_size else (1000, 800)
+        self.map_size = map_size if map_size is not None else (1000, 800)
 
         # Store ship states if not None, otherwise, create one ship at center
-        self.ship_states = ship_states if ship_states else [{"position": (self.map_size[0]/2, self.map_size[1]/2)}]
+        self.ship_states = ship_states if ship_states is not None else [{"position": (self.map_size[0] / 2, self.map_size[1] / 2)}]
 
         # Set the time_limit to infinity if it is 0 or None
-        self.time_limit = time_limit
+        self.time_limit = time_limit if time_limit is not None else inf
 
         # Store random seed
         self.seed = seed
@@ -102,36 +102,60 @@ class Scenario:
         self.asteroid_states = list()
 
         # Set the ammo limit multiplier
-        if ammo_limit_multiplier < 0.0:
-            raise ValueError("Ammo limit multiplier must be > 0."
-                             "If unlimited ammo is desired, do not pass the ammo limit multiplier")
-        else:
-            self._ammo_limit_multiplier = ammo_limit_multiplier
+        if ammo_limit_multiplier is not None and ammo_limit_multiplier < 0.0:
+            raise ValueError("Ammo limit multiplier must be > 0. If unlimited ammo is desired, do not pass the ammo limit multiplier")
 
-        if ammo_limit_multiplier and stop_if_no_ammo:
-            self.stop_if_no_ammo = True
-        elif not ammo_limit_multiplier and stop_if_no_ammo:
-            self.stop_if_no_ammo = False
-            raise ValueError("Cannot enforce no ammo stopping condition because ammo is unlimited"
-                             "Do not pass ammo_limit_multiplier during scenario creation if unlimited ammo is desired")
-        else:
-            self.stop_if_no_ammo = False
+        if ammo_limit_multiplier is not None and bullet_limit is not None:
+            raise ValueError("Both 'ammo_limit_multiplier' and 'bullet_limit' are specified for Scenario() constructor. Please define at most one of these arguments.")
 
-        self.stop_if_no_asteroids = stop_if_no_asteroids
-        self.stop_if_no_ships = stop_if_no_ships
+        self._ammo_limit_multiplier = ammo_limit_multiplier
+
+        if bullet_limit is not None and bullet_limit < -1:
+            raise ValueError("Bullet limit must be -1 for unlimited, or a nonnegative integer")
+        self.bullet_limit = bullet_limit
+
+        if self._ammo_limit_multiplier is not None:
+            assert self.bullet_limit is None
+            self.bullet_limit = max(1, round(self.max_asteroids * self._ammo_limit_multiplier))
+
+        if mine_limit is not None and mine_limit < -1:
+            raise ValueError("Mine limit must be -1 for unlimited, or a nonnegative integer")
+        self.mine_limit = mine_limit
+
+        # Validate that bullets are specified either nowhere, in the ship state, or in the scenario. But not both!
+        if any("bullets_remaining" in ship for ship in self.ship_states) and self.bullet_limit is not None:
+            raise ValueError("Both 'bullets_remaining' in ship states, and 'bullet_limit' in the scenario are specified. Please only specify in one place or the other.")
+
+        # Validate that mines are specified either nowhere, in the ship state, or in the scenario. But not both!
+        if any("mines_remaining" in ship for ship in self.ship_states) and self.mine_limit is not None:
+            raise ValueError("Both 'mines_remaining' in ship states, and 'mine_limit' in the scenario are specified. Please only specify in one place or the other.")
+
+        # Inject the bullets and mines limit into the ship states, if specified
+        if self.bullet_limit is not None:
+            for ship in self.ship_states:
+                if "bullets_remaining" not in ship:
+                    ship["bullets_remaining"] = self.bullet_limit
+        if self.mine_limit is not None:
+            for ship in self.ship_states:
+                if "mines_remaining" not in ship:
+                    ship["mines_remaining"] = self.mine_limit
+
+        self.stop_if_no_ammo = stop_if_no_ammo if stop_if_no_ammo is not None else False
+
+        self.stop_if_no_asteroids = stop_if_no_asteroids if stop_if_no_asteroids is not None else True
+
+        self.stop_if_no_ships = stop_if_no_ships if stop_if_no_ships is not None else True
 
         # Check for mismatch between explicitly defined number of asteroids and tuple of states
-        if num_asteroids and asteroid_states:
-            raise ValueError("Both `num_asteroids` and `asteroid_positions` are specified for Scenario() constructor."
-                             "Make sure to only define one of these arguments")
-        elif asteroid_states:
+        if num_asteroids is not None and asteroid_states is not None:
+            raise ValueError("Both 'num_asteroids' and 'asteroid_positions' are specified for Scenario() constructor. Make sure to only define one of these arguments")
+        elif asteroid_states is not None:
             # Store asteroid states
             self.asteroid_states = asteroid_states
-        elif num_asteroids:
+        elif num_asteroids is not None:
             self.asteroid_states = [dict() for _ in range(num_asteroids)]
         else:
-            raise (ValueError("User should define `num_asteroids` or `asteroid_states` to create "
-                              "valid custom starting states for the environment"))
+            raise (ValueError("User should define 'num_asteroids' or 'asteroid_states' to create valid custom starting states for the environment"))
 
     @property
     def name(self) -> None | str:
@@ -155,18 +179,6 @@ class Scenario:
         return sum([Scenario.count_asteroids(asteroid.size) for asteroid in self.asteroids()])
 
     @property
-    def bullet_limit(self) -> int:
-        if self._ammo_limit_multiplier:
-            temp = round(self.max_asteroids * self._ammo_limit_multiplier)
-            if temp == 0:
-                return temp + 1
-            else:
-                return temp
-        else:
-            # Unlimited
-            return -1
-
-    @property
     def map_width(self) -> int:
         return self.map_size[0]
 
@@ -184,7 +196,7 @@ class Scenario:
         Create asteroid sprites
         :return: list of Asteroids
         """
-        asteroids = list()
+        asteroids = []
 
         # Seed the random number generator via an optionally defined user seed
         if self.seed is not None:
@@ -211,4 +223,4 @@ class Scenario:
         :return: list of ShipSprites
         """
         # Loop through and create ShipSprites based on starting state
-        return [Ship(idx + 1, bullets_remaining=self.bullet_limit, **ship_state) for idx, ship_state in enumerate(self.ship_states)]
+        return [Ship(idx + 1, **ship_state) for idx, ship_state in enumerate(self.ship_states)]

@@ -31,7 +31,7 @@ class Score:
             team.total_asteroids = scenario.max_asteroids
             for ship in scenario.ships():
                 if team.team_id == ship.team:
-                    team.total_bullets += scenario.bullet_limit
+                    team.total_bullets += scenario.bullet_limit if scenario.bullet_limit is not None else -1
 
     def update(self, ships: list[Ship], sim_time: float, controller_perf: list[float] | None = None) -> None:
         self.sim_time = sim_time
@@ -40,17 +40,17 @@ class Score:
             for idx, ship in enumerate(ships):
                 if team.team_id == ship.team:
                     ast_hit += ship.asteroids_hit
-                    bul_hit += ship.bullets_hit
+                    bul_hit += ship.bullet_hits
                     shots += ship.bullets_shot
                     bullets += ship.bullets_remaining
-                    mine_hit += ship.mines_hit
+                    mine_hit += ship.mine_hits
                     mines_dropped += ship.mines_dropped
                     mines += ship.mines_remaining
                     deaths += ship.deaths
                     lives += ship.lives
                     if controller_perf is not None and controller_perf[idx] > 0:
                         team.eval_times.append(controller_perf[idx])
-            team.asteroids_hit, team.bullets_hit, team.shots_fired, team.bullets_remaining, team.mines_hit, team.mines_dropped, team.mines_remaining, team.deaths, team.lives_remaining = (ast_hit, bul_hit, shots, bullets, mine_hit, mines_dropped, mines, deaths, lives)
+            team.asteroids_hit, team.bullet_hits, team.shots_fired, team.bullets_remaining, team.mine_hits, team.mines_dropped, team.mines_remaining, team.deaths, team.lives_remaining = (ast_hit, bul_hit, shots, bullets, mine_hit, mines_dropped, mines, deaths, lives)
 
     def finalize(self, sim_time: float, stop_reason: StopReason, ships: list[Ship]) -> None:
         self.sim_time = sim_time
@@ -62,9 +62,9 @@ class Score:
         for team in self.teams:
             summary = (
                 f"Team {team.team_id} ({team.team_name}): "
-                f"Asteroids Hit={team.asteroids_hit}, Bullets Hit={team.bullets_hit}, "
+                f"Asteroids Hit={team.asteroids_hit}, Bullet Hits={team.bullet_hits}, "
                 f"Shots Fired={team.shots_fired}, Bullets Remaining={team.bullets_remaining}, "
-                f"Mines Hit={team.mines_hit}, Mines Dropped={team.mines_dropped}, "
+                f"Mine Hits={team.mine_hits}, Mines Dropped={team.mines_dropped}, "
                 f"Mines Remaining={team.mines_remaining}, Deaths={team.deaths}, "
                 f"Lives Remaining={team.lives_remaining}"
             )

@@ -15,10 +15,10 @@ class Team:
         self.total_asteroids: int = 0
 
         self.asteroids_hit: int = 0
-        self.bullets_hit: int = 0
+        self.bullet_hits: int = 0
         self.shots_fired: int = 0
         self.bullets_remaining: int = 0
-        self.mines_hit: int = 0
+        self.mine_hits: int = 0
         self.mines_dropped: int = 0
         self.mines_remaining: int = 0
         self.deaths: int = 0
@@ -27,7 +27,7 @@ class Team:
 
     @property
     def accuracy(self) -> float:
-        return self.bullets_hit / self.shots_fired if self.shots_fired else 0.0
+        return self.bullet_hits / self.shots_fired if self.shots_fired else 0.0
 
     @property
     def fraction_total_asteroids_hit(self) -> float:
@@ -72,9 +72,9 @@ class Team:
     def __repr__(self) -> str:
         return (
             f"Team {self.team_id} ({self.team_name}): "
-            f"Asteroids Hit={self.asteroids_hit}, Bullets Hit={self.bullets_hit}, "
+            f"Asteroids Hit={self.asteroids_hit}, Bullets Hit={self.bullet_hits}, "
             f"Shots Fired={self.shots_fired}, Bullets Remaining={self.bullets_remaining}, "
-            f"Mines Hit={self.mines_hit}, Mines Dropped={self.mines_dropped}, "
+            f"Mines Hit={self.mine_hits}, Mines Dropped={self.mines_dropped}, "
             f"Mines Remaining={self.mines_remaining}, Deaths={self.deaths}, "
             f"Lives Remaining={self.lives_remaining}, "
             f"Eval Times={self.eval_times}"
@@ -90,7 +90,7 @@ class Team:
             self.total_bullets == other.total_bullets and
             self.total_asteroids == other.total_asteroids and
             self.asteroids_hit == other.asteroids_hit and
-            self.bullets_hit == other.bullets_hit and
+            self.bullet_hits == other.bullet_hits and
             self.shots_fired == other.shots_fired and
             self.bullets_remaining == other.bullets_remaining and
             self.mines_remaining == other.mines_remaining and

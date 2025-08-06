@@ -20,8 +20,8 @@ class Ship:
         'fire', 'drop_mine', 'thrust_range', 'turn_rate_range', 'max_speed',
         'drag', 'radius', 'mass', '_respawning', '_respawn_time',
         '_fire_limiter', '_fire_time', '_mine_limiter', '_mine_deploy_time', 'mines_remaining',
-        'bullets_remaining', 'bullets_shot', 'mines_dropped', 'bullets_hit',
-        'mines_hit', 'asteroids_hit', 'custom_sprite_path', 'integration_initial_states',
+        'bullets_remaining', 'bullets_shot', 'mines_dropped', 'bullet_hits',
+        'mine_hits', 'asteroids_hit', 'custom_sprite_path', 'integration_initial_states',
         '_state', '_ownstate'
     )
     def __init__(self, ship_id: int,
@@ -84,12 +84,14 @@ class Ship:
         self._mine_deploy_time: float = 1.0  # seconds
 
         # Track bullet/mine statistics
-        self.mines_remaining: int = mines_remaining
+        assert bullets_remaining >= -1
         self.bullets_remaining: int = bullets_remaining
+        assert mines_remaining >= -1
+        self.mines_remaining: int = mines_remaining
         self.bullets_shot: int = 0
         self.mines_dropped: int = 0
-        self.bullets_hit: int = 0    # Number of asteroids hit by bullets
-        self.mines_hit: int = 0      # Number of asteroids hit by mines
+        self.bullet_hits: int = 0    # Number of asteroids hit by bullets
+        self.mine_hits: int = 0      # Number of asteroids hit by mines
         self.asteroids_hit: int = 0  # Number of asteroids hit (including ship collision)
 
         # [x: float, y: float, vx: float, vy: float, speed: float, heading: float, mass: float, radius: float, id: int, team: int, is_respawning: bool, lives_remaining: int, deaths: int]
