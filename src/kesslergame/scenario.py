@@ -68,17 +68,19 @@ class Scenario:
         """
         Specify the starting state of the environment, including map dimensions and optional features
 
-        Make sure to only set either ``num_asteroids`` or ``asteroid_states``.
+        Make sure to only set either 'num_asteroids' or 'asteroid_states'.
 
         :param name: Optional, name of the scenario
         :param num_asteroids: Optional, Number of asteroids
         :param asteroid_states: Optional, Asteroid Starting states
         :param ship_states: Optional, Ship Starting states (list of dictionaries)
-        :param game_map: Game Map using ``Map`` object
+        :param game_map: Game Map using 'Map' object
         :param seed: Optional seeding value to pass to random.seed() which is called before asteroid creation
-        :param time_limit: Optional value for limiting the total duration of the scenario, will be set to infinity if value is 0 or None
+        :param time_limit: Optional value for limiting the total duration of the scenario, will be set to infinity if not defined
         :param ammo_limit_multiplier: Optional value for limiting the number of bullets each ship will have
         :param stop_if_no_ammo: Optional flag for stopping the scenario if all ships run out of ammo
+        :param stop_if_no_asteroids: Optional flag for stopping the scenario if no asteroids remain
+        :param stop_if_no_ships: Optional flag for stopping the scenario if no ships remain
         """
         # Protected variable for managing the name, through getter/setter interface
         self._name: str | None = None
@@ -106,10 +108,22 @@ class Scenario:
         self.time_limit = time_limit if time_limit is not None else inf
 
         # Store random seed
+        if seed is not None and not isinstance(seed, int):
+            raise ValueError(f"seed must be an integer or None, got {type(seed).__name__}")
         self.seed = seed
 
-        # Will be built later
+        # Build asteroids list
         self.asteroid_states = list()
+        # Check for mismatch between explicitly defined number of asteroids and tuple of states
+        if num_asteroids is not None and asteroid_states is not None:
+            raise ValueError("Both 'num_asteroids' and 'asteroid_positions' are specified for Scenario() constructor. Make sure to only define one of these arguments")
+        elif asteroid_states is not None:
+            # Store asteroid states
+            self.asteroid_states = asteroid_states
+        elif num_asteroids is not None:
+            self.asteroid_states = [dict() for _ in range(num_asteroids)]
+        else:
+            raise (ValueError("Please define 'num_asteroids' or 'asteroid_states' to create valid custom starting states for the environment"))
 
         # Set the ammo limit multiplier
         if ammo_limit_multiplier is not None and ammo_limit_multiplier < 0.0:
@@ -128,9 +142,13 @@ class Scenario:
                 raise ValueError("bullet_limit must be -1 for unlimited, or a nonnegative integer")
         self.bullet_limit = bullet_limit
 
+        # If using ammo_limit_multiplier, estimate bullets now
         if self._ammo_limit_multiplier is not None:
             assert self.bullet_limit is None
-            self.bullet_limit = max(1, round(self.max_asteroids * self._ammo_limit_multiplier))
+            estimated_asteroid_count = (
+                sum([Scenario.count_asteroids(state.get("size", 3)) for state in self.asteroid_states])
+            )
+            self.bullet_limit = max(1, round(estimated_asteroid_count * self._ammo_limit_multiplier))
 
         # Validate mine_limit
         if mine_limit is not None:
@@ -158,31 +176,27 @@ class Scenario:
                 if "mines_remaining" not in ship:
                     ship["mines_remaining"] = self.mine_limit
 
+        if stop_if_no_ammo is not None and not isinstance(stop_if_no_ammo, bool):
+            raise ValueError(f"stop_if_no_ammo must be a boolean or None, got {type(stop_if_no_ammo).__name__}")
         self.stop_if_no_ammo = stop_if_no_ammo if stop_if_no_ammo is not None else False
 
+        if stop_if_no_asteroids is not None and not isinstance(stop_if_no_asteroids, bool):
+            raise ValueError(f"stop_if_no_asteroids must be a boolean or None, got {type(stop_if_no_asteroids).__name__}")
         self.stop_if_no_asteroids = stop_if_no_asteroids if stop_if_no_asteroids is not None else True
 
+        if stop_if_no_ships is not None and not isinstance(stop_if_no_ships, bool):
+            raise ValueError(f"stop_if_no_ships must be a boolean or None, got {type(stop_if_no_ships).__name__}")
         self.stop_if_no_ships = stop_if_no_ships if stop_if_no_ships is not None else True
 
-        # Check for mismatch between explicitly defined number of asteroids and tuple of states
-        if num_asteroids is not None and asteroid_states is not None:
-            raise ValueError("Both 'num_asteroids' and 'asteroid_positions' are specified for Scenario() constructor. Make sure to only define one of these arguments")
-        elif asteroid_states is not None:
-            # Store asteroid states
-            self.asteroid_states = asteroid_states
-        elif num_asteroids is not None:
-            self.asteroid_states = [dict() for _ in range(num_asteroids)]
-        else:
-            raise (ValueError("User should define 'num_asteroids' or 'asteroid_states' to create valid custom starting states for the environment"))
-
     @property
-    def name(self) -> None | str:
+    def name(self) -> str | None:
         return self._name
 
     @name.setter
     def name(self, name: str) -> None:
-        # Raises error if the name cannot be converted to string
-        self._name = str(name)
+        if not isinstance(name, str):
+            raise ValueError(f"Scenario name must be a string, got {type(name).__name__}")
+        self._name = name
 
     @property
     def num_starting_asteroids(self) -> float:
