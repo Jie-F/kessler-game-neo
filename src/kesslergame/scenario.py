@@ -5,7 +5,7 @@
 
 from typing import Any
 import random
-from math import isclose, inf, hypot, degrees, atan2
+from math import isclose, inf, hypot, degrees, radians, atan2, cos, sin
 
 from .ship import Ship
 from .asteroid import Asteroid
@@ -43,18 +43,23 @@ def nudge_asteroid_away_from_border(asteroid_dict: dict[str, Any], map_size: tup
         return asteroid_dict
     x, y = asteroid_dict["position"]
     width, height = map_size
+    speed = asteroid_dict["speed"]
+    angle = radians(asteroid_dict["angle"])
+    vx, vy = speed * cos(angle), speed * sin(angle)
     EPS = 1e-10
     # Check and nudge X
-    if isclose(x, 0.0, abs_tol=1e-14):
-        x += EPS
-    elif isclose(x, width, abs_tol=1e-14):
-        x -= EPS
+    if isclose(vx, 0.0, abs_tol=1e-14):
+        if isclose(x, 0.0, abs_tol=1e-14):
+            x += EPS
+        elif isclose(x, width, abs_tol=1e-14):
+            x -= EPS
 
     # Check and nudge Y
-    if isclose(y, 0.0, abs_tol=1e-14):
-        y += EPS
-    elif isclose(y, height, abs_tol=1e-14):
-        y -= EPS
+    if isclose(vy, 0.0, abs_tol=1e-14):
+        if isclose(y, 0.0, abs_tol=1e-14):
+            y += EPS
+        elif isclose(y, height, abs_tol=1e-14):
+            y -= EPS
 
     asteroid_dict["position"] = (x, y)
     return asteroid_dict
