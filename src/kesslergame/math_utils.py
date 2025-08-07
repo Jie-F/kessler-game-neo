@@ -59,8 +59,18 @@ def solve_quadratic(a: float, b: float, c: float) -> tuple[float, float]:
 
 def project_point_onto_segment_and_get_t(x1: float, y1: float, x2: float, y2: float, px: float, py: float) -> float:
     """
-    Projects point P onto segment A->B, returns t in [0, 1] where projection falls
-    If out of [0, 1] the closest endpoint is closer than the interior
+    Projects point P onto the infinite line defined by segment A(x1, y1) -> B(x2, y2),
+    and returns the parametric position t such that:
+
+        (x, y) = (1 - t) * (x1, y1) + t * (x2, y2)
+
+    - t = 0 corresponds to point A
+    - t = 1 corresponds to point B
+    - t < 0 means the projection falls before A (outside the segment)
+    - t > 1 means the projection falls after B (outside the segment)
+
+    Note: The result is not clamped to [0, 1]. This is intentional!!
+    If the segment is degenerate (length close to 0), returns NaN.
     """
     dx = x2 - x1
     dy = y2 - y1
@@ -169,7 +179,7 @@ def circle_circle_collision_time_interval(
     sep_sq = separation * separation
 
     # Both stationary. Either overlapping forever or never
-    if abs(speed_sq) < 1e-12:
+    if speed_sq < 1e-12:
         if dist_sq <= sep_sq:
             return -inf, inf  # Always overlapping
         else:
@@ -179,21 +189,36 @@ def circle_circle_collision_time_interval(
     if dot >= 0.0 and dist_sq > sep_sq:
         return nan, nan
 
+    # Avoid division by zero if exactly at same center initially
+    if dist_sq < 1e-12:
+        # Starts at same point
+        root_term = sqrt(sep_sq / speed_sq)
+        t_mid = 0.0
+        return -root_term, root_term
+
     # sin check: if angle too wide, paths never intersect within radius band
     cos_theta_sq = (dot * dot) / (dist_sq * speed_sq)
     sin_theta_sq = 1.0 - cos_theta_sq
+    # Clamp due to floating error
+    if sin_theta_sq < 0.0:
+        sin_theta_sq = 0.0
+    if sin_theta_sq > 1.0:
+        sin_theta_sq = 1.0
     min_sin_sq = sep_sq / dist_sq
 
     if sin_theta_sq > min_sin_sq:
         return nan, nan  # Will miss each other
 
     # Compute collision time interval centered around closest approach
-    root_term = sqrt((sep_sq - dist_sq * sin_theta_sq) / speed_sq)
+    arg = (sep_sq - dist_sq * sin_theta_sq) / speed_sq
+    if arg < 0.0:
+        return nan, nan  # No real solution
+
+    root_term = sqrt(arg)
     t_mid = -dot / speed_sq
 
     t_enter = t_mid - root_term
-    t_exit  = t_mid + root_term
-
+    t_exit = t_mid + root_term
     return t_enter, t_exit
 
 
