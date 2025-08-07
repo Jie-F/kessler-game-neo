@@ -140,6 +140,7 @@ class Ship:
 
     def update_state(self) -> None:
         """Update flat state and ownstate lists."""
+        # Constant values are commented out, as they do not need updating
         # Cache the class attribute lookup into local variables
         state = self._state
         state[0] = self.x
@@ -215,13 +216,14 @@ class Ship:
 
     @property
     def respawn_time_internal(self) -> float:
+        # This can go negative! This internally tracks when the ship got out of respawn,
+        # so it's important this keeps getting subtracted into the negatives.
+        # This, despite being a internal "private" variable, is accessed from an outside class
         return self._respawning
 
     @property
     def respawn_time(self) -> float:
-        # This can go negative! This internally tracks when the ship got out of respawn,
-        # so it's important this keeps getting subtracted into the negatives.
-        # This, despite being a internal "private" variable, is accessed from an outside class
+        # This is a constant, which is the respawn invulnerability time that the ship gets
         return self._respawn_time
 
     @property
@@ -242,10 +244,12 @@ class Ship:
 
     @property
     def fire_wait_time(self) -> float:
+        # Note that this cooldown does NOT get reset when the ship dies.
         return self._fire_limiter
 
     @property
     def mine_wait_time(self) -> float:
+        # Note that this cooldown does NOT get reset when the ship dies.
         return self._mine_limiter
 
     @property
@@ -324,6 +328,8 @@ class Ship:
         # around 0 speed. But of course we will just treat this as having zero net acceleration, and the ship stays at 0 speed.
         # This is a special case we have to detect, so we don't oscillate the ship, or cause it to bypass the zero boundary.
         if delta_time == 0.0:
+            # Update the mutable state
+            self.update_state()
             return new_bullet, new_mine
         elif delta_time > 0.0:
             # Store speed and heading BEFORE acceleration/thrust for integration
@@ -550,7 +556,8 @@ class Ship:
         self.lives -= 1
         spawn_position = self.position # (map_size[0]/2, map_size[1]/2)
         spawn_heading = self.heading
-        self.respawn(spawn_position, spawn_heading)
+        if self.lives > 0:
+            self.respawn(spawn_position, spawn_heading)
 
     def respawn(self, position: tuple[float, float], heading: float = 90.0) -> None:
         """

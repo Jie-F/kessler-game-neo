@@ -279,6 +279,9 @@ class KesslerGame:
             raise ValueError(f"Invalid frequency {freq!r}: must be finite and > 0.")
         self.frequency: float = freq
 
+        if freq <= 5.0:
+            warnings.warn("Framerates below 5 are not supported, and may cause bugs in ship movement and collision checking", RuntimeWarning)
+
         self.delta_time: float = 1.0 / self.frequency
 
         # ------- perf_tracker -------
@@ -353,17 +356,11 @@ class KesslerGame:
         # ------- UI_settings -------
         default_ui: UISettingsDict = {
             'ships': True, 'lives_remaining': True, 'accuracy': True,
-            'asteroids_hit': True, 'bullets_remaining': True, 'controller_name': True, 'scale': 1.0
+            'asteroids_hit': True, 'shots_fired': False, 'bullets_remaining': True, 'controller_name': True, 'scale': 1.0
         }
         UI_settings = settings.get("UI_settings", default_ui)
-        if UI_settings == 'all':
-            UI_settings = {
-                'ships': True, 'lives_remaining': True, 'accuracy': True,
-                'asteroids_hit': True, 'shots_fired': True, 'bullets_remaining': True,
-                'controller_name': True, 'scale': 1.0
-            }
         if not isinstance(UI_settings, dict):
-            raise TypeError(f"UI_settings must be a dict or 'all', got {type(UI_settings).__name__}")
+            raise TypeError(f"UI_settings must be a dict, got {type(UI_settings).__name__}")
         self.UI_settings: UISettingsDict = validate_ui_settings(UI_settings)
 
     def enqueue_bullet_asteroid_collisions(self, bullets: list[Bullet], asteroids: list[Asteroid], asteroid_past_time_clamp: float, asteroid_list_idx_offset: int = 0, already_a_heap: bool = False) -> None:
@@ -978,6 +975,7 @@ class KesslerGame:
 
             # --- CHECK FOR COLLISIONS AND ENQUEUE ---
 
+            assert not self.collision_queue  # Since the collision queue should be empty from the last frame
             self.enqueue_bullet_asteroid_collisions(bullets, asteroids, self.delta_time)
             self.enqueue_ship_asteroid_collisions(ships, asteroids, self.delta_time)
             self.enqueue_ship_ship_collisions(ships)
@@ -1311,9 +1309,15 @@ class KesslerGame:
 
             # Hold simulation so that it runs at realtime ratio if specified, else let it pass
             if self.realtime_multiplier != 0.0:
-                time_dif = time.perf_counter() - step_start
-                while time_dif * self.realtime_multiplier < self.delta_time:
-                    time_dif = time.perf_counter() - step_start
+                target = step_start + self.delta_time / self.realtime_multiplier
+                now = time.perf_counter()
+                # Sleep for most of the wait. Subtract a small "fudge factor" to avoid oversleeping.
+                while now < target - 0.001:  # 1ms tolerance
+                    time.sleep(0.0005)        # sleep 0.5ms
+                    now = time.perf_counter()
+                # Busy-wait for the remaining tiny interval, if any.
+                while now < target:
+                    now = time.perf_counter()
 
         ############################################
         # Finalization after scenario has been run #
