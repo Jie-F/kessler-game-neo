@@ -6,11 +6,10 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 from .ship import Ship
 from .scenario import Scenario
 from .team import Team
+from .controller import KesslerController
 if TYPE_CHECKING:
     from .kessler_game import StopReason
 
@@ -19,19 +18,20 @@ class Score:
     def __init__(self, scenario: Scenario) -> None:
         self.sim_time: float = 0.0
         self.stop_reason: StopReason | None = None
-
+        self.final_controllers: list[KesslerController] | None = None
 
         # Initialize team classes to score team-specific scores
-        team_ids = [ship.team for ship in scenario.ships()]
-        team_names = [ship.team_name for ship in scenario.ships()]
-        self.teams = [Team(int(team_id), str(team_name)) for team_id, team_name in zip(np.unique(team_ids), np.unique(team_names))]
+        unique_team_pairs = {(ship.team, ship.team_name) for ship in scenario.ships()}
+        self.teams = [Team(int(tid), str(tname)) for tid, tname in unique_team_pairs]
 
         # Populate scenario initial conditions into score parameters
         for team in self.teams:
             team.total_asteroids = scenario.max_asteroids
-            for ship in scenario.ships():
-                if team.team_id == ship.team:
-                    team.total_bullets += scenario.bullet_limit if scenario.bullet_limit is not None else -1
+            ships_on_team = [ship for ship in scenario.ships() if team.team_id == ship.team]
+            if scenario.bullet_limit is not None:
+                team.total_bullets = scenario.bullet_limit * len(ships_on_team)
+            else:
+                team.total_bullets = -1
 
     def update(self, ships: list[Ship], sim_time: float, controller_perf: list[float] | None = None) -> None:
         self.sim_time = sim_time
@@ -79,7 +79,7 @@ class Score:
     def finalize(self, sim_time: float, stop_reason: StopReason, ships: list[Ship]) -> None:
         self.sim_time = sim_time
         self.stop_reason = stop_reason
-        self.final_controllers = [ship.controller for ship in ships]
+        self.final_controllers = [ship.controller for ship in ships if ship.controller is not None]
 
     def __repr__(self) -> str:
         team_summaries = []

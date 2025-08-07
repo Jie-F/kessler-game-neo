@@ -3,7 +3,7 @@
 # NOTICE: This file is subject to the license agreement defined in file 'LICENSE', which is part of
 # this source code package.
 
-import numpy as np
+from statistics import mean, median
 
 
 class Team:
@@ -38,31 +38,31 @@ class Team:
 
     @property
     def accuracy(self) -> float:
-        return self.bullet_asteroid_hits / self.shots_fired if self.shots_fired else 0.0
+        return self.bullet_asteroid_hits / self.shots_fired if self.shots_fired != 0 else 0.0
 
     @property
     def fraction_total_asteroids_hit(self) -> float:
-        return self.asteroids_hit / self.total_asteroids
+        return self.asteroids_hit / self.total_asteroids if self.total_asteroids != 0 else 0.0
 
     @property
     def fraction_bullets_used(self) -> float:
-        return self.shots_fired / self.total_bullets
+        return self.shots_fired / self.total_bullets if self.total_bullets != 0 else 0.0
 
     @property
     def ratio_bullets_needed(self) -> float:
-        return self.shots_fired / self.total_asteroids
+        return self.shots_fired / self.total_asteroids if self.total_asteroids != 0 else 0.0
 
     @property
     def mean_eval_time(self) -> float:
         if self.eval_times:
-            return float(np.mean(self.eval_times))
+            return float(mean(self.eval_times))
         else:
             return 0.0
 
     @property
     def median_eval_time(self) -> float:
         if self.eval_times:
-            return float(np.median(self.eval_times))
+            return float(median(self.eval_times))
         else:
             return 0.0
 
@@ -110,6 +110,7 @@ class Team:
             self.mine_asteroid_hits == other.mine_asteroid_hits and
             self.shots_fired == other.shots_fired and
             self.bullets_remaining == other.bullets_remaining and
+            self.mines_dropped == other.mines_dropped and
             self.mines_remaining == other.mines_remaining and
             self.deaths == other.deaths and
             self.lives_remaining == other.lives_remaining# and

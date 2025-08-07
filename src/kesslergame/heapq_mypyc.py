@@ -1,8 +1,6 @@
 # This is Python standard library's heapq.py, but with comments stripped out, and type hints added so it can be compiled with mypyc to get a fast priority queue!
 
-from typing import (
-    TypeVar, Iterable, Callable, Iterator, Optional, Any, Protocol
-)
+from typing import TypeVar, Iterable, Callable, Iterator, Optional, Any, Protocol
 
 class SupportsRichComparison(Protocol):
     def __lt__(self: "T", other: "T") -> bool: ...
