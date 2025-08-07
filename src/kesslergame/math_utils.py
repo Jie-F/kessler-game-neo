@@ -77,8 +77,8 @@ def analytic_ship_movement_integration(v0: float, a: float, theta0: float, omega
     """
     Returns (dx, dy) using either analytic or Taylor expansion for small omega
     Args:
-        v0: initial speed
-        a: acceleration
+        v0: initial speed (units/sec)
+        a: acceleration (units/sec^2)
         theta0: initial heading (radians)
         omega: turn rate (rad/sec)
         dt: t1 - t0, the time interval to integrate over (seconds)
@@ -88,8 +88,8 @@ def analytic_ship_movement_integration(v0: float, a: float, theta0: float, omega
         return 0.0, 0.0
     if abs(omega) < 0.15:
         # Omega is very small, and the divisions in the analytic solution have numerical instability
-        # Use a 2nd order Taylor/Maclaurin series to get a much more accurate result near 0
-        # Also without this code, with omega near 0, the ship starts teleporting!
+        # Use a 3nd order Taylor/Maclaurin series to get a much more accurate result near 0
+        # Without this code, with omega near 0, the ship starts teleporting due to floating point wackiness! It's funny
         # The cutoff of 0.15 was found by testing some values for the constants,
         # and making a plot of the absolute error between the Taylor and analytic graphs.
         # 0.15 tends to minimize this max absolute error at about 1e-11, and is the balance point.
@@ -122,7 +122,8 @@ def analytic_ship_movement_integration(v0: float, a: float, theta0: float, omega
         dy = delta_y_omega0 + omega * (delta_y_deriv_omega0 + omega * (delta_y_second_deriv_omega0 / 2.0 + omega * delta_y_third_deriv_omega0 / 6.0))
     else:
         # Exact analytic solution
-        # The Sympy code to set up dynamics and integrate is as follows:
+        # The Sympy code to set up dynamics and integrate is as follows.
+        # You may need to algebraically manipulate the result to get it into the same nice form.
 
         # from sympy import *
         # x0, y0, v0, theta0, omega, delta_x, delta_y, t, delta_t, a = symbols('x0 y0 v0 theta0 omega delta_x delta_y t delta_t a')
@@ -133,10 +134,10 @@ def analytic_ship_movement_integration(v0: float, a: float, theta0: float, omega
         
         delta_theta = omega * delta_t
         theta1 = theta0 + delta_theta
-        sin_theta0 = sin(theta0)
-        sin_theta1 = sin(theta1)
         cos_theta0 = cos(theta0)
         cos_theta1 = cos(theta1)
+        sin_theta0 = sin(theta0)
+        sin_theta1 = sin(theta1)
         sin_diff = sin_theta1 - sin_theta0
         cos_diff = cos_theta1 - cos_theta0
         dx = (v0 * sin_diff + (a / omega) * (cos_diff + delta_theta * sin_theta1)) / omega
@@ -236,7 +237,8 @@ def find_first_leq_zero(
                     # It's not, so fallback to bisection
                     x_new = 0.5 * (x_low + x_high)
                 elif abs(x_new - x) < tol:
-                    # The newton step is tiny, and has stalled
+                    # The newton step is tiny, and has stalled.
+                    # It probably converged
                     return x_new
             x = x_new
 
@@ -278,7 +280,8 @@ def find_first_leq_zero(
                     # It's not, fallback to bisection
                     x_new = 0.5 * (x_low + x_high)
                 elif abs(x_new - x) < tol:
-                    # The newton step is tiny, and has stalled
+                    # The newton step is tiny, and has stalled.
+                    # It probably converged
                     return x_new
             x = x_new
 
