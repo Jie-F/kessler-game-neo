@@ -100,9 +100,9 @@ class Scenario:
             if not (
                 isinstance(map_size, tuple) and
                 len(map_size) == 2 and
-                all(isinstance(x, int) for x in map_size)
+                all(isinstance(x, int) and x > 0 for x in map_size)
             ):
-                raise ValueError(f"map_size must be a tuple of two integers, got {map_size!r}")
+                raise ValueError(f"map_size must be a tuple of two positive integers, got {map_size!r}")
             self.map_size = map_size
 
 

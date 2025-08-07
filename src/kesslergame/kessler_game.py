@@ -9,7 +9,7 @@ import time
 import warnings
 
 from math import inf, isfinite, isnan, ceil, radians, sin, cos
-from typing import Any, TypedDict, cast, ClassVar
+from typing import Any, TypedDict, cast, ClassVar, Mapping
 from enum import Enum, IntEnum
 
 from .scenario import Scenario
@@ -233,36 +233,138 @@ class CollisionEvent:
         )
 
 
+def validate_ui_settings(ui: Mapping[str, Any]) -> UISettingsDict:
+    allowed_keys = {
+        'ships': bool,
+        'lives_remaining': bool,
+        'accuracy': bool,
+        'asteroids_hit': bool,
+        'shots_fired': bool,
+        'bullets_remaining': bool,
+        'controller_name': bool,
+        'scale': float
+    }
+    # Build as plain dict, not UISettingsDict
+    result = {}
+    for key, typ in allowed_keys.items():
+        if key in ui:
+            val = ui[key]
+            if typ is bool:
+                if not isinstance(val, bool):
+                    raise TypeError(f"UI_settings['{key}'] must be bool, got {type(val).__name__}")
+            elif typ is float:
+                if isinstance(val, int):  # upcast
+                    val = float(val)
+                if not isinstance(val, float):
+                    raise TypeError(f"UI_settings['{key}'] must be float (or int), got {type(val).__name__}")
+            result[key] = val  # All are Any for now
+    extra_keys = set(ui) - set(allowed_keys)
+    if extra_keys:
+        raise ValueError(f"UI_settings contains unknown keys: {extra_keys}")
+    return cast(UISettingsDict, result)
+
+
 class KesslerGame:
     def __init__(self, settings: SettingsDict | None = None) -> None:
         if settings is None:
             settings = {}
-        # Game settings
-        self.frequency: float = settings.get("frequency", 30.0)
-        self.delta_time: float = 1.0 / settings.get("frequency", 30.0)
-        self.perf_tracker: bool = settings.get("perf_tracker", False)
-        self.prints_on: bool = settings.get("prints_on", True)
-        self.graphics_type: GraphicsType = settings.get("graphics_type", GraphicsType.Tkinter)
-        self.graphics_obj: KesslerGraphics | None = settings.get("graphics_obj", None)
-        self.realtime_multiplier: float = settings.get("realtime_multiplier", 0.0 if self.graphics_type==GraphicsType.NoGraphics else 1.0)
-        self.frame_skip: int = max(1, int(settings.get("frame_skip", int(self.frequency) if self.realtime_multiplier == 0.0 else round(self.realtime_multiplier))))
-        self.time_limit: float = settings.get("time_limit", inf)
-        self.random_ast_splits: bool = settings.get("random_ast_splits", False)
-        self.competition_safe_mode: bool = settings.get("competition_safe_mode", True)
-        self.map_width: float = 0.0 # To be set later
+
+        # ------- frequency -------
+        freq = settings.get("frequency", 30.0)
+        if isinstance(freq, int):
+            freq = float(freq)
+        if not isinstance(freq, float):
+            raise TypeError(f"frequency must be a float or int, got {type(freq).__name__}")
+        if not isfinite(freq) or freq <= 0.0:
+            raise ValueError(f"Invalid frequency {freq!r}: must be finite and > 0.")
+        self.frequency: float = freq
+
+        self.delta_time: float = 1.0 / self.frequency
+
+        # ------- perf_tracker -------
+        perf_tracker = settings.get("perf_tracker", False)
+        if not isinstance(perf_tracker, bool):
+            raise TypeError(f"perf_tracker must be bool, got {type(perf_tracker).__name__}")
+        self.perf_tracker: bool = perf_tracker
+
+        # ------- prints_on -------
+        prints_on = settings.get("prints_on", True)
+        if not isinstance(prints_on, bool):
+            raise TypeError(f"prints_on must be bool, got {type(prints_on).__name__}")
+        self.prints_on: bool = prints_on
+
+        # ------- graphics_type -------
+        graphics_type = settings.get("graphics_type", GraphicsType.Tkinter)
+        if not isinstance(graphics_type, GraphicsType):
+            raise TypeError(
+                f"graphics_type must be a GraphicsType enum value, got {type(graphics_type).__name__}"
+            )
+        self.graphics_type: GraphicsType = graphics_type
+
+        # ------- graphics_obj -------
+        graphics_obj = settings.get("graphics_obj", None)
+        if graphics_obj is not None and not isinstance(graphics_obj, KesslerGraphics):
+            raise TypeError("graphics_obj must be a KesslerGraphics instance or None")
+        self.graphics_obj: KesslerGraphics | None = graphics_obj
+
+        # ------- realtime_multiplier -------
+        rt_mult = settings.get(
+            "realtime_multiplier", 0.0 if graphics_type == GraphicsType.NoGraphics else 1.0
+        )
+        if isinstance(rt_mult, int):
+            rt_mult = float(rt_mult)
+        if not isinstance(rt_mult, float):
+            raise TypeError(f"realtime_multiplier must be float or int, got {type(rt_mult).__name__}")
+        self.realtime_multiplier: float = rt_mult
+
+        # ------- frame_skip -------
+        frame_skip_default = int(self.frequency) if self.realtime_multiplier == 0.0 else round(self.realtime_multiplier)
+        frame_skip = settings.get("frame_skip", frame_skip_default)
+        if not isinstance(frame_skip, int):
+            raise TypeError(f"frame_skip must be int, got {type(frame_skip).__name__}")
+        self.frame_skip: int = max(1, frame_skip)
+
+        # ------- time_limit -------
+        time_limit = settings.get("time_limit", inf)
+        if isinstance(time_limit, int):
+            time_limit = float(time_limit)
+        if not isinstance(time_limit, float):
+            raise TypeError(f"time_limit must be float or int, got {type(time_limit).__name__}")
+        self.time_limit: float = time_limit
+
+        # ------- random_ast_splits -------
+        random_ast_splits = settings.get("random_ast_splits", False)
+        if not isinstance(random_ast_splits, bool):
+            raise TypeError(f"random_ast_splits must be bool, got {type(random_ast_splits).__name__}")
+        self.random_ast_splits: bool = random_ast_splits
+
+        # ------- competition_safe_mode -------
+        competition_safe_mode = settings.get("competition_safe_mode", True)
+        if not isinstance(competition_safe_mode, bool):
+            raise TypeError(f"competition_safe_mode must be bool, got {type(competition_safe_mode).__name__}")
+        self.competition_safe_mode: bool = competition_safe_mode
+
+        # Set later
+        self.map_width: float = 0.0
         self.map_height: float = 0.0
 
         self.collision_queue: list[CollisionEvent] = []
 
-        # UI settings
-        default_ui: UISettingsDict = {'ships': True, 'lives_remaining': True, 'accuracy': True,
-                      'asteroids_hit': True, 'bullets_remaining': True, 'controller_name': True, 'scale': 1.0}
-        UI_settings: UISettingsDict | str = settings.get("UI_settings", default_ui)
+        # ------- UI_settings -------
+        default_ui: UISettingsDict = {
+            'ships': True, 'lives_remaining': True, 'accuracy': True,
+            'asteroids_hit': True, 'bullets_remaining': True, 'controller_name': True, 'scale': 1.0
+        }
+        UI_settings = settings.get("UI_settings", default_ui)
         if UI_settings == 'all':
-            UI_settings = {'ships': True, 'lives_remaining': True, 'accuracy': True,
-                                'asteroids_hit': True, 'shots_fired': True, 'bullets_remaining': True,
-                                'controller_name': True, 'scale': 1.0}
-        self.UI_settings = cast(UISettingsDict, UI_settings)
+            UI_settings = {
+                'ships': True, 'lives_remaining': True, 'accuracy': True,
+                'asteroids_hit': True, 'shots_fired': True, 'bullets_remaining': True,
+                'controller_name': True, 'scale': 1.0
+            }
+        if not isinstance(UI_settings, dict):
+            raise TypeError(f"UI_settings must be a dict or 'all', got {type(UI_settings).__name__}")
+        self.UI_settings: UISettingsDict = validate_ui_settings(UI_settings)
 
     def enqueue_bullet_asteroid_collisions(self, bullets: list[Bullet], asteroids: list[Asteroid], asteroid_past_time_clamp: float, asteroid_list_idx_offset: int = 0, already_a_heap: bool = False) -> None:
         # Collect all potential bullet-asteroid collisions
