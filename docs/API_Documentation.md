@@ -143,20 +143,98 @@ This is recommended for advanced users who want the maximum speed, and are forma
 The schema for ships is:
 `[x: float, y: float, vx: float, vy: float, speed: float, heading: float, mass: float, radius: float, id: int, team: int, is_respawning: bool, lives_remaining: int, deaths: int]`
 
+| Index | Variable Name     | Variable Type |
+|-------|--------------------|----------------|
+| 0     | x                  | float          |
+| 1     | y                  | float          |
+| 2     | vx                 | float          |
+| 3     | vy                 | float          |
+| 4     | speed              | float          |
+| 5     | heading            | float          |
+| 6     | mass               | float          |
+| 7     | radius             | float          |
+| 8     | id                 | int            |
+| 9     | team               | int            |
+| 10    | is_respawning      | bool           |
+| 11    | lives_remaining    | int            |
+| 12    | deaths             | int            |
+
 The schema for asteroids is:
 `[x: float, y: float, vx: float, vy: float, size: int, mass: float, radius: float]`
+
+| Index | Variable Name | Variable Type |
+|-------|----------------|----------------|
+| 0     | x              | float          |
+| 1     | y              | float          |
+| 2     | vx             | float          |
+| 3     | vy             | float          |
+| 4     | size           | int            |
+| 5     | mass           | float          |
+| 6     | radius         | float          |
 
 The schema for bullets is:
 `[x: float, y: float, vx: float, vy: float, tail_dx: float, tail_dy: float, heading: float, mass: float, length: float]`
 
+| Index | Variable Name | Variable Type |
+|-------|----------------|----------------|
+| 0     | x              | float          |
+| 1     | y              | float          |
+| 2     | vx             | float          |
+| 3     | vy             | float          |
+| 4     | tail_dx        | float          |
+| 5     | tail_dy        | float          |
+| 6     | heading        | float          |
+| 7     | mass           | float          |
+| 8     | length         | float          |
+
 The schema for mines is:
 `[x: float, y: float, mass: float, fuse_time: float, remaining_time: float]`
+
+| Index | Variable Name   | Variable Type |
+|-------|------------------|----------------|
+| 0     | x                | float          |
+| 1     | y                | float          |
+| 2     | mass             | float          |
+| 3     | fuse_time        | float          |
+| 4     | remaining_time   | float          |
 
 #### ship_state.compact may return a single list that looks like:
 `[395.29566377267156, 786.1447258308528, -120.00000000000011, -207.84609690826522, 240.0, 240.0, 300.0, 20.0, 1, 1, False, 3, 0, -1, 0, True, 0.0, 10.0, False, 0.0, 1.0, 0.0, 3.0, -480.0, 480.0, -180.0, 180.0, 240.0, 80.0]`
 
 With its schema being:
-`[x: float, y: float, vx: float, vy: float, speed: float, heading: float, mass: float, radius: float, id: int, team: int, is_respawning: bool, lives_remaining: int, deaths: int, bullets_remaining: int, mines_remaining: int, can_fire: bool, fire_wait_time: float, fire_rate: float, can_deploy_mine: bool, mine_wait_time: float, mine_deploy_rate: float, respawn_time_left: float, respawn_time: float, thrust_range_min: float, thrust_range_max: float, turn_rate_range_min: float, turn_rate_range_max: float, max_speed: float, drag: float]`
+`[x: float, y: float, vx: float, vy: float, speed: float, heading: float, mass: float, radius: float, id: int, team: int, is_respawning: bool, lives_remaining: int, deaths: int, bullets_remaining: int, mines_remaining: int, can_fire: bool, fire_cooldown: float, fire_rate: float, can_deploy_mine: bool, mine_cooldown: float, mine_deploy_rate: float, respawn_time_left: float, respawn_time: float, thrust_range_min: float, thrust_range_max: float, turn_rate_range_min: float, turn_rate_range_max: float, max_speed: float, drag: float]`
+
+| Index | Variable Name          | Variable Type |
+| ----- | ---------------------- | ------------- |
+| 0     | x                      | float         |
+| 1     | y                      | float         |
+| 2     | vx                     | float         |
+| 3     | vy                     | float         |
+| 4     | speed                  | float         |
+| 5     | heading                | float         |
+| 6     | mass                   | float         |
+| 7     | radius                 | float         |
+| 8     | id                     | int           |
+| 9     | team                   | int           |
+| 10    | is\_respawning         | bool          |
+| 11    | lives\_remaining       | int           |
+| 12    | deaths                 | int           |
+| 13    | bullets\_remaining     | int           |
+| 14    | mines\_remaining       | int           |
+| 15    | can\_fire              | bool          |
+| 16    | fire\_cooldown         | float         |
+| 17    | fire\_rate             | float         |
+| 18    | can\_deploy\_mine      | bool          |
+| 19    | mine\_cooldown         | float         |
+| 20    | mine\_deploy\_rate     | float         |
+| 21    | respawn\_time\_left    | float         |
+| 22    | respawn\_time          | float         |
+| 23    | thrust\_range\_min     | float         |
+| 24    | thrust\_range\_max     | float         |
+| 25    | turn\_rate\_range\_min | float         |
+| 26    | turn\_rate\_range\_max | float         |
+| 27    | max\_speed             | float         |
+| 28    | drag                   | float         |
 
 ### `dict`
 Returns classic human-readable nested dictionaries:
