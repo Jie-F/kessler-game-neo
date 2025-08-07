@@ -50,7 +50,6 @@ class ShipStateDict(TypedDict):
     team: int
     is_respawning: bool
     lives_remaining: int
-    deaths: int
 
 
 class ShipOwnStateDict(ShipStateDict):
@@ -391,7 +390,7 @@ class ShipView:
     __slots__ = ("_data",)
 
     def __init__(self, data: ShipDataList):
-        # [x, y, vx, vy, speed, heading, mass, radius, id, team, is_respawning, lives_remaining, deaths]
+        # [x: float, y: float, vx: float, vy: float, speed: float, heading: float, mass: float, radius: float, id: int, team: int, is_respawning: bool, lives_remaining: int]
         self._data = data
 
     @property
@@ -455,11 +454,6 @@ class ShipView:
         return self._data[11]
 
     @property
-    def deaths(self) -> int:
-        assert(isinstance(self._data[12], int))
-        return self._data[12]
-
-    @property
     def dict(self) -> ShipStateDict:
         return {
             "position": self.position,
@@ -472,7 +466,6 @@ class ShipView:
             "team": self.team,
             "is_respawning": self.is_respawning,
             "lives_remaining": self.lives_remaining,
-            "deaths": self.deaths,
         }
 
     @overload
@@ -482,7 +475,7 @@ class ShipView:
 
     @overload
     def __getitem__(self, key: Literal[
-        "id", "team", "lives_remaining", "deaths"
+        "id", "team", "lives_remaining"
     ]) -> int: ...
 
     @overload
@@ -506,8 +499,7 @@ class ShipView:
             f"radius={format(self.radius, fmt)} "
             f"id={self.id} team={self.team} "
             f"is_respawning={self.is_respawning} "
-            f"lives_remaining={self.lives_remaining} "
-            f"deaths={self.deaths}>"
+            f"lives_remaining={self.lives_remaining}>"
         )
 
     def __repr__(self) -> str:
@@ -517,8 +509,7 @@ class ShipView:
             f"speed={self.speed} heading={self.heading} mass={self.mass} "
             f"radius={self.radius} id={self.id} team={self.team} "
             f"is_respawning={self.is_respawning} "
-            f"lives_remaining={self.lives_remaining} "
-            f"deaths={self.deaths}>"
+            f"lives_remaining={self.lives_remaining}>"
         )
 
     def __copy__(self) -> ShipView:
@@ -544,63 +535,63 @@ class ShipOwnView(ShipView):
 
     @property
     def bullets_remaining(self) -> int:
+        assert(isinstance(self._own_data[12], int))
+        return self._own_data[12]
+
+    @property
+    def mines_remaining(self) -> int:
         assert(isinstance(self._own_data[13], int))
         return self._own_data[13]
 
     @property
-    def mines_remaining(self) -> int:
-        assert(isinstance(self._own_data[14], int))
+    def can_fire(self) -> bool:
+        assert(isinstance(self._own_data[14], bool))
         return self._own_data[14]
 
     @property
-    def can_fire(self) -> bool:
-        assert(isinstance(self._own_data[15], bool))
+    def fire_cooldown(self) -> float:
         return self._own_data[15]
 
     @property
-    def fire_cooldown(self) -> float:
+    def fire_rate(self) -> float:
         return self._own_data[16]
 
     @property
-    def fire_rate(self) -> float:
+    def can_deploy_mine(self) -> bool:
+        assert(isinstance(self._own_data[17], bool))
         return self._own_data[17]
 
     @property
-    def can_deploy_mine(self) -> bool:
-        assert(isinstance(self._own_data[18], bool))
+    def mine_cooldown(self) -> float:
         return self._own_data[18]
 
     @property
-    def mine_cooldown(self) -> float:
+    def mine_deploy_rate(self) -> float:
         return self._own_data[19]
 
     @property
-    def mine_deploy_rate(self) -> float:
+    def respawn_time_left(self) -> float:
         return self._own_data[20]
 
     @property
-    def respawn_time_left(self) -> float:
+    def respawn_time(self) -> float:
         return self._own_data[21]
 
     @property
-    def respawn_time(self) -> float:
-        return self._own_data[22]
-
-    @property
     def thrust_range(self) -> tuple[float, float]:
-        return (self._own_data[23], self._own_data[24])
+        return (self._own_data[22], self._own_data[23])
 
     @property
     def turn_rate_range(self) -> tuple[float, float]:
-        return (self._own_data[25], self._own_data[26])
+        return (self._own_data[24], self._own_data[25])
 
     @property
     def max_speed(self) -> float:
-        return self._own_data[27]
+        return self._own_data[26]
 
     @property
     def drag(self) -> float:
-        return self._own_data[28]
+        return self._own_data[27]
 
     @overload
     def __getitem__(self, key: Literal[
@@ -611,7 +602,7 @@ class ShipOwnView(ShipView):
 
     @overload
     def __getitem__(self, key: Literal[
-        "id", "team", "lives_remaining", "deaths", "bullets_remaining", "mines_remaining"
+        "id", "team", "lives_remaining", "bullets_remaining", "mines_remaining"
     ]) -> int: ...
 
     @overload
@@ -636,7 +627,7 @@ class ShipOwnView(ShipView):
             f"speed={format(self.speed, fmt)} heading={format(self.heading, fmt)} "
             f"mass={format(self.mass, fmt)} radius={format(self.radius, fmt)} "
             f"id={self.id} team={self.team} is_respawning={self.is_respawning} "
-            f"lives_remaining={self.lives_remaining} deaths={self.deaths} "
+            f"lives_remaining={self.lives_remaining} "
             f"bullets_remaining={self.bullets_remaining} mines_remaining={self.mines_remaining} "
             f"can_fire={self.can_fire} fire_cooldown={format(self.fire_cooldown, fmt)} "
             f"fire_rate={format(self.fire_rate, fmt)} can_deploy_mine={self.can_deploy_mine} "
@@ -651,7 +642,7 @@ class ShipOwnView(ShipView):
         return (
             f"<OwnShip position={self.position} velocity={self.velocity} speed={self.speed} "
             f"heading={self.heading} mass={self.mass} radius={self.radius} id={self.id} team={self.team} "
-            f"is_respawning={self.is_respawning} lives_remaining={self.lives_remaining} deaths={self.deaths} "
+            f"is_respawning={self.is_respawning} lives_remaining={self.lives_remaining} "
             f"bullets_remaining={self.bullets_remaining} mines_remaining={self.mines_remaining} can_fire={self.can_fire} "
             f"fire_cooldown={self.fire_cooldown} fire_rate={self.fire_rate} can_deploy_mine={self.can_deploy_mine} "
             f"mine_cooldown={self.mine_cooldown} mine_deploy_rate={self.mine_deploy_rate} "
@@ -740,10 +731,6 @@ class ShipState:
     @property
     def lives_remaining(self) -> int:
         return self._view.lives_remaining
-
-    @property
-    def deaths(self) -> int:
-        return self._view.deaths
 
     # ShipOwnView properties
 
@@ -839,7 +826,6 @@ class ShipState:
             "team": self._view.team,
             "is_respawning": self._view.is_respawning,
             "lives_remaining": self._view.lives_remaining,
-            "deaths": self._view.deaths,
             "bullets_remaining": self._view.bullets_remaining,
             "mines_remaining": self._view.mines_remaining,
             "can_fire": self._view.can_fire,

@@ -884,7 +884,8 @@ class KesslerGame:
 
             heapify(self.collision_queue) # Create priority queue in O(n)
 
-            # --- Resolve collisions in the queue until it is empty ---
+            # --- RESOLVE COLLISIONS IN THE QUEUE UNTIL IT IS EMPTY ---
+
             # So earlier we advanced everything to the next frame, but then found when collisions happen.
             # This loop goes through the collision events one-by-one, rewinds both involved objects for each event,
             # and handles them. If new children asteroids get created, we advance those children to the end of the frame
@@ -912,15 +913,15 @@ class KesslerGame:
 
                         bullet = bullets[bul_idx]
                         asteroid = asteroids[ast_idx]
+
                         # Rewind
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             bullet.update(dt)
                             asteroid.update(dt, scenario.map_size)
+                        
                         # Handle collision
                         bullets_to_cull.append(bul_idx)
                         asteroids_to_cull.append(ast_idx)
-
-                        bullet.owner.bullet_asteroid_hits += 1
 
                         new_asteroids = asteroid.destruct(impactor=bullet, map_size=scenario.map_size, random_ast_split=self.random_ast_splits)
                         bullet.destruct()
@@ -939,6 +940,9 @@ class KesslerGame:
                             self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset, True)
                             self.enqueue_mine_asteroid_collisions(mines, new_asteroids, -dt, ast_idx_offset, True)
                             self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset, True)
+
+                        # Track stats
+                        bullet.owner.bullet_asteroid_hits += 1
                     case CollisionType.SHIP_ASTEROID:
                         ship_idx = event.object_a_idx
                         ast_idx = event.object_b_idx
@@ -951,12 +955,13 @@ class KesslerGame:
                         if ship.is_respawning_internal:
                             continue
                         asteroid = asteroids[ast_idx]
+
                         # Rewind
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             ship.update(dt, scenario.map_size, False)
                             asteroid.update(dt, scenario.map_size)
+                        
                         # Handle collision
-                        ship.ship_asteroid_hits += 1
 
                         new_asteroids = asteroid.destruct(impactor=ship, map_size=scenario.map_size, random_ast_split=self.random_ast_splits)
                         ship.destruct(map_size=scenario.map_size)
@@ -981,6 +986,10 @@ class KesslerGame:
                         else:
                             ships_to_cull.append(ship_idx)
                         asteroids_to_cull.append(ast_idx)
+
+                        # Track stats
+                        ship.ship_asteroid_hits += 1
+                        ship.asteroid_deaths += 1
                     case CollisionType.SHIP_SHIP:
                         ship1_idx = event.object_a_idx
                         ship2_idx = event.object_b_idx
@@ -994,16 +1003,15 @@ class KesslerGame:
                         assert ship1.alive and ship2.alive
                         if ship1.is_respawning_internal or ship2.is_respawning_internal:
                             continue
+
                         # Rollback
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             ship1.update(dt, scenario.map_size, False)
                             ship2.update(dt, scenario.map_size, False)
+                        
                         # Handle collision
                         ship1.destruct(map_size=scenario.map_size)
                         ship2.destruct(map_size=scenario.map_size)
-
-                        ship1.ship_ship_hits += 1
-                        ship2.ship_ship_hits += 1
 
                         # Roll forward to the end of the frame again if alive
                         if ship1.alive:
@@ -1016,6 +1024,12 @@ class KesslerGame:
                                 ship2.update(-dt, scenario.map_size, False)
                         else:
                             ships_to_cull.append(ship2_idx)
+
+                        # Track stats
+                        ship1.ship_ship_hits += 1
+                        ship2.ship_ship_hits += 1
+                        ship1.ship_deaths += 1
+                        ship2.ship_deaths += 1
                     case CollisionType.MINE_ASTEROID:
                         mine_idx = event.object_a_idx
                         ast_idx = event.object_b_idx
@@ -1032,11 +1046,8 @@ class KesslerGame:
                             asteroid.update(dt, scenario.map_size)
                         
                         # Handle collision
-                        mine.owner.mine_asteroid_hits += 1
-
-                        asteroids_to_cull.append(ast_idx)
-
                         new_asteroids = asteroid.destruct(impactor=mine, map_size=scenario.map_size, random_ast_split=self.random_ast_splits)
+                        asteroids_to_cull.append(ast_idx)
 
                         # Move the things back to the present
                         if abs(dt) > CollisionEvent.TOLERANCE:
@@ -1056,6 +1067,9 @@ class KesslerGame:
                             self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset, True)
                             self.enqueue_mine_asteroid_collisions(mines, new_asteroids, -dt, ast_idx_offset, True)
                             self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset, True)
+
+                        # Track stats
+                        mine.owner.mine_asteroid_hits += 1
                     case CollisionType.MINE_SHIP:
                         mine_idx = event.object_a_idx
                         ship_idx = event.object_b_idx
@@ -1078,8 +1092,6 @@ class KesslerGame:
                         # Handle collision
                         mine.destruct()
                         ship.destruct(map_size=scenario.map_size)
-
-                        mine.owner.mine_ship_hits += 1
                         
                         if not ship.alive:
                             ships_to_cull.append(ship_idx)
@@ -1088,6 +1100,10 @@ class KesslerGame:
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             mine.update(-dt)
                             ship.update(-dt, scenario.map_size, False)
+
+                        # Track stats
+                        mine.owner.mine_ship_hits += 1
+                        ship.mine_deaths += 1
 
             # Now that all collisions are handled and resolved, the final step is to cull the removed objects
             # Cull asteroids using swap and pop. The list of indices to cull is unique

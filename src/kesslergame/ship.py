@@ -16,12 +16,13 @@ from .math_utils import analytic_ship_movement_integration
 class Ship:
     __slots__ = (
         'controller', 'thrust', 'turn_rate', 'id', 'speed', 'x', 'y',
-        'vx', 'vy', 'heading', 'lives', 'deaths', 'team', 'team_name',
+        'vx', 'vy', 'heading', 'lives', 'team', 'team_name',
         'fire', 'drop_mine', 'thrust_range', 'turn_rate_range', 'max_speed',
         'drag', 'radius', 'mass', '_respawning', '_respawn_time',
         '_fire_limiter', '_fire_time', '_mine_limiter', '_mine_deploy_time', 'bullets_remaining',
         'mines_remaining', 'bullets_shot', 'mines_dropped', 'bullet_asteroid_hits',
         'ship_asteroid_hits', 'ship_ship_hits', 'mine_ship_hits', 'mine_asteroid_hits',
+        'asteroid_deaths', 'ship_deaths', 'mine_deaths',
         'custom_sprite_path', 'integration_initial_states', '_state', '_ownstate'
     )
     def __init__(self, ship_id: int,
@@ -52,7 +53,6 @@ class Ship:
         self.vx, self.vy = (0.0, 0.0)
         self.heading: float = angle
         self.lives: int = lives
-        self.deaths: int = 0
 
         # To be able to perform continuous collision detection between the ship and other objects,
         # We need to store the stages of integration over the previous frame
@@ -91,13 +91,19 @@ class Ship:
         self.bullets_shot: int = 0
         self.mines_dropped: int = 0
 
+        # Asteroid hit statistics
         self.bullet_asteroid_hits: int = 0
         self.ship_asteroid_hits: int = 0
         self.ship_ship_hits: int = 0
-        self.mine_ship_hits: int = 0
         self.mine_asteroid_hits: int = 0
+        self.mine_ship_hits: int = 0
 
-        # [x: float, y: float, vx: float, vy: float, speed: float, heading: float, mass: float, radius: float, id: int, team: int, is_respawning: bool, lives_remaining: int, deaths: int]
+        # Death statistics
+        self.asteroid_deaths: int = 0
+        self.ship_deaths: int = 0
+        self.mine_deaths: int = 0
+
+        # [x: float, y: float, vx: float, vy: float, speed: float, heading: float, mass: float, radius: float, id: int, team: int, is_respawning: bool, lives_remaining: int]
         self._state: ShipDataList = [
             self.x, self.y,
             self.vx, self.vy,
@@ -108,8 +114,7 @@ class Ship:
             self.id,
             self.team,
             self.is_respawning,
-            self.lives,
-            self.deaths
+            self.lives
         ]
 
         # Extends the shared state with the ownstate values
@@ -149,27 +154,26 @@ class Ship:
         #state[9] = self.team
         state[10] = self.is_respawning
         state[11] = self.lives
-        state[12] = self.deaths
 
         # Extend the state list with the ownstate fields
         ownstate = self._ownstate
-        ownstate[0:13] = state  # Shared part
-        ownstate[13] = self.bullets_remaining
-        ownstate[14] = self.mines_remaining
-        ownstate[15] = self.can_fire
-        ownstate[16] = self.fire_wait_time
-        #ownstate[17] = self.fire_rate
-        ownstate[18] = self.can_deploy_mine
-        ownstate[19] = self.mine_wait_time
-        #ownstate[20] = self.mine_deploy_rate
-        ownstate[21] = self.respawn_time_left
-        #ownstate[22] = self.respawn_time
-        #ownstate[23] = self.thrust_range[0]
-        #ownstate[24] = self.thrust_range[1]
-        #ownstate[25] = self.turn_rate_range[0]
-        #ownstate[26] = self.turn_rate_range[1]
-        #ownstate[27] = self.max_speed
-        #ownstate[28] = self.drag
+        ownstate[0:12] = state  # Shared part
+        ownstate[12] = self.bullets_remaining
+        ownstate[13] = self.mines_remaining
+        ownstate[14] = self.can_fire
+        ownstate[15] = self.fire_wait_time
+        #ownstate[16] = self.fire_rate
+        ownstate[17] = self.can_deploy_mine
+        ownstate[18] = self.mine_wait_time
+        #ownstate[19] = self.mine_deploy_rate
+        ownstate[20] = self.respawn_time_left
+        #ownstate[21] = self.respawn_time
+        #ownstate[22] = self.thrust_range[0]
+        #ownstate[23] = self.thrust_range[1]
+        #ownstate[24] = self.turn_rate_range[0]
+        #ownstate[25] = self.turn_rate_range[1]
+        #ownstate[26] = self.max_speed
+        #ownstate[27] = self.drag
 
     @property
     def position(self) -> tuple[float, float]:
@@ -251,6 +255,10 @@ class Ship:
     @property
     def ships_hit(self) -> int:
         return self.ship_ship_hits + self.mine_ship_hits
+
+    @property
+    def deaths(self) -> int:
+        return self.asteroid_deaths + self.ship_deaths + self.mine_deaths
 
     def shoot(self) -> None:
         self.fire = True
@@ -540,7 +548,6 @@ class Ship:
         Called by the game when a ship collides with something and dies. Handles life decrementing and triggers respawn
         """
         self.lives -= 1
-        self.deaths += 1
         spawn_position = self.position # (map_size[0]/2, map_size[1]/2)
         spawn_heading = self.heading
         self.respawn(spawn_position, spawn_heading)
@@ -607,8 +614,7 @@ class Ship:
             f"id={self.id}, team={self.team}, team_name='{self.team_name}', "
             f"x={self.x}, y={self.y}, vx={self.vx}, vy={self.vy}, "
             f"speed={self.speed}, heading={self.heading}, "
-            f"lives={self.lives}, deaths={self.deaths}, "
-            f"is_respawning={self.is_respawning}, "
+            f"lives={self.lives}, is_respawning={self.is_respawning}, "
             f"bullets_remaining={self.bullets_remaining}, mines_remaining={self.mines_remaining}, "
             f"can_fire={self.can_fire}, can_deploy_mine={self.can_deploy_mine}, "
             f"thrust={self.thrust}, turn_rate={self.turn_rate}"

@@ -45,7 +45,6 @@ Represents the full state of the agent’s own ship, including controls and cool
 | `id`, `team`        | `int`                | Identifiers                                |
 | `is_respawning`     | `bool`               | If the ship is currently respawning        |
 | `lives_remaining`   | `int`                | Lives left                                 |
-| `deaths`            | `int`                | Total deaths so far                        |
 
 #### Combat + Cooldowns (Only available for your own ship in ShipState):
 
@@ -141,7 +140,7 @@ This is recommended for advanced users who want the maximum speed, and are forma
 ```
 
 The schema for ships is:
-`[x: float, y: float, vx: float, vy: float, speed: float, heading: float, mass: float, radius: float, id: int, team: int, is_respawning: bool, lives_remaining: int, deaths: int]`
+`[x: float, y: float, vx: float, vy: float, speed: float, heading: float, mass: float, radius: float, id: int, team: int, is_respawning: bool, lives_remaining: int]`
 
 | Index | Variable Name     | Variable Type |
 |-------|--------------------|----------------|
@@ -157,7 +156,6 @@ The schema for ships is:
 | 9     | team               | int            |
 | 10    | is_respawning      | bool           |
 | 11    | lives_remaining    | int            |
-| 12    | deaths             | int            |
 
 The schema for asteroids is:
 `[x: float, y: float, vx: float, vy: float, size: int, mass: float, radius: float]`
@@ -202,7 +200,7 @@ The schema for mines is:
 `[395.29566377267156, 786.1447258308528, -120.00000000000011, -207.84609690826522, 240.0, 240.0, 300.0, 20.0, 1, 1, False, 3, 0, -1, 0, True, 0.0, 10.0, False, 0.0, 1.0, 0.0, 3.0, -480.0, 480.0, -180.0, 180.0, 240.0, 80.0]`
 
 With its schema being:
-`[x: float, y: float, vx: float, vy: float, speed: float, heading: float, mass: float, radius: float, id: int, team: int, is_respawning: bool, lives_remaining: int, deaths: int, bullets_remaining: int, mines_remaining: int, can_fire: bool, fire_cooldown: float, fire_rate: float, can_deploy_mine: bool, mine_cooldown: float, mine_deploy_rate: float, respawn_time_left: float, respawn_time: float, thrust_range_min: float, thrust_range_max: float, turn_rate_range_min: float, turn_rate_range_max: float, max_speed: float, drag: float]`
+`[x: float, y: float, vx: float, vy: float, speed: float, heading: float, mass: float, radius: float, id: int, team: int, is_respawning: bool, lives_remaining: int, bullets_remaining: int, mines_remaining: int, can_fire: bool, fire_cooldown: float, fire_rate: float, can_deploy_mine: bool, mine_cooldown: float, mine_deploy_rate: float, respawn_time_left: float, respawn_time: float, thrust_range_min: float, thrust_range_max: float, turn_rate_range_min: float, turn_rate_range_max: float, max_speed: float, drag: float]`
 
 | Index | Variable Name          | Variable Type |
 | ----- | ---------------------- | ------------- |
@@ -218,23 +216,22 @@ With its schema being:
 | 9     | team                   | int           |
 | 10    | is\_respawning         | bool          |
 | 11    | lives\_remaining       | int           |
-| 12    | deaths                 | int           |
-| 13    | bullets\_remaining     | int           |
-| 14    | mines\_remaining       | int           |
-| 15    | can\_fire              | bool          |
-| 16    | fire\_cooldown         | float         |
-| 17    | fire\_rate             | float         |
-| 18    | can\_deploy\_mine      | bool          |
-| 19    | mine\_cooldown         | float         |
-| 20    | mine\_deploy\_rate     | float         |
-| 21    | respawn\_time\_left    | float         |
-| 22    | respawn\_time          | float         |
-| 23    | thrust\_range\_min     | float         |
-| 24    | thrust\_range\_max     | float         |
-| 25    | turn\_rate\_range\_min | float         |
-| 26    | turn\_rate\_range\_max | float         |
-| 27    | max\_speed             | float         |
-| 28    | drag                   | float         |
+| 12    | bullets\_remaining     | int           |
+| 13    | mines\_remaining       | int           |
+| 14    | can\_fire              | bool          |
+| 15    | fire\_cooldown         | float         |
+| 16    | fire\_rate             | float         |
+| 17    | can\_deploy\_mine      | bool          |
+| 18    | mine\_cooldown         | float         |
+| 19    | mine\_deploy\_rate     | float         |
+| 20    | respawn\_time\_left    | float         |
+| 21    | respawn\_time          | float         |
+| 22    | thrust\_range\_min     | float         |
+| 23    | thrust\_range\_max     | float         |
+| 24    | turn\_rate\_range\_min | float         |
+| 25    | turn\_rate\_range\_max | float         |
+| 26    | max\_speed             | float         |
+| 27    | drag                   | float         |
 
 ### `dict`
 Returns classic human-readable nested dictionaries:
@@ -257,7 +254,6 @@ A GameStateDict may look like:
             "team": 1,
             "is_respawning": False,
             "lives_remaining": 3,
-            "deaths": 0,
         }
     ],
     "asteroids": [
@@ -325,7 +321,6 @@ A ShipOwnStateDict may look like:
     "team": 1,
     "is_respawning": False,
     "lives_remaining": 3,
-    "deaths": 0,
     "bullets_remaining": -1,
     "mines_remaining": 0,
     "can_fire": True,
@@ -382,7 +377,6 @@ Access ship data using:
 | `team`            | `int`                 | Team ID (unique)                         |
 | `is_respawning`   | `bool`                | Whether the ship is currently invincible |
 | `lives_remaining` | `int`                 | Lives left before permanently dead       |
-| `deaths`          | `int`                 | Number of times this ship has died       |
 
 ### Example Usage:
 
@@ -393,7 +387,7 @@ enemy = game_state.ships[2]
 print(enemy.position, enemy.speed, enemy.is_respawning)
 
 # Access like a dict
-print(enemy["velocity"], enemy["deaths"])
+print(enemy["position"], enemy["lives_remaining"])
 
 # Copy as a plain dict
 enemy_copy = enemy.dict

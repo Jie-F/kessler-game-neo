@@ -14,17 +14,22 @@ class Team:
         self.total_bullets: int = 0
         self.total_asteroids: int = 0
 
+        # Asteroid hit statistics
         self.bullet_asteroid_hits: int = 0
         self.ship_asteroid_hits: int = 0
         self.ship_ship_hits: int = 0
-        self.mine_ship_hits: int = 0
         self.mine_asteroid_hits: int = 0
+        self.mine_ship_hits: int = 0
+
+        # Death statistics
+        self.asteroid_deaths: int = 0
+        self.ship_deaths: int = 0
+        self.mine_deaths: int = 0
 
         self.shots_fired: int = 0
         self.bullets_remaining: int = 0
         self.mines_dropped: int = 0
         self.mines_remaining: int = 0
-        self.deaths: int = 0
         self.eval_times: list[float] = []
         self.lives_remaining: int = 0
 
@@ -35,6 +40,10 @@ class Team:
     @property
     def ships_hit(self) -> int:
         return self.ship_ship_hits + self.mine_ship_hits
+
+    @property
+    def deaths(self) -> int:
+        return self.asteroid_deaths + self.ship_deaths + self.mine_deaths
 
     @property
     def accuracy(self) -> float:
@@ -83,13 +92,15 @@ class Team:
     def __repr__(self) -> str:
         return (
             f"Team {self.team_id} ({self.team_name}): "
-            f"Asteroids Hit={self.asteroids_hit}, Bullet-Asteroid Hits={self.bullet_asteroid_hits}, "
+            f"Asteroid Hits (Bullet={self.bullet_asteroid_hits}, "
+            f"Ship={self.ship_asteroid_hits}, Mine={self.mine_asteroid_hits}, "
+            f"Total={self.asteroids_hit}), "
+            f"Ship Hits (Ship={self.ship_ship_hits}, "
+            f"Mine={self.mine_ship_hits}, Total={self.ships_hit}), "
             f"Shots Fired={self.shots_fired}, Bullets Remaining={self.bullets_remaining}, "
-            f"Mine-Asteroid Hits={self.mine_asteroid_hits}, Mines Dropped={self.mines_dropped}, "
-            f"Mines Remaining={self.mines_remaining}, "
-            f"Ship-Asteroid Hits={self.ship_asteroid_hits}, Ship-Ship Hits={self.ship_ship_hits}, "
-            f"Mine-Ship Hits={self.mine_ship_hits}, "
-            f"Deaths={self.deaths}, "
+            f"Mines Dropped={self.mines_dropped}, Mines Remaining={self.mines_remaining}, "
+            f"Deaths (Asteroid={self.asteroid_deaths}, Ship={self.ship_deaths}, "
+            f"Mine={self.mine_deaths}, Total={self.deaths}), "
             f"Lives Remaining={self.lives_remaining}, "
             f"Eval Times={self.eval_times}"
         )
@@ -106,13 +117,15 @@ class Team:
             self.bullet_asteroid_hits == other.bullet_asteroid_hits and
             self.ship_asteroid_hits == other.ship_asteroid_hits and
             self.ship_ship_hits == other.ship_ship_hits and
-            self.mine_ship_hits == other.mine_ship_hits and
             self.mine_asteroid_hits == other.mine_asteroid_hits and
+            self.mine_ship_hits == other.mine_ship_hits and
+            self.asteroid_deaths == other.asteroid_deaths and
+            self.ship_deaths == other.ship_deaths and
+            self.mine_deaths == other.mine_deaths and
             self.shots_fired == other.shots_fired and
             self.bullets_remaining == other.bullets_remaining and
             self.mines_dropped == other.mines_dropped and
             self.mines_remaining == other.mines_remaining and
-            self.deaths == other.deaths and
-            self.lives_remaining == other.lives_remaining# and
-            #self.eval_times == other.eval_times
+            self.lives_remaining == other.lives_remaining
+            # and self.eval_times == other.eval_times
         )
