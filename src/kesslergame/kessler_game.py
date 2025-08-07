@@ -1079,7 +1079,7 @@ class KesslerGame:
                         mine.destruct()
                         ship.destruct(map_size=scenario.map_size)
 
-                        ship.mine_ship_hits += 1
+                        mine.owner.mine_ship_hits += 1
                         
                         if not ship.alive:
                             ships_to_cull.append(ship_idx)
