@@ -279,7 +279,7 @@ class KesslerGame:
             raise ValueError(f"Invalid frequency {freq!r}: must be finite and > 0.")
         self.frequency: float = freq
 
-        if freq <= 5.0:
+        if freq < 5.0:
             warnings.warn("Framerates below 5 are not supported, and may cause bugs in ship movement and collision checking", RuntimeWarning)
 
         self.delta_time: float = 1.0 / self.frequency
@@ -347,11 +347,33 @@ class KesslerGame:
             raise TypeError(f"competition_safe_mode must be bool, got {type(competition_safe_mode).__name__}")
         self.competition_safe_mode: bool = competition_safe_mode
 
-        # Set later
-        self.map_width: float = 0.0
-        self.map_height: float = 0.0
-
         self.collision_queue: list[CollisionEvent] = []
+
+        # Persistent state lists
+        self.asteroids: list[Asteroid] = []
+        self.bullets: list[Bullet] = []
+        self.ships: list[Ship] = []
+        self.liveships: list[Ship] = []
+        self.mines: list[Mine] = []
+
+        # Current scenario
+        self.scenario: Scenario
+
+        # Score
+        self.score: Score
+
+        # Environment parameters
+        self.stop_reason: StopReason
+        self.sim_time: float
+        self.sim_frame: int
+
+        # Game state to pass to controllers
+        self.game_state: GameState | None = None
+
+        # Graphics
+        self.graphics: GraphicsHandler
+
+        self.perf_dict: PerfDict
 
         # ------- UI_settings -------
         default_ui: UISettingsDict = {
@@ -386,27 +408,27 @@ class KesslerGame:
             bullet_tail_y = bullet.y + bullet.tail_delta_y
 
             # Find when head and tail leave the visible map
-            t_head_exit = time_until_exit(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy, self.map_width, self.map_height)
-            t_tail_exit = time_until_exit(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy, self.map_width, self.map_height)
+            t_head_exit = time_until_exit(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy, self.scenario.map_width, self.scenario.map_height)
+            t_tail_exit = time_until_exit(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy, self.scenario.map_width, self.scenario.map_height)
             assert t_head_exit <= t_tail_exit
             # Find when head and tail enter the visible map
-            t_head_enter = time_until_enter(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy, self.map_width, self.map_height)
-            t_tail_enter = time_until_enter(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy, self.map_width, self.map_height)
+            t_head_enter = time_until_enter(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy, self.scenario.map_width, self.scenario.map_height)
+            t_tail_enter = time_until_enter(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy, self.scenario.map_width, self.scenario.map_height)
             assert t_head_enter <= t_tail_enter
 
             for ast_idx, asteroid in enumerate(asteroids):
                 # Center the asteroid position relative to the bullet, accounting for wrapping of asteroids.
-                if asteroid.x - bullet.x > 0.5 * self.map_width:
-                    ast_x_centered = asteroid.x - self.map_width
-                elif asteroid.x - bullet.x < -0.5 * self.map_width:
-                    ast_x_centered = asteroid.x + self.map_width
+                if asteroid.x - bullet.x > 0.5 * self.scenario.map_width:
+                    ast_x_centered = asteroid.x - self.scenario.map_width
+                elif asteroid.x - bullet.x < -0.5 * self.scenario.map_width:
+                    ast_x_centered = asteroid.x + self.scenario.map_width
                 else:
                     ast_x_centered = asteroid.x
 
-                if asteroid.y - bullet.y > 0.5 * self.map_height:
-                    ast_y_centered = asteroid.y - self.map_height
-                elif asteroid.y - bullet.y < -0.5 * self.map_height:
-                    ast_y_centered = asteroid.y + self.map_height
+                if asteroid.y - bullet.y > 0.5 * self.scenario.map_height:
+                    ast_y_centered = asteroid.y - self.scenario.map_height
+                elif asteroid.y - bullet.y < -0.5 * self.scenario.map_height:
+                    ast_y_centered = asteroid.y + self.scenario.map_height
                 else:
                     ast_y_centered = asteroid.y
 
@@ -455,8 +477,8 @@ class KesslerGame:
                         bul_tail_y_collision = bullet_tail_y + collision_time * bullet.vy
                         # Either the bullet head or tail should be inside the map bounds for this collision to be valid.
                         # This should be guaranteed, because at no point during this interval was the bullet expected to leave the map bound, and need to be clamped!
-                        assert (((0.0 <= bul_head_x_collision <= self.map_width) and (0.0 <= bul_head_y_collision <= self.map_height))
-                                or ((0.0 <= bul_tail_x_collision <= self.map_width) and (0.0 <= bul_tail_y_collision <= self.map_height)))
+                        assert (((0.0 <= bul_head_x_collision <= self.scenario.map_width) and (0.0 <= bul_head_y_collision <= self.scenario.map_height))
+                                or ((0.0 <= bul_tail_x_collision <= self.scenario.map_width) and (0.0 <= bul_tail_y_collision <= self.scenario.map_height)))
 
                         # It happens surprisingly frequently where an asteroid splits, and the three overlapping children asteroids get hit by a bullet. We need a tiebreaker for this situation!
                         # Or else we get weird random indeterminate behavior, and there goes our framerate independence.
@@ -573,17 +595,17 @@ class KesslerGame:
                 continue
             for ast_idx, asteroid in enumerate(asteroids):
                 # Check for collisions in time interval [t - delta_time, t]
-                if asteroid.x - ship.x > 0.5 * self.map_width:
-                    ast_x_centered_around_ship = asteroid.x - self.map_width
-                elif asteroid.x - ship.x < -0.5 * self.map_width:
-                    ast_x_centered_around_ship = asteroid.x + self.map_width
+                if asteroid.x - ship.x > 0.5 * self.scenario.map_width:
+                    ast_x_centered_around_ship = asteroid.x - self.scenario.map_width
+                elif asteroid.x - ship.x < -0.5 * self.scenario.map_width:
+                    ast_x_centered_around_ship = asteroid.x + self.scenario.map_width
                 else:
                     ast_x_centered_around_ship = asteroid.x
                 
-                if asteroid.y - ship.y > 0.5 * self.map_height:
-                    ast_y_centered_around_ship = asteroid.y - self.map_height
-                elif asteroid.y - ship.y < -0.5 * self.map_height:
-                    ast_y_centered_around_ship = asteroid.y + self.map_height
+                if asteroid.y - ship.y > 0.5 * self.scenario.map_height:
+                    ast_y_centered_around_ship = asteroid.y - self.scenario.map_height
+                elif asteroid.y - ship.y < -0.5 * self.scenario.map_height:
+                    ast_y_centered_around_ship = asteroid.y + self.scenario.map_height
                 else:
                     ast_y_centered_around_ship = asteroid.y
                 assert ship.respawn_time_internal <= 1e-12, f"{ship.respawn_time_internal=}"
@@ -598,13 +620,13 @@ class KesslerGame:
                     # This is VERY IMPORTANT because if a ship was respawning and suddenly it wears off while the ship is inside multiple asteroids,
                     # the tiebreaker will be used, and the ship will collide with whatever is closer. Otherwise, framerate-dependent behavior will leak in,
                     # and asteroid order will then decide how it ends up in the queue and subsequently gets resolved.
-                    ship_past_x, ship_past_y = ship.get_past_position(collision_start_time, self.map_width, self.map_height)
+                    ship_past_x, ship_past_y = ship.get_past_position(collision_start_time, self.scenario.map_size)
                     dx = abs((asteroid.x + asteroid.vx * collision_start_time) - ship_past_x)
                     dy = abs((asteroid.y + asteroid.vy * collision_start_time) - ship_past_y)
-                    if dx > 0.5 * self.map_width:
-                        dx = self.map_width - dx
-                    if dy > 0.5 * self.map_height:
-                        dy = self.map_height - dy
+                    if dx > 0.5 * self.scenario.map_width:
+                        dx = self.scenario.map_width - dx
+                    if dy > 0.5 * self.scenario.map_height:
+                        dy = self.scenario.map_height - dy
                     sq_dist = dx * dx + dy * dy
 
                     # Break ties in case everything else matches, including asteroid distance from the ship
@@ -625,17 +647,17 @@ class KesslerGame:
                     if ship2.alive and not ship2.is_respawning_internal:
                         # Check for collisions in time interval [t - delta_time, t]
                         # But clamp the start time to when both ships are out of respawn
-                        if ship2.x - ship1.x > 0.5 * self.map_width:
-                            ship2_x_centered_around_ship1 = ship2.x - self.map_width
-                        elif ship2.x - ship1.x < -0.5 * self.map_width:
-                            ship2_x_centered_around_ship1 = ship2.x + self.map_width
+                        if ship2.x - ship1.x > 0.5 * self.scenario.map_width:
+                            ship2_x_centered_around_ship1 = ship2.x - self.scenario.map_width
+                        elif ship2.x - ship1.x < -0.5 * self.scenario.map_width:
+                            ship2_x_centered_around_ship1 = ship2.x + self.scenario.map_width
                         else:
                             ship2_x_centered_around_ship1 = ship2.x
 
-                        if ship2.y - ship1.y > 0.5 * self.map_height:
-                            ship2_y_centered_around_ship1 = ship2.y - self.map_height
-                        elif ship2.y - ship1.y < -0.5 * self.map_height:
-                            ship2_y_centered_around_ship1 = ship2.y + self.map_height
+                        if ship2.y - ship1.y > 0.5 * self.scenario.map_height:
+                            ship2_y_centered_around_ship1 = ship2.y - self.scenario.map_height
+                        elif ship2.y - ship1.y < -0.5 * self.scenario.map_height:
+                            ship2_y_centered_around_ship1 = ship2.y + self.scenario.map_height
                         else:
                             ship2_y_centered_around_ship1 = ship2.y
                         
@@ -647,14 +669,14 @@ class KesslerGame:
                         )
                         if not isnan(collision_start_time):
                             assert -self.delta_time <= collision_start_time <= 0.0 # Collision happened within past frame
-                            ship1_past_x, ship1_past_y = ship1.get_past_position(collision_start_time, self.map_width, self.map_height)
-                            ship2_past_x, ship2_past_y = ship2.get_past_position(collision_start_time, self.map_width, self.map_height)
+                            ship1_past_x, ship1_past_y = ship1.get_past_position(collision_start_time, self.scenario.map_size)
+                            ship2_past_x, ship2_past_y = ship2.get_past_position(collision_start_time, self.scenario.map_size)
                             dx = abs(ship1_past_x - ship2_past_x)
                             dy = abs(ship1_past_y - ship2_past_y)
-                            if dx > 0.5 * self.map_width:
-                                dx = self.map_width - dx
-                            if dy > 0.5 * self.map_height:
-                                dy = self.map_height - dy
+                            if dx > 0.5 * self.scenario.map_width:
+                                dx = self.scenario.map_width - dx
+                            if dy > 0.5 * self.scenario.map_height:
+                                dy = self.scenario.map_height - dy
                             sq_dist = dx * dx + dy * dy
                             
                             # This following test is to make sure that the ships end up in a definitely colliding state, and
@@ -680,14 +702,14 @@ class KesslerGame:
                                         # We reached the end of the interval, so this is hopeless. These ships are not colliding!
                                         break
 
-                                    ship1_past_x, ship1_past_y = ship1.get_past_position(collision_start_time, self.map_width, self.map_height)
-                                    ship2_past_x, ship2_past_y = ship2.get_past_position(collision_start_time, self.map_width, self.map_height)
+                                    ship1_past_x, ship1_past_y = ship1.get_past_position(collision_start_time, self.scenario.map_size)
+                                    ship2_past_x, ship2_past_y = ship2.get_past_position(collision_start_time, self.scenario.map_size)
                                     dx = abs(ship1_past_x - ship2_past_x)
                                     dy = abs(ship1_past_y - ship2_past_y)
-                                    if dx > 0.5 * self.map_width:
-                                        dx = self.map_width - dx
-                                    if dy > 0.5 * self.map_height:
-                                        dy = self.map_height - dy
+                                    if dx > 0.5 * self.scenario.map_width:
+                                        dx = self.scenario.map_width - dx
+                                    if dy > 0.5 * self.scenario.map_height:
+                                        dy = self.scenario.map_height - dy
                                     sq_dist = dx * dx + dy * dy
                                     if sq_dist + 1e-10 <= radii_sum_sq:
                                         verified_collision = True
@@ -717,10 +739,10 @@ class KesslerGame:
                         collision_time = min(0.0, mine.countdown_timer)  # This min clamp should be unnecessary, but just in case
                     dx = abs(ax - mine.x)
                     dy = abs(ay - mine.y)
-                    if dx > 0.5 * self.map_width:
-                        dx = self.map_width - dx
-                    if dy > 0.5 * self.map_height:
-                        dy = self.map_height - dy
+                    if dx > 0.5 * self.scenario.map_width:
+                        dx = self.scenario.map_width - dx
+                    if dy > 0.5 * self.scenario.map_height:
+                        dy = self.scenario.map_height - dy
                     
                     radius_sum = mine.blast_radius + asteroid.radius
                     sq_dist = dx * dx + dy * dy
@@ -748,14 +770,14 @@ class KesslerGame:
                         collision_time = 0.0
                     else:
                         # Rewind objects
-                        sx, sy = ship.get_past_position(mine.countdown_timer, self.map_width, self.map_height)
+                        sx, sy = ship.get_past_position(mine.countdown_timer, self.scenario.map_size)
                         collision_time = min(0.0, mine.countdown_timer) # This min should be unnecessary, but just in case
                     dx = abs(sx - mine.x)
                     dy = abs(sy - mine.y)
-                    if dx > 0.5 * self.map_width:
-                        dx = self.map_width - dx
-                    if dy > 0.5 * self.map_height:
-                        dy = self.map_height - dy
+                    if dx > 0.5 * self.scenario.map_width:
+                        dx = self.scenario.map_width - dx
+                    if dy > 0.5 * self.scenario.map_height:
+                        dy = self.scenario.map_height - dy
                     
                     radius_sum = mine.blast_radius + ship.radius
                     sq_dist = dx * dx + dy * dy
@@ -771,37 +793,39 @@ class KesslerGame:
         # INITIALIZATION #
         ##################
         # Initialize objects lists from scenario
-        asteroids: list[Asteroid] = scenario.asteroids()
-        ships: list[Ship] = scenario.ships() # Keep full list of ships (dead or alive) for score reporting
-        liveships: list[Ship] = list(ships) # Maintain a parallel list of just live ships
-        bullets: list[Bullet] = []
-        mines: list[Mine] = []
+        self.scenario = scenario
+        self.asteroids = self.scenario.asteroids()
+        self.ships = self.scenario.ships() # Keep full list of ships (dead or alive) for score reporting
+        self.liveships = list(self.ships) # Maintain a copied parallel list of just live ships
+        self.bullets = []
+        self.mines = []
 
         # Initialize Scoring class
-        score = Score(scenario)
+        self.score = Score(self.scenario)
 
         # Initialize environment parameters
-        stop_reason = StopReason.not_stopped
-        sim_time: float = 0.0
-        sim_frame: int = 0
-        time_limit = scenario.time_limit if scenario.time_limit else self.time_limit
-        self.map_width = float(scenario.map_size[0])
-        self.map_height = float(scenario.map_size[1])
+        self.stop_reason = StopReason.not_stopped
+        self.sim_time = 0.0
+        self.sim_frame = 0
+
+        # Overwrite time limit from game settings if the scenario defines its own time limit
+        if self.scenario.time_limit:
+            self.time_limit = self.scenario.time_limit
 
         # Assign controllers to each ship
-        assert len(controllers) >= len(ships), f"There are not enough controllers ({len(controllers)}) to assign to the {len(ships)} ships!"
-        for controller, ship in zip(controllers, ships):
+        assert len(controllers) >= len(self.ships), f"There are not enough controllers ({len(controllers)}) to assign to the {len(self.ships)} ships!"
+        for controller, ship in zip(controllers, self.ships):
             controller.ship_id = ship.id
             ship.controller = controller
             if hasattr(controller, "custom_sprite_path"):
                 ship.custom_sprite_path = controller.custom_sprite_path
 
         # Initialize graphics display
-        graphics = GraphicsHandler(type=self.graphics_type, scenario=scenario, UI_settings=self.UI_settings, graphics_obj=self.graphics_obj)
+        self.graphics = GraphicsHandler(type=self.graphics_type, scenario=self.scenario, UI_settings=self.UI_settings, graphics_obj=self.graphics_obj)
 
-        # Initialize list of dictionary for performance tracking (will remain empty if perf_tracker is false
-        perf_dict: PerfDict = {
-            'controller_times': [0.0] * len(ships),
+        # Initialize dictionary for performance tracking
+        self.perf_dict = {
+            'controller_times': [0.0] * len(self.ships),
             'total_controller_time': 0.0,
             'physics_update': 0.0,
             'collisions_check': 0.0,
@@ -810,31 +834,27 @@ class KesslerGame:
             'total_frame_time': 0.0
         }
 
-        ######################
-        # MAIN SCENARIO LOOP #
-        ######################
-
         ships_to_cull: list[int] = []
         asteroids_to_cull: list[int] = []
         bullets_to_cull: list[int] = []
         mines_to_cull: list[int] = []
         new_asteroids: list[Asteroid] = []
+        self.collision_queue.clear()
 
         # Maintain game_state dict to send to teams
-        game_state: GameState | None = None
         if not self.competition_safe_mode:
-            game_state = GameState(
+            self.game_state = GameState(
                 # Game entities
-                ships=[ship.state for ship in liveships],
-                asteroids=[asteroid.state for asteroid in asteroids],
-                bullets=[bullet.state for bullet in bullets],
-                mines=[mine.state for mine in mines],
+                ships=[ship.state for ship in self.liveships],
+                asteroids=[asteroid.state for asteroid in self.asteroids],
+                bullets=[bullet.state for bullet in self.bullets],
+                mines=[mine.state for mine in self.mines],
                 # Environment
-                map_size=scenario.map_size,
-                time_limit=time_limit,
+                map_size=self.scenario.map_size,
+                time_limit=self.time_limit,
                 # Simulation timing
-                time=sim_time,
-                frame=sim_frame,
+                time=self.sim_time,
+                frame=self.sim_frame,
                 delta_time=self.delta_time,
                 frame_rate=self.frequency,
                 # Game settings
@@ -842,7 +862,11 @@ class KesslerGame:
                 competition_safe_mode=self.competition_safe_mode
             )
 
-        while stop_reason == StopReason.not_stopped:
+        ######################
+        # MAIN SCENARIO LOOP #
+        ######################
+
+        while self.stop_reason == StopReason.not_stopped:
             # Get perf time at the start of time step evaluation and initialize performance tracker
             step_start = time.perf_counter()
 
@@ -853,7 +877,7 @@ class KesslerGame:
                 t_start = time.perf_counter()
 
             # Loop through each controller/ship combo and apply their actions
-            for ship_idx, ship in enumerate(ships):
+            for ship_idx, ship in enumerate(self.ships):
                 if not ship.alive:
                     continue
 
@@ -867,16 +891,16 @@ class KesslerGame:
                     # Must recreate GameState object, so competitors do not accidentally or maliciously modify the true game state
                     game_state_to_controller = GameState(
                         # Game entities
-                        ships=[ship.state.copy() for ship in liveships],
-                        asteroids=[asteroid.state.copy() for asteroid in asteroids],
-                        bullets=[bullet.state.copy() for bullet in bullets],
-                        mines=[mine.state.copy() for mine in mines],
+                        ships=[ship.state.copy() for ship in self.liveships],
+                        asteroids=[asteroid.state.copy() for asteroid in self.asteroids],
+                        bullets=[bullet.state.copy() for bullet in self.bullets],
+                        mines=[mine.state.copy() for mine in self.mines],
                         # Environment
-                        map_size=scenario.map_size,
-                        time_limit=time_limit,
+                        map_size=self.scenario.map_size,
+                        time_limit=self.time_limit,
                         # Simulation timing
-                        time=sim_time,
-                        frame=sim_frame,
+                        time=self.sim_time,
+                        frame=self.sim_frame,
                         delta_time=self.delta_time,
                         frame_rate=self.frequency,
                         # Game settings
@@ -884,8 +908,8 @@ class KesslerGame:
                         competition_safe_mode=self.competition_safe_mode
                     )
                 else:
-                    assert game_state is not None
-                    game_state_to_controller = game_state
+                    assert self.game_state is not None
+                    game_state_to_controller = self.game_state
                 
                 # Default null action
                 thrust, turn_rate, fire, drop_mine = 0.0, 0.0, False, False
@@ -917,7 +941,7 @@ class KesslerGame:
                     if not self.competition_safe_mode:
                         raise  # In dev mode, fail loudly
                     # Log the error if needed
-                    print(f"[Competition Safe Mode] Controller {ship_idx} error: {e!r}. Assigning null actions for frame {sim_frame}.")
+                    print(f"[Competition Safe Mode] Controller {ship_idx} error: {e!r}. Assigning null actions for frame {self.sim_frame}.")
 
                 ship.thrust = thrust
                 ship.turn_rate = turn_rate
@@ -927,60 +951,60 @@ class KesslerGame:
                 # Update controller evaluation time if performance tracking
                 if self.perf_tracker:
                     controller_time = time.perf_counter() - t_start if ship.alive else 0.00
-                    perf_dict['controller_times'][ship_idx] += controller_time
+                    self.perf_dict['controller_times'][ship_idx] += controller_time
                     t_start = time.perf_counter()
 
             if self.perf_tracker:
-                perf_dict['total_controller_time'] += time.perf_counter() - step_start
+                self.perf_dict['total_controller_time'] += time.perf_counter() - step_start
                 prev = time.perf_counter()
 
             # --- UPDATE TIME TO THE TIME AT THE END OF THIS FRAME
-            sim_frame += 1
-            sim_time = sim_frame / self.frequency # Derive time from integer frames, to avoid accumulated floating point errors
+            self.sim_frame += 1
+            self.sim_time = self.sim_frame / self.frequency # Derive time from integer frames, to avoid accumulated floating point errors
             if not self.competition_safe_mode:
-                assert game_state is not None
-                game_state.time = sim_time
-                game_state.frame = sim_frame
+                assert self.game_state is not None
+                self.game_state.time = self.sim_time
+                self.game_state.frame = self.sim_frame
             
             # --- UPDATE STATE INFORMATION OF EACH OBJECT --------------------------------------------------------------
             
             # Update each Asteroid, Bullet, and Ship
             # Because the game_state stores a mutable reference to the internal states of the ship/asteroid/bullet/mine,
             # these updates automatically reflect in the game_state
-            for ship in liveships:
+            for ship in self.liveships:
                 # The ships shoot at the start of the frame
-                new_bullet, new_mine = ship.update(self.delta_time, scenario.map_size, True)
+                new_bullet, new_mine = ship.update(self.delta_time, self.scenario.map_size, True)
                 if new_bullet is not None:
-                    bullets.append(new_bullet)
+                    self.bullets.append(new_bullet)
                     if not self.competition_safe_mode:
-                        assert game_state is not None
-                        game_state.add_bullet(new_bullet.state)
+                        assert self.game_state is not None
+                        self.game_state.add_bullet(new_bullet.state)
                 if new_mine is not None:
-                    mines.append(new_mine)
+                    self.mines.append(new_mine)
                     if not self.competition_safe_mode:
-                        assert game_state is not None
-                        game_state.add_mine(new_mine.state)
+                        assert self.game_state is not None
+                        self.game_state.add_mine(new_mine.state)
             # The bullet and mine that the ship shot will get updated from the start of the frame to the end
-            for asteroid in asteroids:
-                asteroid.update(self.delta_time, scenario.map_size)
-            for bullet in bullets:
+            for asteroid in self.asteroids:
+                asteroid.update(self.delta_time, self.scenario.map_size)
+            for bullet in self.bullets:
                 bullet.update(self.delta_time)
-            for mine in mines:
+            for mine in self.mines:
                 mine.update(self.delta_time)
 
             # Update performance tracker
             if self.perf_tracker:
-                perf_dict['physics_update'] += time.perf_counter() - prev
+                self.perf_dict['physics_update'] += time.perf_counter() - prev
                 prev = time.perf_counter()
 
             # --- CHECK FOR COLLISIONS AND ENQUEUE ---
 
             assert not self.collision_queue  # Since the collision queue should be empty from the last frame
-            self.enqueue_bullet_asteroid_collisions(bullets, asteroids, self.delta_time)
-            self.enqueue_ship_asteroid_collisions(ships, asteroids, self.delta_time)
-            self.enqueue_ship_ship_collisions(ships)
-            self.enqueue_mine_asteroid_collisions(mines, asteroids, self.delta_time)
-            self.enqueue_mine_ship_collisions(mines, ships)
+            self.enqueue_bullet_asteroid_collisions(self.bullets, self.asteroids, self.delta_time)
+            self.enqueue_ship_asteroid_collisions(self.ships, self.asteroids, self.delta_time)
+            self.enqueue_ship_ship_collisions(self.ships)
+            self.enqueue_mine_asteroid_collisions(self.mines, self.asteroids, self.delta_time)
+            self.enqueue_mine_ship_collisions(self.mines, self.ships)
 
             heapify(self.collision_queue) # Create priority queue in O(n)
 
@@ -1011,35 +1035,35 @@ class KesslerGame:
                         if bul_idx in bullets_to_cull or ast_idx in asteroids_to_cull:
                             continue
 
-                        bullet = bullets[bul_idx]
-                        asteroid = asteroids[ast_idx]
+                        bullet = self.bullets[bul_idx]
+                        asteroid = self.asteroids[ast_idx]
 
                         # Rewind
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             bullet.update(dt)
-                            asteroid.update(dt, scenario.map_size)
+                            asteroid.update(dt, self.scenario.map_size)
                         
                         # Handle collision
                         bullets_to_cull.append(bul_idx)
                         asteroids_to_cull.append(ast_idx)
 
-                        new_asteroids = asteroid.destruct(impactor=bullet, map_size=scenario.map_size, random_ast_split=self.random_ast_splits)
+                        new_asteroids = asteroid.destruct(impactor=bullet, map_size=self.scenario.map_size, random_ast_split=self.random_ast_splits)
                         bullet.destruct()
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             for a in new_asteroids:
                                 # This is a forward update, from the time of collision to the end of the frame!
-                                a.update(-dt, scenario.map_size)
-                        ast_idx_offset = len(asteroids)
-                        asteroids.extend(new_asteroids)
+                                a.update(-dt, self.scenario.map_size)
+                        ast_idx_offset = len(self.asteroids)
+                        self.asteroids.extend(new_asteroids)
                         if not self.competition_safe_mode:
-                            assert game_state is not None
-                            game_state.add_asteroids([a.state for a in new_asteroids])
+                            assert self.game_state is not None
+                            self.game_state.add_asteroids([a.state for a in new_asteroids])
                         # Take care of possible collision events from these children asteroids this frame
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             # Only do this if we have time left, and the collision didn't happen at the very end of the frame
-                            self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset, True)
-                            self.enqueue_mine_asteroid_collisions(mines, new_asteroids, -dt, ast_idx_offset, True)
-                            self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_bullet_asteroid_collisions(self.bullets, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_mine_asteroid_collisions(self.mines, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_ship_asteroid_collisions(self.ships, new_asteroids, -dt, ast_idx_offset, True)
 
                         # Track stats
                         bullet.owner.bullet_asteroid_hits += 1
@@ -1050,39 +1074,39 @@ class KesslerGame:
                         if ship_idx in ships_to_cull or ast_idx in asteroids_to_cull:
                             continue
 
-                        ship = ships[ship_idx]
+                        ship = self.ships[ship_idx]
                         assert ship.alive
                         if ship.is_respawning_internal:
                             continue
-                        asteroid = asteroids[ast_idx]
+                        asteroid = self.asteroids[ast_idx]
 
                         # Rewind
                         if abs(dt) > CollisionEvent.TOLERANCE:
-                            ship.update(dt, scenario.map_size, False)
-                            asteroid.update(dt, scenario.map_size)
+                            ship.update(dt, self.scenario.map_size, False)
+                            asteroid.update(dt, self.scenario.map_size)
                         
                         # Handle collision
 
-                        new_asteroids = asteroid.destruct(impactor=ship, map_size=scenario.map_size, random_ast_split=self.random_ast_splits)
-                        ship.destruct(map_size=scenario.map_size)
+                        new_asteroids = asteroid.destruct(impactor=ship, map_size=self.scenario.map_size, random_ast_split=self.random_ast_splits)
+                        ship.destruct(map_size=self.scenario.map_size)
 
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             for a in new_asteroids:
                                 # This is a forward update, from the time of collision to the end of the frame!
-                                a.update(-dt, scenario.map_size)
-                        ast_idx_offset = len(asteroids)
-                        asteroids.extend(new_asteroids)
+                                a.update(-dt, self.scenario.map_size)
+                        ast_idx_offset = len(self.asteroids)
+                        self.asteroids.extend(new_asteroids)
                         if not self.competition_safe_mode:
-                            assert game_state is not None
-                            game_state.add_asteroids([a.state for a in new_asteroids])
+                            assert self.game_state is not None
+                            self.game_state.add_asteroids([a.state for a in new_asteroids])
                         if abs(dt) > CollisionEvent.TOLERANCE:
-                            self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset, True)
-                            self.enqueue_mine_asteroid_collisions(mines, new_asteroids, -dt, ast_idx_offset, True)
-                            self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_bullet_asteroid_collisions(self.bullets, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_mine_asteroid_collisions(self.mines, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_ship_asteroid_collisions(self.ships, new_asteroids, -dt, ast_idx_offset, True)
 
                         if ship.alive:
                             if abs(dt) > CollisionEvent.TOLERANCE:
-                                ship.update(-dt, scenario.map_size, False)
+                                ship.update(-dt, self.scenario.map_size, False)
                         else:
                             ships_to_cull.append(ship_idx)
                         asteroids_to_cull.append(ast_idx)
@@ -1097,8 +1121,8 @@ class KesslerGame:
                         if ship1_idx in ships_to_cull or ship2_idx in ships_to_cull:
                             continue
 
-                        ship1 = ships[ship1_idx]
-                        ship2 = ships[ship2_idx]
+                        ship1 = self.ships[ship1_idx]
+                        ship2 = self.ships[ship2_idx]
 
                         assert ship1.alive and ship2.alive
                         if ship1.is_respawning_internal or ship2.is_respawning_internal:
@@ -1106,22 +1130,22 @@ class KesslerGame:
 
                         # Rollback
                         if abs(dt) > CollisionEvent.TOLERANCE:
-                            ship1.update(dt, scenario.map_size, False)
-                            ship2.update(dt, scenario.map_size, False)
+                            ship1.update(dt, self.scenario.map_size, False)
+                            ship2.update(dt, self.scenario.map_size, False)
                         
                         # Handle collision
-                        ship1.destruct(map_size=scenario.map_size)
-                        ship2.destruct(map_size=scenario.map_size)
+                        ship1.destruct(map_size=self.scenario.map_size)
+                        ship2.destruct(map_size=self.scenario.map_size)
 
                         # Roll forward to the end of the frame again if alive
                         if ship1.alive:
                             if abs(dt) > CollisionEvent.TOLERANCE:
-                                ship1.update(-dt, scenario.map_size, False)
+                                ship1.update(-dt, self.scenario.map_size, False)
                         else:
                             ships_to_cull.append(ship1_idx)
                         if ship2.alive:
                             if abs(dt) > CollisionEvent.TOLERANCE:
-                                ship2.update(-dt, scenario.map_size, False)
+                                ship2.update(-dt, self.scenario.map_size, False)
                         else:
                             ships_to_cull.append(ship2_idx)
 
@@ -1137,16 +1161,16 @@ class KesslerGame:
                         if ast_idx in asteroids_to_cull:
                             continue
 
-                        mine = mines[mine_idx]
-                        asteroid = asteroids[ast_idx]
+                        mine = self.mines[mine_idx]
+                        asteroid = self.asteroids[ast_idx]
 
                         # Rewind if necessary
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             mine.update(dt)
-                            asteroid.update(dt, scenario.map_size)
+                            asteroid.update(dt, self.scenario.map_size)
                         
                         # Handle collision
-                        new_asteroids = asteroid.destruct(impactor=mine, map_size=scenario.map_size, random_ast_split=self.random_ast_splits)
+                        new_asteroids = asteroid.destruct(impactor=mine, map_size=self.scenario.map_size, random_ast_split=self.random_ast_splits)
                         asteroids_to_cull.append(ast_idx)
 
                         # Move the things back to the present
@@ -1154,19 +1178,19 @@ class KesslerGame:
                             mine.update(-dt)
                             for a in new_asteroids:
                                 # This is a forward update, from the time of collision to the end of the frame!
-                                a.update(-dt, scenario.map_size)
+                                a.update(-dt, self.scenario.map_size)
                         
-                        ast_idx_offset = len(asteroids)
-                        asteroids.extend(new_asteroids)
+                        ast_idx_offset = len(self.asteroids)
+                        self.asteroids.extend(new_asteroids)
                         if not self.competition_safe_mode:
-                            assert game_state is not None
-                            game_state.add_asteroids([a.state for a in new_asteroids])
+                            assert self.game_state is not None
+                            self.game_state.add_asteroids([a.state for a in new_asteroids])
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             # Enqueue new collisions, but be super careful not to allow this same mine to hit the asteroids' children again!
                             # But the mine collision check should be avoiding this case where the time interval is the explosion time. So it should be fine.
-                            self.enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset, True)
-                            self.enqueue_mine_asteroid_collisions(mines, new_asteroids, -dt, ast_idx_offset, True)
-                            self.enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_bullet_asteroid_collisions(self.bullets, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_mine_asteroid_collisions(self.mines, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_ship_asteroid_collisions(self.ships, new_asteroids, -dt, ast_idx_offset, True)
 
                         # Track stats
                         mine.owner.mine_asteroid_hits += 1
@@ -1177,8 +1201,8 @@ class KesslerGame:
                         if ship_idx in ships_to_cull:
                             continue
                         
-                        mine = mines[mine_idx]
-                        ship = ships[ship_idx]
+                        mine = self.mines[mine_idx]
+                        ship = self.ships[ship_idx]
 
                         assert ship.alive
                         if ship.is_respawning_internal:
@@ -1187,11 +1211,11 @@ class KesslerGame:
                         # Rewind if necessary
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             mine.update(dt)
-                            ship.update(dt, scenario.map_size, False)
+                            ship.update(dt, self.scenario.map_size, False)
 
                         # Handle collision
                         mine.destruct()
-                        ship.destruct(map_size=scenario.map_size)
+                        ship.destruct(map_size=self.scenario.map_size)
                         
                         if not ship.alive:
                             ships_to_cull.append(ship_idx)
@@ -1199,7 +1223,7 @@ class KesslerGame:
                         # Rewind if necessary
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             mine.update(-dt)
-                            ship.update(-dt, scenario.map_size, False)
+                            ship.update(-dt, self.scenario.map_size, False)
 
                         # Track stats
                         mine.owner.mine_ship_hits += 1
@@ -1208,20 +1232,20 @@ class KesslerGame:
             # Now that all collisions are handled and resolved, the final step is to cull the removed objects
             # Cull asteroids using swap and pop. The list of indices to cull is unique
             for ast_idx in sorted(asteroids_to_cull, reverse=True):
-                asteroids[ast_idx] = asteroids[-1]
-                asteroids.pop()
+                self.asteroids[ast_idx] = self.asteroids[-1]
+                self.asteroids.pop()
                 if not self.competition_safe_mode:
-                    assert game_state is not None
-                    game_state.remove_asteroid(ast_idx)
+                    assert self.game_state is not None
+                    self.game_state.remove_asteroid(ast_idx)
 
             # Cull bullets that are off the map
             # It might be tempting to cull a bullet if both the head and tail are out of bounds. And this was the original logic.
             # But this misses something. What if the tail and head were out of bounds, but the middle of the bullet was still inbounds in the corner of a map?
             # This is something that is geometrically plausible especially at higher framerates, and the ship is peeking its head into the map when shooting a bullet!
-            for bul_idx, bullet in enumerate(bullets):
+            for bul_idx, bullet in enumerate(self.bullets):
                 if bul_idx in bullets_to_cull:
                     continue
-                time_for_tail_to_leave = time_until_exit(bullet.x + bullet.tail_delta_x, bullet.y + bullet.tail_delta_y, bullet.vx, bullet.vy, self.map_width, self.map_height)
+                time_for_tail_to_leave = time_until_exit(bullet.x + bullet.tail_delta_x, bullet.y + bullet.tail_delta_y, bullet.vx, bullet.vy, self.scenario.map_width, self.scenario.map_height)
                 if time_for_tail_to_leave <= 0.0:
                     # The bullet has left the map already
                     bullet.destruct()
@@ -1229,83 +1253,83 @@ class KesslerGame:
             
             # Cull bullets using swap and pop
             for bul_idx in sorted(bullets_to_cull, reverse=True):
-                bullets[bul_idx] = bullets[-1]
-                bullets.pop()
+                self.bullets[bul_idx] = self.bullets[-1]
+                self.bullets.pop()
                 if not self.competition_safe_mode:
-                    assert game_state is not None
-                    game_state.remove_bullet(bul_idx)
+                    assert self.game_state is not None
+                    self.game_state.remove_bullet(bul_idx)
             
             # Cull mines
             mines_to_cull.clear()
-            for mine_idx, mine in enumerate(mines):
+            for mine_idx, mine in enumerate(self.mines):
                 if mine.detonating:
                     mines_to_cull.append(mine_idx)
                     mine.destruct() # The mine destruct method does nothing
             mines_to_cull.reverse() # It's in sorted ascending order, but we need it in descending order
             for mine_idx in mines_to_cull:
-                mines[mine_idx] = mines[-1]
-                mines.pop()
+                self.mines[mine_idx] = self.mines[-1]
+                self.mines.pop()
                 if not self.competition_safe_mode:
-                    assert game_state is not None
-                    game_state.remove_mine(mine_idx)
+                    assert self.game_state is not None
+                    self.game_state.remove_mine(mine_idx)
 
             # Cull ships if they are all out of lives
             # We don't cull a ship just because it took damage this frame! They may still have more lives.
-            new_liveships = [ship for ship in liveships if ship.alive]
+            new_liveships = [ship for ship in self.liveships if ship.alive]
             if ships_to_cull:
-                liveships = new_liveships
+                self.liveships = new_liveships
                 if not self.competition_safe_mode:
-                    assert game_state is not None
-                    game_state.update_ships([ship.state for ship in liveships])
+                    assert self.game_state is not None
+                    self.game_state.update_ships([ship.state for ship in self.liveships])
 
             # Update performance tracker with collisions timing
             if self.perf_tracker:
-                perf_dict['collisions_check'] += time.perf_counter() - prev
+                self.perf_dict['collisions_check'] += time.perf_counter() - prev
                 prev = time.perf_counter()
 
                 # --- UPDATE SCORE CLASS -----------------------------------------------------------------------------------
-                score.update(ships, sim_time, perf_dict['controller_times'])
+                self.score.update(self.ships, self.sim_time, self.perf_dict['controller_times'])
 
                 # Update performance tracker with score timing
-                perf_dict['score_update'] += time.perf_counter() - prev
+                self.perf_dict['score_update'] += time.perf_counter() - prev
                 prev = time.perf_counter()
             else:
-                score.update(ships, sim_time)
+                self.score.update(self.ships, self.sim_time)
 
             # --- UPDATE GRAPHICS --------------------------------------------------------------------------------------
-            if sim_frame % self.frame_skip == 0:
-                graphics.update(score, ships, asteroids, bullets, mines)
+            if self.sim_frame % self.frame_skip == 0:
+                self.graphics.update(self.score, self.ships, self.asteroids, self.bullets, self.mines)
 
                 # Update performance tracker with graphics timing
                 if self.perf_tracker:
-                    perf_dict['graphics_draw'] += time.perf_counter() - prev
+                    self.perf_dict['graphics_draw'] += time.perf_counter() - prev
                     prev = time.perf_counter()
             
             # --- CHECK STOP CONDITIONS --------------------------------------------------------------------------------
-            if scenario.stop_if_no_asteroids and not asteroids:
+            if self.scenario.stop_if_no_asteroids and not self.asteroids:
                 # No asteroids remain
-                stop_reason = StopReason.no_asteroids
-            elif scenario.stop_if_no_ships and not liveships and not (mines or bullets):
+                self.stop_reason = StopReason.no_asteroids
+            elif self.scenario.stop_if_no_ships and not self.liveships and not (self.mines or self.bullets):
                 # No ships are alive and no mines exist and no bullets exist
                 # Prevents unfairness where ship that dies before another gets score from its bullets as long as the other
                 # is alive but the one that lives longer doesn't get the same benefit from its bullets/mines persisting
                 # after it dies
-                stop_reason = StopReason.no_ships
+                self.stop_reason = StopReason.no_ships
             elif (
-                scenario.stop_if_no_ammo
-                and all(ship.bullets_remaining == 0 and ship.mines_remaining == 0 for ship in liveships)
-                and not (bullets or mines)
+                self.scenario.stop_if_no_ammo
+                and all(ship.bullets_remaining == 0 and ship.mines_remaining == 0 for ship in self.liveships)
+                and not (self.bullets or self.mines)
             ):
                 # All live ships are out of bullets and no bullets are on map
-                stop_reason = StopReason.out_of_bullets
-            elif isfinite(time_limit) and sim_frame >= ceil(time_limit * self.frequency):
+                self.stop_reason = StopReason.out_of_bullets
+            elif isfinite(self.time_limit) and self.sim_frame >= ceil(self.time_limit * self.frequency):
                 # Out of time
-                stop_reason = StopReason.time_expired
+                self.stop_reason = StopReason.time_expired
 
             # --- FINISHING TIME STEP ----------------------------------------------------------------------------------
             # Get overall time step compute time
             if self.perf_tracker:
-                perf_dict['total_frame_time'] += time.perf_counter() - step_start
+                self.perf_dict['total_frame_time'] += time.perf_counter() - step_start
 
             # Hold simulation so that it runs at realtime ratio if specified, else let it pass
             if self.realtime_multiplier != 0.0:
@@ -1324,13 +1348,13 @@ class KesslerGame:
         ############################################
 
         # Close graphics display
-        graphics.close()
+        self.graphics.close()
 
         # Finalize score class before returning
-        score.finalize(sim_time, stop_reason, ships)
+        self.score.finalize(self.sim_time, self.stop_reason, self.ships)
 
         # Return the score and stop condition
-        return score, perf_dict
+        return self.score, self.perf_dict
 
 
 class TrainerEnvironment(KesslerGame):
