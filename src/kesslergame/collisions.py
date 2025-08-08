@@ -519,38 +519,43 @@ def collision_time_interval(
     r_a0_to_center_y = -a0y
     ast_proj_n = r_a0_to_center_x * nx + r_a0_to_center_y * ny
 
-    # The bullet head and tails are both located at position 0 on the normal axis
-    t_ast_center = ast_proj_n / v_proj_n if v_proj_n != 0.0 else inf
-    # The time it takes for the relative bullet vel to travel the radius of the asteroid along normal axis
-    t_diff_ast_radius = r / v_proj_n if v_proj_n != 0.0 else inf
+    # Guard against v_proj_n == 0. This case happens when the asteroids are stationary or moving parallel to the bullet
+    if abs(v_proj_n) < 1e-12:
+        t0_mid = nan
+        t1_mid = nan
+    else:
+        # The bullet head and tails are both located at position 0 on the normal axis
+        t_ast_center = ast_proj_n / v_proj_n if v_proj_n != 0.0 else inf
+        # The time it takes for the relative bullet vel to travel the radius of the asteroid along normal axis
+        t_diff_ast_radius = r / v_proj_n if v_proj_n != 0.0 else inf
 
-    t0_mid = t_ast_center - t_diff_ast_radius
-    t1_mid = t_ast_center + t_diff_ast_radius
+        t0_mid = t_ast_center - t_diff_ast_radius
+        t1_mid = t_ast_center + t_diff_ast_radius
 
-    # Just because the times exist (which they pretty much always do), doesn’t mean the bullet actually collides with the circle there (which it very rarely does)
-    # Need to project the circle center onto the two lines and clamp them to the bounds of the other two lines
-    a0x_t0m = a0x + rvx * t0_mid
-    a0y_t0m = a0y + rvy * t0_mid
-    b0x_t0m = b0x + rvx * t0_mid
-    b0y_t0m = b0y + rvy * t0_mid
-    t_proj_0 = project_point_onto_segment_and_get_t(a0x_t0m, a0y_t0m, b0x_t0m, b0y_t0m, 0.0, 0.0)
+        # Just because the times exist (which they pretty much always do), doesn’t mean the bullet actually collides with the circle there (which it very rarely does)
+        # Need to project the circle center onto the two lines and clamp them to the bounds of the other two lines
+        a0x_t0m = a0x + rvx * t0_mid
+        a0y_t0m = a0y + rvy * t0_mid
+        b0x_t0m = b0x + rvx * t0_mid
+        b0y_t0m = b0y + rvy * t0_mid
+        t_proj_0 = project_point_onto_segment_and_get_t(a0x_t0m, a0y_t0m, b0x_t0m, b0y_t0m, 0.0, 0.0)
 
-    a0x_t1m = a0x + rvx * t1_mid
-    a0y_t1m = a0y + rvy * t1_mid
-    b0x_t1m = b0x + rvx * t1_mid
-    b0y_t1m = b0y + rvy * t1_mid
-    t_proj_1 = project_point_onto_segment_and_get_t(a0x_t1m, a0y_t1m, b0x_t1m, b0y_t1m, 0.0, 0.0)
+        a0x_t1m = a0x + rvx * t1_mid
+        a0y_t1m = a0y + rvy * t1_mid
+        b0x_t1m = b0x + rvx * t1_mid
+        b0y_t1m = b0y + rvy * t1_mid
+        t_proj_1 = project_point_onto_segment_and_get_t(a0x_t1m, a0y_t1m, b0x_t1m, b0y_t1m, 0.0, 0.0)
 
-    # Only count these times if the projection is inside the segment at all (t in [0, 1])
-    if 0.0 <= t_proj_0 <= 1.0:
-        # This is a legit "middle-of-segment" first contact
-        # Add an eps to make this assertion easier. Due to floating point imprecision, it can fail without that! Just suuuuuuper rare.
-        assert t0_mid <= t0 + 1e-12
-        t0 = t0_mid
-    if 0.0 <= t_proj_1 <= 1.0:
-        # This is a legit "middle-of-segment" last contact
-        assert t1_mid + 1e-12 >= t1
-        t1 = t1_mid
+        # Only count these times if the projection is inside the segment at all (t in [0, 1])
+        if 0.0 <= t_proj_0 <= 1.0:
+            # This is a legit "middle-of-segment" first contact
+            # Add an eps to make this assertion easier. Due to floating point imprecision, it can fail without that! Just suuuuuuper rare.
+            assert t0_mid <= t0 + 1e-12
+            t0 = t0_mid
+        if 0.0 <= t_proj_1 <= 1.0:
+            # This is a legit "middle-of-segment" last contact
+            assert t1_mid + 1e-12 >= t1
+            t1 = t1_mid
 
     # If neither t0 nor t1 got set properly, there was no collision
     if not (isfinite(t0) and isfinite(t1)):

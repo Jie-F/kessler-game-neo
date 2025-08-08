@@ -29,8 +29,8 @@ class GamepadController(KesslerController):
         self.pause_handler()
 
         # deadzones (both left and right using same currently)
-        joystick_deadzone = 0.05
-        trigger_deadzone = 0.05
+        joystick_deadzone = 0.1
+        trigger_deadzone = 0.1
 
         # Set thrust control
         if abs(self.gamepad.LeftJoystickY) > joystick_deadzone:
@@ -85,8 +85,8 @@ class XboxController(object):
     MIT License
     """
 
-    MAX_TRIG_VAL: Final[float] = 2.0**8
-    MAX_JOY_VAL: Final[float] = 2.0**15
+    MAX_TRIG_VAL: Final[float] = 2**8 - 1  # Trigger ranges from 0-255
+    MAX_JOY_VAL: Final[float] = 2**15  # Joystick ranges from -32768 to 32767. This is slightly asymmetric on the top end, but it's no biggie
 
     def __init__(self) -> None:
 
