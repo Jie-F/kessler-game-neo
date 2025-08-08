@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from tkinter import *
 
 if TYPE_CHECKING:
     from ..ship import Ship

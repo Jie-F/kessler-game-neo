@@ -2,11 +2,20 @@
 
 from typing import TypeVar, Iterable, Callable, Iterator, Optional, Any, Protocol
 
+
 class SupportsRichComparison(Protocol):
-    def __lt__(self: "T", other: "T") -> bool: ...
-    def __le__(self: "T", other: "T") -> bool: ...
-    def __gt__(self: "T", other: "T") -> bool: ...
-    def __ge__(self: "T", other: "T") -> bool: ...
+    def __lt__(self: "T", other: "T") -> bool:
+        ...
+
+    def __le__(self: "T", other: "T") -> bool:
+        ...
+
+    def __gt__(self: "T", other: "T") -> bool:
+        ...
+
+    def __ge__(self: "T", other: "T") -> bool:
+        ...
+
 
 T = TypeVar("T", bound=SupportsRichComparison)
 
@@ -15,9 +24,11 @@ __all__ = [
     "nlargest", "nsmallest", "heappushpop"
 ]
 
+
 def heappush(heap: list[T], item: T) -> None:
     heap.append(item)
     _siftdown(heap, 0, len(heap) - 1)
+
 
 def heappop(heap: list[T]) -> T:
     lastelt = heap.pop()
@@ -28,11 +39,13 @@ def heappop(heap: list[T]) -> T:
         return returnitem
     return lastelt
 
+
 def heapreplace(heap: list[T], item: T) -> T:
     returnitem = heap[0]
     heap[0] = item
     _siftup(heap, 0)
     return returnitem
+
 
 def heappushpop(heap: list[T], item: T) -> T:
     if heap and heap[0] < item:
@@ -40,10 +53,12 @@ def heappushpop(heap: list[T], item: T) -> T:
         _siftup(heap, 0)
     return item
 
+
 def heapify(x: list[T]) -> None:
     n = len(x)
     for i in reversed(range(n // 2)):
         _siftup(x, i)
+
 
 def _heappop_max(heap: list[T]) -> T:
     lastelt = heap.pop()
@@ -54,16 +69,19 @@ def _heappop_max(heap: list[T]) -> T:
         return returnitem
     return lastelt
 
+
 def _heapreplace_max(heap: list[T], item: T) -> T:
     returnitem = heap[0]
     heap[0] = item
     _siftup_max(heap, 0)
     return returnitem
 
+
 def _heapify_max(x: list[T]) -> None:
     n = len(x)
     for i in reversed(range(n // 2)):
         _siftup_max(x, i)
+
 
 def _siftdown(heap: list[T], startpos: int, pos: int) -> None:
     newitem = heap[pos]
@@ -76,6 +94,7 @@ def _siftdown(heap: list[T], startpos: int, pos: int) -> None:
             continue
         break
     heap[pos] = newitem
+
 
 def _siftup(heap: list[T], pos: int) -> None:
     endpos = len(heap)
@@ -92,6 +111,7 @@ def _siftup(heap: list[T], pos: int) -> None:
     heap[pos] = newitem
     _siftdown(heap, startpos, pos)
 
+
 def _siftdown_max(heap: list[T], startpos: int, pos: int) -> None:
     newitem = heap[pos]
     while pos > startpos:
@@ -103,6 +123,7 @@ def _siftdown_max(heap: list[T], startpos: int, pos: int) -> None:
             continue
         break
     heap[pos] = newitem
+
 
 def _siftup_max(heap: list[T], pos: int) -> None:
     endpos = len(heap)
@@ -118,6 +139,7 @@ def _siftup_max(heap: list[T], pos: int) -> None:
         childpos = 2 * pos + 1
     heap[pos] = newitem
     _siftdown_max(heap, startpos, pos)
+
 
 def merge(
     *iterables: Iterable[T],
@@ -185,6 +207,7 @@ def merge(
         yield value
         yield from next_fn.__self__
 
+
 def nsmallest(n: int, iterable: Iterable[T], key: Optional[Callable[[T], Any]] = None) -> list[T]:
     if n == 0:
         return []
@@ -224,6 +247,7 @@ def nsmallest(n: int, iterable: Iterable[T], key: Optional[Callable[[T], Any]] =
             order2 += 1
     result2.sort()
     return [elem for (k, order, elem) in result2]
+
 
 def nlargest(n: int, iterable: Iterable[T], key: Optional[Callable[[T], Any]] = None) -> list[T]:
     if n == 0:

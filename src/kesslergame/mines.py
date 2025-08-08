@@ -14,13 +14,14 @@ from .state_models import MineDataList
 
 class Mine:
     __slots__ = ('fuse_time', 'detonation_time', 'mass', 'radius', 'blast_radius', 'blast_pressure', 'owner', 'countdown_timer', 'x', 'y', '_state')
+
     def __init__(self, starting_position: tuple[float, float], owner: Ship) -> None:
-        self.fuse_time: float = 3.0 # s
-        self.detonation_time: float = 0.25 # s
+        self.fuse_time: float = 3.0  # s
+        self.detonation_time: float = 0.25  # s
         self.mass: float = 25.0  # kg
-        self.radius: float = 12.0 # m
-        self.blast_radius: float = 150.0 # m
-        self.blast_pressure: float = 2000.0 # Pascals. I think.
+        self.radius: float = 12.0  # m
+        self.blast_radius: float = 150.0  # m
+        self.blast_pressure: float = 2000.0  # Pascals. I think.
 
         self.owner = owner
         self.countdown_timer: float = self.fuse_time

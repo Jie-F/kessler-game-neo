@@ -3,7 +3,6 @@
 # NOTICE: This file is subject to the license agreement defined in file 'LICENSE', which is part of
 # this source code package.
 
-#from .ship import Ship, ShipState
 from .kessler_game import KesslerGame, TrainerEnvironment, StopReason
 from .controller import KesslerController
 from .controller_gamepad import GamepadController

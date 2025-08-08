@@ -71,10 +71,10 @@ class GraphicsPLT(KesslerGraphics):
         for ship in ships:
             if ship.alive:
                 img = self.ship_images[1]
-                rotated_img = ndimage.rotate(img, ship.heading-90, reshape=True)
+                rotated_img = ndimage.rotate(img, ship.heading - 90, reshape=True)
 
-                self.ax.imshow(rotated_img, extent=(ship.position[0] - ship.radius/2, ship.position[0] + ship.radius/2,
-                                                    ship.position[1] - ship.radius/2, ship.position[1] + ship.radius/2))
+                self.ax.imshow(rotated_img, extent=(ship.position[0] - ship.radius / 2, ship.position[0] + ship.radius / 2,
+                                                    ship.position[1] - ship.radius / 2, ship.position[1] + ship.radius / 2))
         #         self.ax.imshow(rotated_img,
         #                        extent=(ship.position[0] - 50, ship.position[0] + ship.radius+50,
         #                                ship.position[1] - 50, ship.position[1] + 50))

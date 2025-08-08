@@ -10,6 +10,7 @@ from math import isclose, inf, hypot, degrees, radians, atan2, cos, sin
 from .ship import Ship
 from .asteroid import Asteroid
 
+
 def wrap_asteroid(asteroid_dict: dict[str, Any], map_size: tuple[int, int]) -> dict[str, Any]:
     """
     Wrap the asteroid inbounds.
@@ -27,6 +28,7 @@ def wrap_asteroid(asteroid_dict: dict[str, Any], map_size: tuple[int, int]) -> d
     y %= height
     asteroid_dict["position"] = (x, y)
     return asteroid_dict
+
 
 def nudge_asteroid_away_from_border(asteroid_dict: dict[str, Any], map_size: tuple[int, int]) -> dict[str, Any]:
     """
@@ -63,6 +65,7 @@ def nudge_asteroid_away_from_border(asteroid_dict: dict[str, Any], map_size: tup
 
     asteroid_dict["position"] = (x, y)
     return asteroid_dict
+
 
 class Scenario:
     def __init__(self, name: str = "Scenario", num_asteroids: int | None = None, asteroid_states: list[dict[str, Any]] | None = None,
@@ -104,7 +107,6 @@ class Scenario:
             ):
                 raise ValueError(f"map_size must be a tuple of two positive integers, got {map_size!r}")
             self.map_size = map_size
-
 
         # Store ship states if not None, otherwise, create one ship at center
         self.ship_states = ship_states if ship_states is not None else [{"position": (self.map_size[0] / 2, self.map_size[1] / 2)}]
@@ -245,7 +247,7 @@ class Scenario:
 
         # Loop through and create AsteroidSprites based on starting state
         for asteroid_state in self.asteroid_states:
-            if asteroid_state: # Not an empty dictionary
+            if asteroid_state:  # Not an empty dictionary
                 # Copy to avoid mutating original input
                 asteroid_state = dict(asteroid_state)
 
@@ -271,15 +273,18 @@ class Scenario:
                 # Apply position preprocessing as needed
                 asteroid_state = wrap_asteroid(asteroid_state, self.map_size)
                 asteroid_state = nudge_asteroid_away_from_border(asteroid_state, self.map_size)
-                
+
                 # Create the asteroid object
                 asteroids.append(Asteroid(**asteroid_state))
             else:
                 # Empty dict. Initialize a default random asteroid.
                 asteroids.append(
-                    Asteroid(position=(random.randrange(0, self.map_size[0]),
-                                       random.randrange(0, self.map_size[1])),
-                                   ))
+                    Asteroid(
+                        position=(
+                            random.randrange(0, self.map_size[0]),
+                            random.randrange(0, self.map_size[1])),
+                    )
+                )
 
         return asteroids
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 import random
 
 from math import pi, cos, sin, sqrt, degrees, radians, atan2
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .ship import Ship
     from .bullet import Bullet
@@ -19,6 +19,7 @@ from .state_models import AsteroidDataList
 class Asteroid:
     """ Sprite that represents an asteroid. """
     __slots__ = ('size', 'num_children', 'radius', 'mass', 'x', 'y', 'vx', 'vy', 'angle', 'speed', 'turnrate', '_state')
+
     def __init__(self,
                  position: tuple[float, float],
                  speed: float | None = None,
@@ -65,7 +66,7 @@ class Asteroid:
         self.vx = starting_speed * cos(starting_angle_rad)
         self.vy = starting_speed * sin(starting_angle_rad)
 
-        self.speed = abs(starting_speed) # This is used for early rejection in collision detection
+        self.speed = abs(starting_speed)  # This is used for early rejection in collision detection
 
         # Random rotations for use in display or future use with complex hit box
         self.angle: float = random.uniform(0.0, 360.0)
@@ -83,7 +84,7 @@ class Asteroid:
     @property
     def state(self) -> AsteroidDataList:
         return self._state
-    
+
     @property
     def position(self) -> tuple[float, float]:
         return (self.x, self.y)
@@ -130,7 +131,7 @@ class Asteroid:
 
                 delta_x = mine_x_wrapped - self.x
                 delta_y = mine_y_wrapped - self.y
-                
+
                 dist = sqrt(delta_x * delta_x + delta_y * delta_y)
                 force = impactor.calculate_blast_force(dist=dist, obj=self)
                 a = force / self.mass

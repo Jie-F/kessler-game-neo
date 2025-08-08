@@ -19,6 +19,7 @@ from ..scenario import Scenario
 from ..team import Team
 from ..settings_dicts import UISettingsDict
 
+
 class GraphicsTK(KesslerGraphics):
     def __init__(self, UI_settings: UISettingsDict | None = None) -> None:
         # UI settings
@@ -47,7 +48,7 @@ class GraphicsTK(KesslerGraphics):
             except ValueError:  # value not found in the list
                 sorted_list[i] = value
                 i = i + 1
-        return [x for x in sorted_list if x != None]
+        return [x for x in sorted_list if x is not None]
 
     def start(self, scenario: Scenario) -> None:
         self.game_width = round(scenario.map_size[0] * self.scale)
@@ -224,7 +225,7 @@ class GraphicsTK(KesslerGraphics):
     def draw_wrapped(self, draw_func: Callable[[float, float], None], x: float, y: float, radius: float) -> None:
         """
         Calls draw_func for the original and wrapped positions when the object overlaps screen edges.
-        
+
         All coordinates and radius are in **unscaled game units**.
 
         Parameters:
@@ -305,6 +306,7 @@ class GraphicsTK(KesslerGraphics):
                 b = int(255 + (respawn_scaler * (0 - 255)))
                 color = "#%02x%02x%02x" % (r, g, b)
                 # Plot shield ring
+
                 def draw_shield(x: float, y: float) -> None:
                     self.game_canvas.create_oval(
                         (x - ship.radius) * self.scale,

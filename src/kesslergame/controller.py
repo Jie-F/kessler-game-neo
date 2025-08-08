@@ -20,7 +20,6 @@ class KesslerController:
 
         raise NotImplementedError('Your derived KesslerController must include an actions method for control input.')
 
-
     # Property to store the ID for the ship this controller is attached to during a scenario
     @property
     def ship_id(self) -> int:

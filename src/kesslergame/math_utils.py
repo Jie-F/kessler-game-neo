@@ -126,7 +126,7 @@ def analytic_ship_movement_integration(v0: float, a: float, theta0: float, omega
         delta_y_deriv_omega0 = omega0_deriv_common * cos_theta0
         delta_y_second_deriv_omega0 = -omega0_second_deriv_common * sin_theta0
         delta_y_third_deriv_omega0 = -omega0_third_deriv_common * cos_theta0
-        
+
         # Assemble Taylor polynomials and evaluate for dx and dy
         dx = delta_x_omega0 + omega * (delta_x_deriv_omega0 + omega * (delta_x_second_deriv_omega0 / 2.0 + omega * delta_x_third_deriv_omega0 / 6.0))
         dy = delta_y_omega0 + omega * (delta_y_deriv_omega0 + omega * (delta_y_second_deriv_omega0 / 2.0 + omega * delta_y_third_deriv_omega0 / 6.0))
@@ -141,7 +141,7 @@ def analytic_ship_movement_integration(v0: float, a: float, theta0: float, omega
         # theta_t = theta0 + omega * t
         # delta_x_expr = integrate(v_t * cos(theta_t), (t, 0, delta_t))
         # delta_y_expr = integrate(v_t * sin(theta_t), (t, 0, delta_t))
-        
+
         delta_theta = omega * delta_t
         theta1 = theta0 + delta_theta
         cos_theta0 = cos(theta0)
@@ -233,7 +233,7 @@ def find_first_leq_zero(
     Finds the smallest t in [a, b] such that f(t) <= 0, using Newton's method
     Newton's method is made to return the right endpoint, to be safe and return f(t) <= 0 and not > 0
     This assumes the input function has continuous derivatives, and is smooth!
-    
+
     The function f must return a triple: (f(t), f'(t), f''(t))
     """
 
@@ -477,7 +477,7 @@ def find_first_leq_zero_robust_slow(
     """
     Finds the smallest t in [a, b] such that f(t) <= 0
     This is used for debugging and cross-checking the fast function. It is slow!
-    
+
     The function f must return a triple: (f(t), f'(t), f''(t))
     """
 
@@ -563,8 +563,8 @@ def find_first_leq_zero_no_derivs(
             return (f(t + h) - f(t - h)) / (2.0 * h)
 
     def bisect_first_below_zero(
-        f: Callable[[float], float], 
-        a: float, 
+        f: Callable[[float], float],
+        a: float,
         b: float
     ) -> float:
         """
@@ -583,8 +583,8 @@ def find_first_leq_zero_no_derivs(
         return b if f(b) <= 0.0 else nan
 
     def bisect_derivative_zero(
-        f: Callable[[float], float], 
-        a: float, 
+        f: Callable[[float], float],
+        a: float,
         b: float
     ) -> float:
         """
@@ -615,7 +615,7 @@ def find_first_leq_zero_no_derivs(
     if fa <= 0.0:
         # Bam we have our answer
         return a
-    
+
     fb: float = f(b)
     if fb <= 0.0:
         # f(a) is positive and f(b) is negative. By intermediate value theorem, at least one root exists.

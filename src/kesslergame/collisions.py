@@ -94,7 +94,7 @@ def ship_asteroid_continuous_collision_time(ship_x: float, ship_y: float, ship_r
     # Given the asteroid and ship states at this instant, this function checks whether a collision
     # between them has occurred anytime within the time interval. The current time is treated as t=0
     # This function returns nan if not, and returns t, the earliest time of collision where time_interval_start <= t <= time_interval_end, if a collision was detected.
-    
+
     # The asteroid moves at constant velocity
     # The ship can accelerate, and move in a spiral path. Integration is required to solve for its movement.
 
@@ -104,7 +104,7 @@ def ship_asteroid_continuous_collision_time(ship_x: float, ship_y: float, ship_r
     max_time_diff_from_now = max(abs(time_interval_start), abs(time_interval_end))
     # Find the upper bound of their combined velocities
     # Basically because the ship could have been moving faster at the start of the interval, we integrate with the at^2/2 factor added in, with max ship accel
-    combined_vel = abs(ship_speed) + (480.0 + 80.0) * 0.5 * max_time_diff_from_now + ast_speed #sqrt(ast_vx * ast_vx + ast_vy * ast_vy)
+    combined_vel = abs(ship_speed) + (480.0 + 80.0) * 0.5 * max_time_diff_from_now + ast_speed  # sqrt(ast_vx * ast_vx + ast_vy * ast_vy)
     assert ast_speed >= 0.0
     delta_x = ship_x - ast_x
     delta_y = ship_y - ast_y
@@ -184,9 +184,9 @@ def ship_asteroid_continuous_collision_time(ship_x: float, ship_y: float, ship_r
         derivative_value = 2.0 * (dist_x * deriv_dt_dist_x + dist_y * deriv_dt_dist_y)
 
         second_derivative_value = 2.0 * (dist_x * second_deriv_dt_dist_x + deriv_dt_dist_x * deriv_dt_dist_x + dist_y * second_deriv_dt_dist_y + deriv_dt_dist_y * deriv_dt_dist_y)
-        
+
         return function_value, derivative_value, second_derivative_value
-    
+
     ship_intervals = len(ship_integration_initial_states)
     assert ship_intervals <= 2
     if ship_intervals == 2:
@@ -352,7 +352,7 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
         second_derivative_value = 2.0 * (dist_x * second_deriv_dt_dist_x + deriv_dt_dist_x * deriv_dt_dist_x + dist_y * second_deriv_dt_dist_y + deriv_dt_dist_y * deriv_dt_dist_y)
 
         return function_value, derivative_value, second_derivative_value
-    
+
     ship1_intervals = len(ship1_integration_initial_states)
     ship2_intervals = len(ship2_integration_initial_states)
     assert ship1_intervals <= 2 and ship2_intervals <= 2
@@ -400,7 +400,7 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
             root_t = find_first_leq_zero_segmented(squared_separation_between_ships_at_t, time_interval_start, time_interval_end)
     else:
         root_t = find_first_leq_zero_segmented(squared_separation_between_ships_at_t, time_interval_start, time_interval_end)
-    
+
     if debug_plot:
         debug_plot_function_over_time(
             squared_separation_between_ships_at_t,
@@ -409,7 +409,7 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
             root_t,
             "Ship-Ship Dist f(t) and Derivatives (scaled) Over Time"
         )
-    
+
     return root_t
 
 
@@ -476,7 +476,7 @@ def collision_time_interval(
 
     t0_B, t1_B = solve_quadratic(q2, q1, q0)
 
-    # If nothing ever collides at either endpoint, 
+    # If nothing ever collides at either endpoint,
     # and the circle is too large to fit through between endpoints,
     # we’re done. No possible way the further check will catch a collision!
     if isnan(t0_A) and isnan(t0_B) and seg_len < r:
@@ -573,7 +573,7 @@ def project_origin_onto_segment_dist_sq(x1: float, y1: float, x2: float, y2: flo
         return x1 * x1 + y1 * y1
 
     # Compute the projection parameter t of the origin onto the segment,
-    # where t=0 yields (x1, y1) and t=1 yields (x2, y2).
+    # where t = 0 yields (x1, y1) and t = 1 yields (x2, y2).
     # Clamp t to [0, 1] to stay on the segment.
     t = -(x1 * dx + y1 * dy) / len_sq
     t = max(0.0, min(1.0, t))
@@ -587,18 +587,18 @@ def project_origin_onto_segment_dist_sq(x1: float, y1: float, x2: float, y2: flo
 
 
 def circle_line_collision_continuous(
-    ax0: float, # One end of line segment at t=0
+    ax0: float,  # One end of line segment at t = 0
     ay0: float,
-    bx0: float, # The other end of line segment at t=0
+    bx0: float,  # The other end of line segment at t = 0
     by0: float,
-    line_vel_x: float, # Velocity of line in u/s
+    line_vel_x: float,  # Velocity of line in u/s
     line_vel_y: float,
-    circle_x: float, # Initial position of circle
+    circle_x: float,  # Initial position of circle
     circle_y: float,
-    circle_vel_x: float, # Velocity of circle
+    circle_vel_x: float,  # Velocity of circle
     circle_vel_y: float,
     circle_radius: float,
-    delta_time: float # Duration of a frame
+    delta_time: float  # Duration of a frame
 ) -> bool:
     # Returns whether a moving circle and line segment collided within the time interval [-delta_time, 0]
 
@@ -678,10 +678,10 @@ def circle_line_collision_continuous(
 
     # Check whether any of these projected points with clamping are within the circle. If yes, there's a collision.
     if (
-        project_origin_onto_segment_dist_sq(ax, ay, bx, by) <= rad_sq or # A - B
-        project_origin_onto_segment_dist_sq(cx, cy, dx, dy) <= rad_sq or # C - D
-        project_origin_onto_segment_dist_sq(ax, ay, cx, cy) <= rad_sq or # A - C
-        project_origin_onto_segment_dist_sq(bx, by, dx, dy) <= rad_sq    # B - D
+        project_origin_onto_segment_dist_sq(ax, ay, bx, by) <= rad_sq or  # A - B
+        project_origin_onto_segment_dist_sq(cx, cy, dx, dy) <= rad_sq or  # C - D
+        project_origin_onto_segment_dist_sq(ax, ay, cx, cy) <= rad_sq or  # A - C
+        project_origin_onto_segment_dist_sq(bx, by, dx, dy) <= rad_sq     # B - D
     ):
         return True
 
@@ -689,7 +689,7 @@ def circle_line_collision_continuous(
     # which is impossible in this case because the bullet is too short for an asteroid to fit between its ends.
     # BUT we're now using a virtual bullet to do clamping, and this "virtual bullet" is super long, so we need this!
     # Check whether the origin is within the parallelogram using a cross product orientation checker
-    
+
     def is_origin_in_parallelogram(
         ax: float, ay: float,
         bx: float, by: float,
@@ -718,7 +718,7 @@ def circle_line_collision_continuous(
                 if (cp > 0.0) != sign:
                     return False
         return True
-    
+
     delta_x = ax - bx
     delta_y = ay - by
     seg_len_sq = delta_x * delta_x + delta_y * delta_y
@@ -734,7 +734,7 @@ def circle_line_collision_continuous(
 def circle_line_collision_discrete(line_A: tuple[float, float], line_B: tuple[float, float], center: tuple[float, float], radius: float) -> bool:
     # UNUSED
     # Accurate version of the discrete collision check
-    
+
     # Quick rejection check:
     # Check if circle edge is within the outer bounds of the line segment (offset for radius)
     x_bounds = [min(line_A[0], line_B[0]) - radius, max(line_A[0], line_B[0]) + radius]
@@ -782,7 +782,7 @@ def circle_line_collision_discrete(line_A: tuple[float, float], line_B: tuple[fl
 def circle_line_collision_old(line_A: tuple[float, float], line_B: tuple[float, float], center: tuple[float, float], radius: float) -> bool:
     # Unused
     # Old collision check, which was discrete, and also had false positives:
-    
+
     # Check if circle edge is within the outer bounds of the line segment (offset for radius)
     # Not 100% accurate (some false positives) but fast and rare inaccuracies
     x_bounds = [min(line_A[0], line_B[0]) - radius, max(line_A[0], line_B[0]) + radius]

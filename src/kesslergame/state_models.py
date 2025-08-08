@@ -132,7 +132,7 @@ class AsteroidView:
 
     @property
     def size(self) -> int:
-        assert(isinstance(self._data[4], int))
+        assert isinstance(self._data[4], int)
         return self._data[4]
 
     @property
@@ -154,13 +154,16 @@ class AsteroidView:
         }
 
     @overload
-    def __getitem__(self, key: Literal["x", "y", "vx", "vy", "mass", "radius"]) -> float: ...
-    
-    @overload
-    def __getitem__(self, key: Literal["size"]) -> int: ...
+    def __getitem__(self, key: Literal["x", "y", "vx", "vy", "mass", "radius"]) -> float:
+        ...
 
     @overload
-    def __getitem__(self, key: Literal["position", "velocity"]) -> tuple[float, float]: ...
+    def __getitem__(self, key: Literal["size"]) -> int:
+        ...
+
+    @overload
+    def __getitem__(self, key: Literal["position", "velocity"]) -> tuple[float, float]:
+        ...
 
     def __getitem__(self, key: str) -> float | int | tuple[float, float]:
         return cast(float | int | tuple[float, float], getattr(self, key))
@@ -175,7 +178,7 @@ class AsteroidView:
             f"mass={format(self.mass, fmt)} "
             f"radius={format(self.radius, fmt)}>"
         )
-    
+
     def __repr__(self) -> str:
         return (
             f"<Asteroid "
@@ -267,10 +270,12 @@ class BulletView:
         }
 
     @overload
-    def __getitem__(self, key: Literal["x", "y", "vx", "vy", "tail_dx", "tail_dy", "heading", "mass", "length"]) -> float: ...
-    
+    def __getitem__(self, key: Literal["x", "y", "vx", "vy", "tail_dx", "tail_dy", "heading", "mass", "length"]) -> float:
+        ...
+
     @overload
-    def __getitem__(self, key: Literal["position", "velocity", "tail_delta"]) -> tuple[float, float]: ...
+    def __getitem__(self, key: Literal["position", "velocity", "tail_delta"]) -> tuple[float, float]:
+        ...
 
     def __getitem__(self, key: str) -> float | tuple[float, float]:
         return cast(float | tuple[float, float], getattr(self, key))
@@ -349,10 +354,12 @@ class MineView:
         }
 
     @overload
-    def __getitem__(self, key: Literal["x", "y", "mass", "fuse_time", "remaining_time"]) -> float: ...
-    
+    def __getitem__(self, key: Literal["x", "y", "mass", "fuse_time", "remaining_time"]) -> float:
+        ...
+
     @overload
-    def __getitem__(self, key: Literal["position"]) -> tuple[float, float]: ...
+    def __getitem__(self, key: Literal["position"]) -> tuple[float, float]:
+        ...
 
     def __getitem__(self, key: str) -> float | tuple[float, float]:
         return cast(float | tuple[float, float], getattr(self, key))
@@ -435,22 +442,22 @@ class ShipView:
 
     @property
     def id(self) -> int:
-        assert(isinstance(self._data[8], int))
+        assert isinstance(self._data[8], int)
         return self._data[8]
 
     @property
     def team(self) -> int:
-        assert(isinstance(self._data[9], int))
+        assert isinstance(self._data[9], int)
         return self._data[9]
 
     @property
     def is_respawning(self) -> bool:
-        assert(isinstance(self._data[10], bool))
+        assert isinstance(self._data[10], bool)
         return self._data[10]
 
     @property
     def lives_remaining(self) -> int:
-        assert(isinstance(self._data[11], int))
+        assert isinstance(self._data[11], int)
         return self._data[11]
 
     @property
@@ -471,18 +478,22 @@ class ShipView:
     @overload
     def __getitem__(self, key: Literal[
         "x", "y", "vx", "vy", "speed", "heading", "mass", "radius"
-    ]) -> float: ...
+    ]) -> float:
+        ...
 
     @overload
     def __getitem__(self, key: Literal[
         "id", "team", "lives_remaining"
-    ]) -> int: ...
+    ]) -> int:
+        ...
 
     @overload
-    def __getitem__(self, key: Literal["is_respawning"]) -> bool: ...
+    def __getitem__(self, key: Literal["is_respawning"]) -> bool:
+        ...
 
     @overload
-    def __getitem__(self, key: Literal["position", "velocity"]) -> tuple[float, float]: ...
+    def __getitem__(self, key: Literal["position", "velocity"]) -> tuple[float, float]:
+        ...
 
     def __getitem__(self, key: str) -> float | int | bool | tuple[float, float]:
         return cast(float | int | bool | tuple[float, float], getattr(self, key))
@@ -535,17 +546,17 @@ class ShipOwnView(ShipView):
 
     @property
     def bullets_remaining(self) -> int:
-        assert(isinstance(self._own_data[12], int))
+        assert isinstance(self._own_data[12], int)
         return self._own_data[12]
 
     @property
     def mines_remaining(self) -> int:
-        assert(isinstance(self._own_data[13], int))
+        assert isinstance(self._own_data[13], int)
         return self._own_data[13]
 
     @property
     def can_fire(self) -> bool:
-        assert(isinstance(self._own_data[14], bool))
+        assert isinstance(self._own_data[14], bool)
         return self._own_data[14]
 
     @property
@@ -558,7 +569,7 @@ class ShipOwnView(ShipView):
 
     @property
     def can_deploy_mine(self) -> bool:
-        assert(isinstance(self._own_data[17], bool))
+        assert isinstance(self._own_data[17], bool)
         return self._own_data[17]
 
     @property
@@ -598,22 +609,26 @@ class ShipOwnView(ShipView):
         "x", "y", "vx", "vy", "speed", "heading", "mass", "radius",
         "fire_cooldown", "fire_rate", "mine_cooldown", "mine_deploy_rate",
         "respawn_time_left", "respawn_time", "max_speed", "drag"
-    ]) -> float: ...
+    ]) -> float:
+        ...
 
     @overload
     def __getitem__(self, key: Literal[
         "id", "team", "lives_remaining", "bullets_remaining", "mines_remaining"
-    ]) -> int: ...
+    ]) -> int:
+        ...
 
     @overload
     def __getitem__(self, key: Literal[
         "is_respawning", "can_fire", "can_deploy_mine"
-    ]) -> bool: ...
+    ]) -> bool:
+        ...
 
     @overload
     def __getitem__(self, key: Literal[
         "position", "velocity", "thrust_range", "turn_rate_range"
-    ]) -> tuple[float, float]: ...
+    ]) -> tuple[float, float]:
+        ...
 
     def __getitem__(self, key: str) -> float | int | bool | tuple[float, float]:
         return cast(float | int | bool | tuple[float, float], getattr(self, key))
@@ -650,7 +665,7 @@ class ShipOwnView(ShipView):
             f"thrust_range={self.thrust_range} turn_rate_range={self.turn_rate_range} "
             f"max_speed={self.max_speed} drag={self.drag}>"
         )
-    
+
     def __copy__(self) -> ShipOwnView:
         new_obj = type(self)(self._own_data)
         return new_obj
@@ -1082,7 +1097,7 @@ class GameState:
             "random_asteroid_splits": self._random_asteroid_splits,
             "competition_safe_mode": self._competition_safe_mode,
         }
-    
+
     @property
     def compact(self) -> GameStateCompactDict:
         """Return a minimal raw list-based version of the game state for fast serialization. Recommended for agent training."""

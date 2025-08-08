@@ -25,6 +25,7 @@ class Ship:
         'asteroid_deaths', 'ship_deaths', 'mine_deaths',
         'custom_sprite_path', 'integration_initial_states', '_state', '_ownstate'
     )
+
     def __init__(self, ship_id: int,
                  position: tuple[float, float],
                  angle: float = 90.0,
@@ -380,7 +381,7 @@ class Ship:
             if is_moving and net_acc * initial_speed < 0.0:  # Net accel is opposite sign from direction of movement
                 # Case 1: drag will bring us to a stop
                 assert net_acc != 0.0
-                t_to_stop = -initial_speed / net_acc # This is a positive number, and net_acc is nonzero
+                t_to_stop = -initial_speed / net_acc  # This is a positive number, and net_acc is nonzero
                 assert t_to_stop >= 0.0
                 if 0.0 <= t_to_stop < delta_time:
                     t1 = t_to_stop
@@ -393,7 +394,7 @@ class Ship:
                         accel_phase2 = self.thrust - drag_acc
                     else:
                         # Thrust too weak. We fall into zero valley and infinitely oscillate!
-                        accel_phase2 = 0.0 # Infinite oscillations around 0. Essentially simulate that with 0 acceleration to bypass oscillations.
+                        accel_phase2 = 0.0  # Infinite oscillations around 0. Essentially simulate that with 0 acceleration to bypass oscillations.
             else:
                 # Case 2: acceleration would exceed max speed eventually
                 max_speed = copysign(self.max_speed, initial_speed + net_acc * delta_time)
@@ -426,7 +427,7 @@ class Ship:
 
                 self.x = (x0 + dx) % map_size[0]
                 self.y = (y0 + dy) % map_size[1]
-                self.speed += accel_phase2 * delta_time # Skip the first phase of speed integration, and just do the second phase
+                self.speed += accel_phase2 * delta_time  # Skip the first phase of speed integration, and just do the second phase
 
                 # Append the end state, so we can reverse-integrate later by plugging in a negative time
                 self.integration_initial_states.append((0.0, -delta_time, self.speed, accel_phase2, theta0 + omega * delta_time, omega, -dx, -dy))
@@ -500,7 +501,7 @@ class Ship:
                     dy_sum += dy
                     speed_sum += a * (end_t - start_t)  # This time diff results in a negative number
                     assert end_t - start_t <= 0.0
-            
+
             self.x += dx_sum
             self.y += dy_sum
             self.x %= map_size[0]
@@ -526,7 +527,7 @@ class Ship:
             self.vx = cos(rad_heading) * self.speed
             self.vy = sin(rad_heading) * self.speed
 
-            self.integration_initial_states.clear() # Clear the state so that we don't attempt to do a second rollback which would be invalid
+            self.integration_initial_states.clear()  # Clear the state so that we don't attempt to do a second rollback which would be invalid
 
         # Decrement respawn timer unconditionally, and allow it to go negative
         # This helps the continuous simulation know when the respawn time wore off mid-frame
@@ -554,7 +555,7 @@ class Ship:
         Called by the game when a ship collides with something and dies. Handles life decrementing and triggers respawn
         """
         self.lives -= 1
-        spawn_position = self.position # (map_size[0]/2, map_size[1]/2)
+        spawn_position = self.position  # (map_size[0]/2, map_size[1]/2)
         spawn_heading = self.heading
         if self.lives > 0:
             self.respawn(spawn_position, spawn_heading)
