@@ -21,13 +21,14 @@ class Score:
         self.final_controllers: list[KesslerController] | None = None
 
         # Initialize team classes to score team-specific scores
-        unique_team_pairs = sorted({(ship.team, ship.team_name) for ship in scenario.ships()}, key=lambda t: t[0])  # Use set for uniqueness, and sort by team id
+        all_ships = scenario.ships()
+        unique_team_pairs = sorted({(ship.team, ship.team_name) for ship in all_ships}, key=lambda t: t[0])  # Use set for uniqueness, and sort by team id
         self.teams = [Team(int(tid), str(tname)) for tid, tname in unique_team_pairs]
 
         # Populate scenario initial conditions into score parameters
         for team in self.teams:
             team.total_asteroids = scenario.max_asteroids
-            ships_on_team = [ship for ship in scenario.ships() if team.team_id == ship.team]
+            ships_on_team = [ship for ship in all_ships if team.team_id == ship.team]
             if scenario.bullet_limit is not None:
                 team.total_bullets = scenario.bullet_limit * len(ships_on_team)
             else:
@@ -55,8 +56,8 @@ class Score:
                     bullet_asteroid_hits += ship.bullet_asteroid_hits
                     ship_asteroid_hits += ship.ship_asteroid_hits
                     ship_ship_hits += ship.ship_ship_hits
-                    mine_ship_hits += ship.mine_ship_hits
                     mine_asteroid_hits += ship.mine_asteroid_hits
+                    mine_ship_hits += ship.mine_ship_hits
                     shots += ship.bullets_shot
                     bullets += ship.bullets_remaining
                     mines_dropped += ship.mines_dropped
@@ -65,14 +66,15 @@ class Score:
                     ship_deaths += ship.ship_deaths
                     mine_deaths += ship.mine_deaths
                     lives += ship.lives
+                    # Assume that the ships list and controller_perf lists are in the same consistent order
                     if controller_perf is not None and controller_perf[idx] > 0:
                         team.eval_times.append(controller_perf[idx])
 
             team.bullet_asteroid_hits = bullet_asteroid_hits
             team.ship_asteroid_hits = ship_asteroid_hits
             team.ship_ship_hits = ship_ship_hits
-            team.mine_ship_hits = mine_ship_hits
             team.mine_asteroid_hits = mine_asteroid_hits
+            team.mine_ship_hits = mine_ship_hits
             team.shots_fired = shots
             team.bullets_remaining = bullets
             team.mines_dropped = mines_dropped
@@ -88,7 +90,7 @@ class Score:
         self.final_controllers = [ship.controller for ship in ships if ship.controller is not None]
 
     def __repr__(self) -> str:
-        stop = self.stop_reason.name if self.stop_reason else "None"
+        stop = self.stop_reason.name if self.stop_reason is not None else "None"
         teams_text = "\n  ".join(repr(team) for team in self.teams)
         return f"<Score(sim_time={self.sim_time:.2f}, stop_reason={stop},\n Teams:\n  {teams_text})>"
 

@@ -84,7 +84,7 @@ class Scenario:
         :param asteroid_states: Optional, list of dictionaries representing asteroid starting states
         :param ship_states: Optional, Ship Starting states (list of dictionaries)
         :param seed: Optional seeding value to pass to random.seed() which is called before asteroid creation
-        :param time_limit: Optional value for limiting the total duration of the scenario, will be set to infinity if not defined
+        :param time_limit: Optional value for limiting the total duration of the scenario, will be set to infinity if 0 or not defined
         :param ammo_limit_multiplier: Optional value for limiting the number of bullets each ship will have
         :param stop_if_no_ammo: Optional flag for stopping the scenario if all ships run out of ammo
         :param stop_if_no_asteroids: Optional flag for stopping the scenario if no asteroids remain
@@ -112,7 +112,13 @@ class Scenario:
         self.ship_states = ship_states if ship_states is not None else [{"position": (self.map_size[0] / 2, self.map_size[1] / 2)}]
 
         # Set the time_limit to infinity if it is 0 or None
-        self.time_limit = time_limit if time_limit is not None else inf
+        if time_limit is None or time_limit == 0.0:
+            self.time_limit = inf
+        else:
+            self.time_limit = time_limit
+        # Optionally reject negatives
+        if self.time_limit < 0:
+            raise ValueError("time_limit must be positive, 0 for unlimited, or None")
 
         # Store random seed
         if seed is not None and not isinstance(seed, int):
@@ -123,7 +129,7 @@ class Scenario:
         self.asteroid_states = list()
         # Check for mismatch between explicitly defined number of asteroids and tuple of states
         if num_asteroids is not None and asteroid_states is not None:
-            raise ValueError("Both 'num_asteroids' and 'asteroid_positions' are specified for Scenario() constructor. Make sure to only define one of these arguments")
+            raise ValueError("Both 'num_asteroids' and 'asteroid_states' are specified for Scenario() constructor. Make sure to only define one of these arguments")
         elif asteroid_states is not None:
             # Store asteroid states
             self.asteroid_states = asteroid_states
@@ -152,10 +158,13 @@ class Scenario:
         # If using ammo_limit_multiplier, estimate bullets now
         if self._ammo_limit_multiplier is not None:
             assert self.bullet_limit is None
-            estimated_asteroid_count = (
-                sum([Scenario.count_asteroids(state.get("size", 3)) for state in self.asteroid_states])
-            )
-            self.bullet_limit = max(1, round(estimated_asteroid_count * self._ammo_limit_multiplier))
+            if self._ammo_limit_multiplier == 0.0:
+                self.bullet_limit = -1  # Unlimited
+            else:
+                estimated_asteroid_count = sum(
+                    Scenario.count_asteroids(state.get("size", 3)) for state in self.asteroid_states
+                )
+                self.bullet_limit = max(0, round(estimated_asteroid_count * self._ammo_limit_multiplier))
 
         # Validate mine_limit
         if mine_limit is not None:
@@ -172,6 +181,15 @@ class Scenario:
         # Validate that mines are specified either nowhere, in the ship state, or in the scenario. But not both!
         if any("mines_remaining" in ship for ship in self.ship_states) and self.mine_limit is not None:
             raise ValueError("Both 'mines_remaining' in ship states, and 'mine_limit' in the scenario are specified. Please only specify in one place or the other.")
+
+        # Validate the ship states' bullet and mine limits
+        for ship in self.ship_states:
+            if "bullets_remaining" in ship:
+                if not isinstance(ship["bullets_remaining"], int) or ship["bullets_remaining"] < -1:
+                    raise ValueError("Ship's bullets_remaining must be an integer of -1 for infinite, or nonnegative.")
+            if "mines_remaining" in ship:
+                if not isinstance(ship["mines_remaining"], int) or ship["mines_remaining"] < -1:
+                    raise ValueError("Ship's mines_remaining must be an integer of -1 for infinite, or nonnegative.")
 
         # Inject the bullets and mines limit into the ship states, if specified
         if self.bullet_limit is not None:
@@ -215,7 +233,7 @@ class Scenario:
         Indicates whether the scenario has randomized asteroids.
         Returns True if any asteroid state is unspecified (empty dict), else False.
         """
-        return not all(state for state in self.asteroid_states) if self.asteroid_states else True
+        return any(not state for state in self.asteroid_states)
 
     @property
     def max_asteroids(self) -> int:

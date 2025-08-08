@@ -85,9 +85,9 @@ class Ship:
         self._mine_deploy_time: float = 1.0  # seconds
 
         # Track bullet/mine statistics
-        assert bullets_remaining >= -1
+        assert bullets_remaining >= -1, f"Bullets remaining is not at least -1: {bullets_remaining}"
         self.bullets_remaining: int = bullets_remaining
-        assert mines_remaining >= -1
+        assert mines_remaining >= -1, f"Mines remaining is not at least -1: {mines_remaining}"
         self.mines_remaining: int = mines_remaining
         self.bullets_shot: int = 0
         self.mines_dropped: int = 0
