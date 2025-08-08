@@ -11,6 +11,39 @@ from .ship import Ship
 from .asteroid import Asteroid
 
 
+def coerce_to_builtin(obj):
+    """
+    Recursively coerce NumPy scalars/arrays (if present) into Python builtins,
+    without importing numpy
+    """
+    t = type(obj)
+    module = t.__module__
+
+    # NumPy scalar (np.float64, np.int32, etc.)
+    if module.startswith("numpy") and hasattr(obj, "item") and callable(obj.item):
+        try:
+            return obj.item()
+        except Exception:
+            pass  # fallthrough to original
+
+    # NumPy array (convert to tuple)
+    if module.startswith("numpy") and hasattr(obj, "tolist") and callable(obj.tolist):
+        try:
+            return tuple(coerce_to_builtin(x) for x in obj.tolist())
+        except Exception:
+            pass
+
+    # Builtin collections
+    if isinstance(obj, list):
+        return [coerce_to_builtin(x) for x in obj]
+    if isinstance(obj, tuple):
+        return tuple(coerce_to_builtin(x) for x in obj)
+    if isinstance(obj, dict):
+        return {k: coerce_to_builtin(v) for k, v in obj.items()}
+
+    return obj
+
+
 def wrap_asteroid(asteroid_dict: dict[str, Any], map_size: tuple[int, int]) -> dict[str, Any]:
     """
     Wrap the asteroid inbounds.
@@ -90,6 +123,17 @@ class Scenario:
         :param stop_if_no_asteroids: Optional flag for stopping the scenario if no asteroids remain
         :param stop_if_no_ships: Optional flag for stopping the scenario if no ships remain
         """
+
+        # Convert all inputs to builtin types from potentially numpy numbers or arrays
+        map_size = coerce_to_builtin(map_size) if map_size is not None else None
+        asteroid_states = coerce_to_builtin(asteroid_states) if asteroid_states is not None else None
+        ship_states = coerce_to_builtin(ship_states) if ship_states is not None else None
+        seed = coerce_to_builtin(seed)
+        time_limit = coerce_to_builtin(time_limit)
+        ammo_limit_multiplier = coerce_to_builtin(ammo_limit_multiplier)
+        bullet_limit = coerce_to_builtin(bullet_limit)
+        mine_limit = coerce_to_builtin(mine_limit)
+
         # Protected variable for managing the name, through getter/setter interface
         self._name: str | None = None
 
