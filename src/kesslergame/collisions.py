@@ -413,7 +413,7 @@ def ship_ship_continuous_collision_time(ship1_x: float, ship1_y: float, ship1_r:
     return root_t
 
 
-def collision_time_interval(
+def circle_line_collision_time_interval(
     ax: float,  # Line seg start
     ay: float,
     bx: float,  # Line seg end
@@ -446,11 +446,18 @@ def collision_time_interval(
     rvx = vx - cvx
     rvy = vy - cvy
 
-    # Where is A/B relative to the (now stationary) circle center?
+    # A/B relative to the (now stationary) circle center
     a0x = ax - cx
     a0y = ay - cy
     b0x = bx - cx
     b0y = by - cy
+
+    # In case there is zero relative motion, check whether they collide never or always
+    if abs(rvx) < 1e-12 and abs(rvy) < 1e-12:
+        if circle_line_collision_discrete(a0x, a0y, b0x, b0y, 0.0, 0.0, r):
+            return (-inf, inf)
+        else:
+            return (nan, nan)
 
     # Direction and length of the segment
     seg_dx = b0x - a0x
@@ -736,17 +743,16 @@ def circle_line_collision_continuous(
         return is_origin_in_parallelogram(ax, ay, bx, by, cx, cy, dx, dy)
 
 
-def circle_line_collision_discrete(line_A: tuple[float, float], line_B: tuple[float, float], center: tuple[float, float], radius: float) -> bool:
-    # UNUSED
+def circle_line_collision_discrete(ax: float, ay: float, bx: float, by: float, cx: float, cy: float, radius: float) -> bool:
     # Accurate version of the discrete collision check
 
     # Quick rejection check:
     # Check if circle edge is within the outer bounds of the line segment (offset for radius)
-    x_bounds = [min(line_A[0], line_B[0]) - radius, max(line_A[0], line_B[0]) + radius]
-    if center[0] < x_bounds[0] or center[0] > x_bounds[1]:
+    x_bounds = [min(ax, bx) - radius, max(ax, bx) + radius]
+    if cx < x_bounds[0] or cx > x_bounds[1]:
         return False
-    y_bounds = [min(line_A[1], line_B[1]) - radius, max(line_A[1], line_B[1]) + radius]
-    if center[1] < y_bounds[0] or center[1] > y_bounds[1]:
+    y_bounds = [min(ay, by) - radius, max(ay, by) + radius]
+    if cy < y_bounds[0] or cy > y_bounds[1]:
         return False
 
     # This works by taking the circle's center, and projecting it onto the line segment's line, and clamping it to the line segment.
@@ -754,10 +760,10 @@ def circle_line_collision_discrete(line_A: tuple[float, float], line_B: tuple[fl
     # We can then check whether this point is inside the circle.
 
     # Fix frame of reference to the circle center. Shift the segment so the circle is at the origin
-    ax = line_A[0] - center[0]
-    ay = line_A[1] - center[1]
-    bx = line_B[0] - center[0]
-    by = line_B[1] - center[1]
+    ax = ax - cx
+    ay = ay - cy
+    bx = bx - cx
+    by = by - cy
 
     # Now project the origin (0, 0), the center of the circle, onto the segment A-B
     dx = bx - ax

@@ -15,7 +15,7 @@ from enum import Enum, IntEnum
 from .scenario import Scenario
 from .score import Score
 from .controller import KesslerController
-from .collisions import circle_line_collision_continuous, collision_time_interval, ship_asteroid_continuous_collision_time, ship_ship_continuous_collision_time, time_until_exit, time_until_enter
+from .collisions import circle_line_collision_continuous, circle_line_collision_time_interval, ship_asteroid_continuous_collision_time, ship_ship_continuous_collision_time, time_until_exit, time_until_enter
 from .graphics import GraphicsType, GraphicsHandler, KesslerGraphics
 from .mines import Mine
 from .asteroid import Asteroid
@@ -445,7 +445,7 @@ class KesslerGame:
                         asteroid.radius,
                         collision_past_time_clamp
                     ):
-                        collision_start_time, _ = collision_time_interval(
+                        collision_start_time, _ = circle_line_collision_time_interval(
                             bullet_head_x, bullet_head_y,
                             bullet_tail_x, bullet_tail_y,
                             bullet.vx, bullet.vy,
@@ -510,7 +510,7 @@ class KesslerGame:
                     )
                     if not hit1:
                         continue
-                    t1_start, t1_end = collision_time_interval(
+                    t1_start, t1_end = circle_line_collision_time_interval(
                         bullet_head_x, bullet_head_y,
                         bullet_tail_x, bullet_tail_y,
                         bullet.vx, bullet.vy,
@@ -542,7 +542,7 @@ class KesslerGame:
                     )
                     if not hit2:
                         continue
-                    t2_start, t2_end = collision_time_interval(
+                    t2_start, t2_end = circle_line_collision_time_interval(
                         pinned_head_x, pinned_head_y,
                         pinned_tail_x, pinned_tail_y,
                         0.0, 0.0,
