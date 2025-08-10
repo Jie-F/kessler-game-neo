@@ -1,8 +1,6 @@
 import random
-import logging
-import os
-from kesslergame import Scenario, KesslerGame, GraphicsType, KesslerController, StopReason
-from math import sqrt, inf, atan2, hypot, degrees, radians
+from kesslergame import Scenario, KesslerGame, GraphicsType, KesslerController
+from math import atan2, hypot, degrees
 
 # Set seed and graphics flag
 GRAPHICS = True
@@ -42,7 +40,7 @@ class MineTest(KesslerController):
 
 ship_states_1 = [
     {
-        "position": (500, 400.0000000001007),
+        "position": (500, 400.00000000000074),
         "angle": 90,
         "lives": 3,
         "mines_remaining": 1,
