@@ -107,21 +107,21 @@
 #include <complex>
 
 #include <nanobind/nanobind.h>
-#include <nanobind/stl/array.h>
-#include <nanobind/stl/bind_map.h>
-#include <nanobind/stl/bind_vector.h>
+//#include <nanobind/stl/array.h>
+//#include <nanobind/stl/bind_map.h>
+//#include <nanobind/stl/bind_vector.h>
 //#include <nanobind/stl/chrono.h>
 //#include <nanobind/stl/complex.h>
 //#include <nanobind/stl/filesystem.h>
 //#include <nanobind/stl/function.h>
-#include <nanobind/stl/list.h>
-#include <nanobind/stl/map.h>
-#include <nanobind/stl/optional.h>
-#include <nanobind/stl/pair.h>
+//#include <nanobind/stl/list.h>
+//#include <nanobind/stl/map.h>
+//#include <nanobind/stl/optional.h>
+//#include <nanobind/stl/pair.h>
 //#include <nanobind/stl/set.h>
 //#include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/string.h>
-#include <nanobind/stl/string_view.h>
+//#include <nanobind/stl/string_view.h>
 #include <nanobind/stl/tuple.h>
 //#include <nanobind/stl/unique_ptr.h>
 //#include <nanobind/stl/unordered_map.h>
@@ -599,7 +599,7 @@ struct Ship {
     Ship() = default;
 
     Ship(double x, double y, double vx, double vy, double speed, double heading, double mass, double radius,
-         int64_t id, int64_t team, bool is_respawning, int64_t lives_remaining, int64_t deaths,
+         int64_t id, int64_t team, bool is_respawning, int64_t lives_remaining,
          int64_t bullets_remaining, int64_t mines_remaining, bool can_fire, double fire_cooldown, double fire_rate,
          bool can_deploy_mine, double mine_cooldown, double mine_deploy_rate,
          double respawn_time_left, double respawn_time,
@@ -607,7 +607,7 @@ struct Ship {
          double max_speed, double drag)
         : x(x), y(y), vx(vx), vy(vy), speed(speed), heading(heading),
           mass(mass), radius(radius), id(id), team(team), is_respawning(is_respawning),
-          lives_remaining(lives_remaining), deaths(deaths),
+          lives_remaining(lives_remaining),
           bullets_remaining(bullets_remaining), mines_remaining(mines_remaining),
           can_fire(can_fire), fire_cooldown(fire_cooldown), fire_rate(fire_rate),
           can_deploy_mine(can_deploy_mine), mine_cooldown(mine_cooldown), mine_deploy_rate(mine_deploy_rate),
@@ -623,7 +623,6 @@ struct Ship {
             + ", id=" + std::to_string(id) + ", team=" + std::to_string(team)
             + ", is_respawning=" + std::to_string(is_respawning)
             + ", lives_remaining=" + std::to_string(lives_remaining)
-            + ", deaths=" + std::to_string(deaths)
             + ", bullets_remaining=" + std::to_string(bullets_remaining)
             + ", mines_remaining=" + std::to_string(mines_remaining)
             + ", can_fire=" + std::to_string(can_fire)
@@ -646,7 +645,7 @@ struct Ship {
         return x == other.x && y == other.y && vx == other.vx && vy == other.vy
             && speed == other.speed && heading == other.heading && mass == other.mass && radius == other.radius
             && id == other.id && team == other.team && is_respawning == other.is_respawning
-            && lives_remaining == other.lives_remaining && deaths == other.deaths
+            && lives_remaining == other.lives_remaining
             && bullets_remaining == other.bullets_remaining && mines_remaining == other.mines_remaining
             && can_fire == other.can_fire && fire_cooldown == other.fire_cooldown && fire_rate == other.fire_rate
             && can_deploy_mine == other.can_deploy_mine && mine_cooldown == other.mine_cooldown && mine_deploy_rate == other.mine_deploy_rate
@@ -677,21 +676,22 @@ struct Mine {
 };
 
 struct Bullet {
-    double x, y, vx, vy, heading, mass, tail_delta_x, tail_delta_y;
+    double x, y, vx, vy, tail_dx, tail_dy, heading, mass, length;
     bool alive = true;
 
     Bullet() = default;
-    Bullet(double x, double y, double vx, double vy, double heading, double mass = BULLET_MASS, double tail_delta_x = 0, double tail_delta_y = 0)
-        : x(x), y(y), vx(vx), vy(vy), heading(heading), mass(mass), tail_delta_x(tail_delta_x), tail_delta_y(tail_delta_y), alive(true) {}
+    Bullet(double x, double y, double vx, double vy, double tail_dx, double tail_dy, double heading, double mass, double length)
+        : x(x), y(y), vx(vx), vy(vy), tail_dx(tail_dx), tail_dy(tail_dy), heading(heading), mass(mass), alive(true) {}
     std::string str() const {
-        return "Bullet(position=(" + std::to_string(x) + ", " + std::to_string(y)
-            + "), velocity=(" + std::to_string(vx) + ", " + std::to_string(vy)
-            + "), heading=" + std::to_string(heading) + ", mass=" + std::to_string(mass)
-            + ", tail_delta=(" + std::to_string(tail_delta_x) + ", " + std::to_string(tail_delta_y) + "))";
+        return "Bullet(position=(" + std::to_string(x) + ", " + std::to_string(y) + "), "
+            + "velocity=(" + std::to_string(vx) + ", " + std::to_string(vy) + "), "
+            + "tail_delta=(" + std::to_string(tail_dx) + ", " + std::to_string(tail_dy) + "), "
+            + "heading=" + std::to_string(heading) + ", mass=" + std::to_string(mass) + "), "
+            + "length=" + std::to_string(length) + ")";
     }
     std::string repr() const { return str(); }
     bool operator==(const Bullet& other) const {
-        //return x == other.x && y == other.y && vx == other.vx && vy == other.vy && heading == other.heading && mass == other.mass && tail_delta_x == other.tail_delta_x && tail_delta_y == other.tail_delta_y;
+        //return x == other.x && y == other.y && vx == other.vx && vy == other.vy && heading == other.heading && mass == other.mass && tail_dx == other.tail_dx && tail_dy == other.tail_dy;
         return x == other.x && y == other.y && vx == other.vx && vy == other.vy;
     }
 };
@@ -1286,8 +1286,8 @@ Asteroid create_asteroid_from_dict(nb::dict d) {
 }
 
 Ship create_ship_from_compact(const nb::list& ship_list) {
-    if (ship_list.size() != 13) {
-        throw std::runtime_error("Ship list must contain exactly 13 elements.");
+    if (ship_list.size() != 12) {
+        throw std::runtime_error("Ship list must contain exactly 12 elements.");
     }
 
     return Ship(
@@ -1303,7 +1303,6 @@ Ship create_ship_from_compact(const nb::list& ship_list) {
         nb::cast<int64_t>(ship_list[9]), // team
         nb::cast<bool>(ship_list[10]),   // is_respawning
         nb::cast<int64_t>(ship_list[11]),// lives_remaining
-        nb::cast<int64_t>(ship_list[12]),// deaths
 
         // Defaults for non-ownship ships:
         // TODO: FIX DEFAULTS!
@@ -1325,8 +1324,8 @@ Ship create_ship_from_compact(const nb::list& ship_list) {
 }
 
 Ship create_ownship_from_compact(const nb::list& ship_list) {
-    if (ship_list.size() != 29) {
-        throw std::runtime_error("Ownship list must contain exactly 29 elements.");
+    if (ship_list.size() != 28) {
+        throw std::runtime_error("Ownship list must contain exactly 28 elements.");
     }
 
     return Ship(
@@ -1342,27 +1341,26 @@ Ship create_ownship_from_compact(const nb::list& ship_list) {
         nb::cast<int64_t>(ship_list[9]),  // team
         nb::cast<bool>(ship_list[10]),    // is_respawning
         nb::cast<int64_t>(ship_list[11]), // lives_remaining
-        nb::cast<int64_t>(ship_list[12]), // deaths
-        nb::cast<int64_t>(ship_list[13]), // bullets_remaining
-        nb::cast<int64_t>(ship_list[14]), // mines_remaining
-        nb::cast<bool>(ship_list[15]),    // can_fire
-        nb::cast<double>(ship_list[16]),  // fire_cooldown
-        nb::cast<double>(ship_list[17]),  // fire_rate
-        nb::cast<bool>(ship_list[18]),    // can_deploy_mine
-        nb::cast<double>(ship_list[19]),  // mine_cooldown
-        nb::cast<double>(ship_list[20]),  // mine_deploy_rate
-        nb::cast<double>(ship_list[21]),  // respawn_time_left
-        nb::cast<double>(ship_list[22]),  // respawn_time
+        nb::cast<int64_t>(ship_list[12]), // bullets_remaining
+        nb::cast<int64_t>(ship_list[13]), // mines_remaining
+        nb::cast<bool>(ship_list[14]),    // can_fire
+        nb::cast<double>(ship_list[15]),  // fire_cooldown
+        nb::cast<double>(ship_list[16]),  // fire_rate
+        nb::cast<bool>(ship_list[17]),    // can_deploy_mine
+        nb::cast<double>(ship_list[18]),  // mine_cooldown
+        nb::cast<double>(ship_list[19]),  // mine_deploy_rate
+        nb::cast<double>(ship_list[20]),  // respawn_time_left
+        nb::cast<double>(ship_list[21]),  // respawn_time
         std::make_pair(
-            nb::cast<double>(ship_list[23]), // thrust_min
-            nb::cast<double>(ship_list[24])  // thrust_max
+            nb::cast<double>(ship_list[22]), // thrust_min
+            nb::cast<double>(ship_list[23])  // thrust_max
         ),
         std::make_pair(
-            nb::cast<double>(ship_list[25]), // turn_rate_min
-            nb::cast<double>(ship_list[26])  // turn_rate_max
+            nb::cast<double>(ship_list[24]), // turn_rate_min
+            nb::cast<double>(ship_list[25])  // turn_rate_max
         ),
-        nb::cast<double>(ship_list[27]), // max_speed
-        nb::cast<double>(ship_list[28])  // drag
+        nb::cast<double>(ship_list[26]), // max_speed
+        nb::cast<double>(ship_list[27])  // drag
     );
 }
 
@@ -1385,7 +1383,7 @@ Ship create_ship_from_dict_legacy(nb::dict d) {
         d.contains("team") ? nb::cast<int64_t>(d["team"]) : 0,
         d.contains("is_respawning") ? nb::cast<bool>(d["is_respawning"]) : false,
         d.contains("lives_remaining") ? nb::cast<int64_t>(d["lives_remaining"]) : 0,
-        d.contains("deaths") ? nb::cast<int64_t>(d["deaths"]) : 0,
+//        d.contains("deaths") ? nb::cast<int64_t>(d["deaths"]) : 0,
         d.contains("bullets_remaining") ? nb::cast<int64_t>(d["bullets_remaining"]) : 0,
         d.contains("mines_remaining") ? nb::cast<int64_t>(d["mines_remaining"]) : 0,
         d.contains("can_fire") ? nb::cast<bool>(d["can_fire"]) : true,
@@ -1421,10 +1419,11 @@ Bullet create_bullet_from_dict(nb::dict d) {
     return Bullet(
         pos.first, pos.second,
         vel.first, vel.second,
+        -BULLET_LENGTH * std::cos(heading_rad),
+        -BULLET_LENGTH * std::sin(heading_rad),
         heading,
         nb::cast<double>(d["mass"]),
-        -BULLET_LENGTH * std::cos(heading_rad),
-        -BULLET_LENGTH * std::sin(heading_rad)
+        BULLET_LENGTH
     );
 }
 
@@ -1474,35 +1473,37 @@ Mine create_mine_from_compact(const nb::list& mine_list) {
 }
 
 GameState create_game_state_from_compact(nb::dict game_state_compact_dict) {
-    using namespace nanobind; // For convenience
-
     // Asteroids
     nb::list asteroid_list = nb::cast<nb::list>(game_state_compact_dict["asteroids"]);
     std::vector<Asteroid> asteroids;
     asteroids.reserve(asteroid_list.size());
-    for (auto a : asteroid_list)
+    for (auto a : asteroid_list) {
         asteroids.push_back(create_asteroid_from_compact(nb::cast<nb::list>(a)));
+    }
 
     // Ships
     nb::list ship_list = nb::cast<nb::list>(game_state_compact_dict["ships"]);
     std::vector<Ship> ships;
     ships.reserve(ship_list.size());
-    for (auto s : ship_list)
+    for (auto s : ship_list) {
         ships.push_back(create_ship_from_compact(nb::cast<nb::list>(s)));
+    }
 
     // Bullets
     nb::list bullet_list = nb::cast<nb::list>(game_state_compact_dict["bullets"]);
     std::vector<Bullet> bullets;
     bullets.reserve(bullet_list.size());
-    for (auto b : bullet_list)
+    for (auto b : bullet_list) {
         bullets.push_back(create_bullet_from_compact(nb::cast<nb::list>(b)));
+    }
 
     // Mines
     nb::list mine_list = nb::cast<nb::list>(game_state_compact_dict["mines"]);
     std::vector<Mine> mines;
     mines.reserve(mine_list.size());
-    for (auto m : mine_list)
+    for (auto m : mine_list) {
         mines.push_back(create_mine_from_compact(nb::cast<nb::list>(m)));
+    }
 
     // Map size
     std::pair<double, double> map_size = {0.0, 0.0};
@@ -6068,7 +6069,7 @@ public:
             /*team=*/ship_state.team,
             /*is_respawning=*/false,
             /*lives_remaining=*/123,
-            /*deaths=*/0,  // new field, defaulting to 0
+//            /*deaths=*/0,  // new field, defaulting to 0
             /*bullets_remaining=*/0,
             /*mines_remaining=*/0,
             /*can_fire=*/ship_state.can_fire,
@@ -6707,7 +6708,7 @@ public:
                 new_bullet_y = initial_ship_state.y + SHIP_RADIUS * sin_heading;
                 Bullet initial_timestep_fire_bullet(
                     new_bullet_x, new_bullet_y, BULLET_SPEED*cos_heading, BULLET_SPEED*sin_heading,
-                    initial_ship_state.heading, BULLET_MASS, -BULLET_LENGTH*cos_heading, -BULLET_LENGTH*sin_heading
+                    -BULLET_LENGTH*cos_heading, -BULLET_LENGTH*sin_heading, initial_ship_state.heading, BULLET_MASS, BULLET_LENGTH
                 );
                 bullets.push_back(initial_timestep_fire_bullet);
             }
@@ -6731,10 +6732,10 @@ public:
                     new_bullet_y,
                     BULLET_SPEED * cos_heading,
                     BULLET_SPEED * sin_heading,
-                    bullet_fired_from_ship_heading,
-                    BULLET_MASS,
                     -BULLET_LENGTH * cos_heading,
-                    -BULLET_LENGTH * sin_heading);
+                    -BULLET_LENGTH * sin_heading,
+                    bullet_fired_from_ship_heading,
+                    BULLET_MASS, BULLET_LENGTH);
             }
 
             if (whole_move_sequence.has_value()) {
@@ -6788,7 +6789,7 @@ public:
                         //if constexpr (ENABLE_SANITY_CHECKS) {
                         //    assert(asteroid_bullet_collision(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius) == asteroid_bullet_collision_kessler(b.x, b.y, b_tail_x, b_tail_y, a.x, a.y, a.radius));
                         //}
-                        if (circle_line_collision_continuous(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, b.vx, b.vy, a.x, a.y, a.vx, a.vy, a.radius, game_state.delta_time)) {
+                        if (circle_line_collision_continuous(b.x, b.y, b.x + b.tail_dx, b.y + b.tail_dy, b.vx, b.vy, a.x, a.y, a.vx, a.vy, a.radius, game_state.delta_time)) {
                             if (b_idx == len_bullets) {
                                 // This bullet is my bullet!
                                 if constexpr (ENABLE_EXTRA_PRINTS) {
@@ -6824,7 +6825,7 @@ public:
 
                 // Handle bullet culling here
                 if (b.alive) {
-                    if (!check_coordinate_bounds(game_state, b.x, b.y) && !check_coordinate_bounds(game_state, b.x + b.tail_delta_x, b.y + b.tail_delta_y)) {
+                    if (!check_coordinate_bounds(game_state, b.x, b.y) && !check_coordinate_bounds(game_state, b.x + b.tail_dx, b.y + b.tail_dy)) {
                         if (b_idx == len_bullets) {
                             // This bullet is my bullet!
                             // The bullet got shot into the void without hitting anything :(
@@ -7681,7 +7682,7 @@ public:
                 double bullet_y = ship_state.y + SHIP_RADIUS * sin_heading;
                 Bullet new_bullet(
                     bullet_x, bullet_y, BULLET_SPEED * cos_heading, BULLET_SPEED * sin_heading,
-                    ship_state.heading, BULLET_MASS, -BULLET_LENGTH * cos_heading, -BULLET_LENGTH * sin_heading
+                    -BULLET_LENGTH * cos_heading, -BULLET_LENGTH * sin_heading, ship_state.heading, BULLET_MASS, BULLET_LENGTH
                 );
                 game_state.bullets.push_back(new_bullet);
             }
@@ -7790,9 +7791,9 @@ public:
             if (b.alive) {
                 for (Asteroid& a : game_state.asteroids) {
                     //if constexpr (ENABLE_SANITY_CHECKS) {
-                    //    assert(asteroid_bullet_collision(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, a.x, a.y, a.radius) == asteroid_bullet_collision_kessler(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, a.x, a.y, a.radius));
+                    //    assert(asteroid_bullet_collision(b.x, b.y, b.x + b.tail_dx, b.y + b.tail_dy, a.x, a.y, a.radius) == asteroid_bullet_collision_kessler(b.x, b.y, b.x + b.tail_dx, b.y + b.tail_dy, a.x, a.y, a.radius));
                     //}
-                    if (a.alive && circle_line_collision_continuous(b.x, b.y, b.x + b.tail_delta_x, b.y + b.tail_delta_y, b.vx, b.vy, a.x, a.y, a.vx, a.vy, a.radius, game_state.delta_time)) {
+                    if (a.alive && circle_line_collision_continuous(b.x, b.y, b.x + b.tail_dx, b.y + b.tail_dy, b.vx, b.vy, a.x, a.y, a.vx, a.vy, a.radius, game_state.delta_time)) {
                         b.alive = false;
                         if (a.size != 1) {
                             for (const Asteroid& new_ast: forecast_instantaneous_asteroid_bullet_splits_from_velocity(a, b.vx, b.vy, game_state)) {
@@ -7806,7 +7807,7 @@ public:
             }
             // Check whether the bullet has left the map, and "cull" them here
             if (b.alive) {
-                if (!check_coordinate_bounds(game_state, b.x, b.y) && !check_coordinate_bounds(game_state, b.x + b.tail_delta_x, b.y + b.tail_delta_y)) {
+                if (!check_coordinate_bounds(game_state, b.x, b.y) && !check_coordinate_bounds(game_state, b.x + b.tail_dx, b.y + b.tail_dy)) {
                     b.alive = false;
                 }
             }
@@ -8154,7 +8155,7 @@ public:
     }
     
     std::string name() const {
-        return "Neo++";
+        return "Neo";
     }
 
     int ship_id() const {
@@ -9093,7 +9094,7 @@ public:
     }
 
     std::tuple<double, double, bool, bool>
-    actions(const nb::object& ship_state, const nb::object& game_state) {
+    actions(const nb::object& ship_state_pyobj, const nb::object& game_state_pyobj) {
         // Method processed each time step by this controller.
 
         // Optionally reseed RNG if flag enabled
@@ -9111,13 +9112,17 @@ public:
 
         // The ship state and game states are Python objects.
         // Call the .compact property on each, to get a dictionary
-        nb::list ship_state_list = nb::cast<nb::list>(ship_state.attr("compact"));
-        nb::dict game_state_dict = nb::cast<nb::dict>(game_state.attr("compact"));
+        nb::list ship_state_list = nb::cast<nb::list>(ship_state_pyobj.attr("compact"));
+        nb::dict game_state_dict = nb::cast<nb::dict>(game_state_pyobj.attr("compact"));
         
         // Ingest the compact dictionaries into our own classes!
         Ship ship_state = create_ownship_from_compact(ship_state_list);
         GameState game_state = create_game_state_from_compact(game_state_dict);
-
+        std::cout << std::setprecision(17)
+          << "blublub " 
+          << ship_state.respawn_time << " " 
+          << ship_state.respawn_time_left 
+          << std::endl;
         // Check for simulator/controller desync and perform state recovery/reset as in Python
         if constexpr (CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS || STATE_CONSISTENCY_CHECK_AND_RECOVERY) {
             bool timestep_mismatch = !(game_state.frame == this->current_timestep);

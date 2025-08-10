@@ -16,7 +16,7 @@ except Exception as e:
     print(e)
 from kesslergame.controller_gamepad import GamepadController
 from examples.test_controller import TestController
-#from neo_controller import NeoController
+from neo_controller import NeoController
 #from test_controller import TestController as CPPController
 #from src.neo_controller_wcci_bench import NeoController as NeoControllerWCCI
 from nova_controller import NovaController
@@ -442,7 +442,7 @@ while True:
             # [ReplayController0(), ReplayController1()] GamepadController()])#, NeoController()])#, TestController()])GamepadController NeoController Neo
         #random.seed(randseed)
         #from neo_controller import NeoController
-        controllers_used = [JamieController(), JamieController()]
+        controllers_used = [NeoController(), JamieController()]
         #random.setstate(state)
         #print(f"RNG State: {random.getstate()}")
         #score, perf_data = game.run(scenario=ex_adv_four_corners_pt1, controllers=controllers_used)
@@ -496,13 +496,13 @@ while True:
                 missed = True
             else:
                 missed = False
-            team_1_shot_efficiency = (team1.bullets_hit/score.sim_time)/(1/(1/10))
+            team_1_shot_efficiency = (team1.bullet_asteroid_hits/score.sim_time)/(1/(1/10))
             team_1_shot_efficiency_including_mines = (team1.asteroids_hit/score.sim_time)/(1/(1/10))
             if num_teams > 1:
-                team_2_shot_efficiency = (team2.bullets_hit/score.sim_time)/(1/(1/10))
+                team_2_shot_efficiency = (team2.bullet_asteroid_hits/score.sim_time)/(1/(1/10))
                 team_2_shot_efficiency_including_mines = (team2.asteroids_hit/score.sim_time)/(1/(1/10))
-                team_1_bullets_hit += team1.bullets_hit
-                team_2_bullets_hit += team2.bullets_hit
+                team_1_bullets_hit += team1.bullet_asteroid_hits
+                team_2_bullets_hit += team2.bullet_asteroid_hits
                 team_1_shots_fired += team1.shots_fired
                 team_2_shots_fired += team2.shots_fired
         print(f"Team 1, 2 hits: ({team_1_hits}, {team_2_hits})")
