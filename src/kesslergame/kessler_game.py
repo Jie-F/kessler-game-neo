@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 import warnings
 
-from math import inf, isfinite, isnan, ceil, radians, sin, cos
+from math import inf, isfinite, isinf, isnan, ceil, radians, sin, cos
 from typing import Any, TypedDict, cast, ClassVar, Mapping
 from enum import Enum, IntEnum
 
@@ -329,11 +329,17 @@ class KesslerGame:
 
         # ------- time_limit -------
         time_limit = settings.get("time_limit", inf)
+        self.default_time_limit: float
         if isinstance(time_limit, int):
             time_limit = float(time_limit)
         if not isinstance(time_limit, float):
-            raise TypeError(f"time_limit must be float or int, got {type(time_limit).__name__}")
-        self.time_limit: float = time_limit
+            raise TypeError(f"Default time_limit in game settings must be float or int, got {type(time_limit).__name__}")
+        if time_limit == 0.0 or (isinf(time_limit) and time_limit > 0):
+            self.default_time_limit = inf
+        elif time_limit > 0.0:
+            self.default_time_limit = time_limit
+        else:
+            raise ValueError("Default time_limit in game settings must be positive finite, or inf or 0 for unlimited")
 
         # ------- random_ast_splits -------
         random_ast_splits = settings.get("random_ast_splits", False)
@@ -809,8 +815,13 @@ class KesslerGame:
         self.sim_frame = 0
 
         # Overwrite time limit from game settings if the scenario defines its own time limit
-        if self.scenario.time_limit:
+        if self.scenario.time_limit is not None:
             self.time_limit = self.scenario.time_limit
+        else:
+            self.time_limit = self.default_time_limit
+        # Now that the game has decided the time limit, write back this time limit into the scenario
+        # so that the graphics can display the correct time limit
+        self.scenario.time_limit = self.time_limit
 
         # Assign controllers to each ship
         assert len(controllers) >= len(self.ships), f"There are not enough controllers ({len(controllers)}) to assign to the {len(self.ships)} ships!"

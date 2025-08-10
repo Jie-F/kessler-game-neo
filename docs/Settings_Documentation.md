@@ -26,9 +26,9 @@ game = KesslerGame(settings=game_settings)
 | `graphics_obj`          | `KesslerGraphics or None` | `None`                            | Custom graphics object instance, if applicable.                                               |
 | `realtime_multiplier`   | `float`                   | `1.0` (or `0.0` for `NoGraphics`) | Controls simulation speed. `1.0` is real-time, higher values speed up the game. 0 is max speed|
 | `frame_skip`            | `int`                     | `max(1, round(realtime_multiplier))` | Renders 1 out of every frame_skip frames. Helps graphics keep up with higher game speeds |
-| `time_limit`            | `float`                   | `inf`                        | Time (s) after which the scenario stops. Overrides limit defined in Scenario.                 |
+| `time_limit`            | `float`                   | `inf`                        | Default time (s) after which the scenario stops. Only takes effect if scenario does not define its own time limit. |
 | `random_ast_splits`     | `bool`                    | `False`                           | Whether asteroids split at random angles upon destruction                                     |
-| `competition_safe_mode` | `bool`                    | `True`                            | False sends mutable game_state and ship_state. This is faster, but riskier. Also this handles controller exceptions and lets the game move on, and assigns a default null action to the controller at fault. |
+| `competition_safe_mode` | `bool`                    | `True`                            | False sends mutable game_state and ship_state. This is significantly faster since it avoids copying, but it's riskier. Also this handles controller exceptions and lets the game move on, and assigns a default null action to the controller at fault. |
 
 ---
 
@@ -61,6 +61,7 @@ game_settings = {
     'graphics_type': GraphicsType.Tkinter,
     'realtime_multiplier': 1.0,
     'graphics_obj': None,
+    'time_limit': 60,
     'frequency': 30,
     'UI_settings': {
         'ships': True,

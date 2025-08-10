@@ -97,12 +97,12 @@ def analytic_ship_movement_integration(v0: float, a: float, theta0: float, omega
         # Integrating over basically no time into the future
         return 0.0, 0.0
     if abs(omega) < 0.15:
-        # Omega is very small, and the divisions in the analytic solution have numerical instability
-        # Use a 3nd order Taylor/Maclaurin series to get a much more accurate result near 0
+        # Omega is relatively small, and the divisions in the analytic solution are numerically unstable
+        # Use a 3rd order Taylor/Maclaurin series to get a much more accurate result near 0
         # Without this code, with omega near 0, the ship starts teleporting due to floating point wackiness! It's funny
         # The cutoff of 0.15 was found by testing some values for the constants,
         # and making a plot of the absolute error between the Taylor and analytic graphs.
-        # 0.15 tends to minimize this max absolute error at about 1e-11, and is the balance point.
+        # 0.15 tends to minimize this max absolute error at below 1e-10, and is the balance point.
         cos_theta0 = cos(theta0)
         sin_theta0 = sin(theta0)
 
@@ -150,8 +150,9 @@ def analytic_ship_movement_integration(v0: float, a: float, theta0: float, omega
         sin_theta1 = sin(theta1)
         sin_diff = sin_theta1 - sin_theta0
         cos_diff = cos_theta1 - cos_theta0
-        dx = (v0 * sin_diff + (a / omega) * (cos_diff + delta_theta * sin_theta1)) / omega
-        dy = (-v0 * cos_diff + (a / omega) * (sin_diff - delta_theta * cos_theta1)) / omega
+        omega_reciprocal = 1.0 / omega
+        dx = omega_reciprocal * (v0 * sin_diff + omega_reciprocal * (a * (cos_diff + delta_theta * sin_theta1)))
+        dy = omega_reciprocal * (-v0 * cos_diff + omega_reciprocal * (a * (sin_diff - delta_theta * cos_theta1)))
     return dx, dy
 
 

@@ -5,7 +5,7 @@
 
 from typing import Any
 import random
-from math import isclose, inf, hypot, degrees, radians, atan2, cos, sin
+from math import isclose, inf, isinf, hypot, degrees, radians, atan2, cos, sin
 
 from .ship import Ship
 from .asteroid import Asteroid
@@ -155,13 +155,16 @@ class Scenario:
         # Store ship states if not None, otherwise, create one ship at center
         self.ship_states = ship_states if ship_states is not None else [{"position": (self.map_size[0] / 2, self.map_size[1] / 2)}]
 
-        # Set the time_limit to infinity if it is 0 or None
-        if time_limit is None or time_limit == 0.0:
+        # Set the time_limit to infinity if it is 0
+        # If the time limit was not defined, leave it as none, so that the game settings could potentially override this
+        self.time_limit: float | None
+        if time_limit is None:
+            self.time_limit = None
+        elif time_limit == 0.0 or (isinf(time_limit) and time_limit > 0.0):
             self.time_limit = inf
-        else:
+        elif time_limit > 0.0:
             self.time_limit = time_limit
-        # Optionally reject negatives
-        if self.time_limit < 0:
+        else:
             raise ValueError("time_limit must be positive, 0 for unlimited, or None")
 
         # Store random seed
