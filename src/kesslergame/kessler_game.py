@@ -391,7 +391,7 @@ class KesslerGame:
             raise TypeError(f"UI_settings must be a dict, got {type(UI_settings).__name__}")
         self.UI_settings: UISettingsDict = validate_ui_settings(UI_settings)
 
-    def enqueue_bullet_asteroid_collisions(self, bullets: list[Bullet], asteroids: list[Asteroid], asteroid_past_time_clamp: float, asteroid_list_idx_offset: int = 0, already_a_heap: bool = False) -> None:
+    def enqueue_bullet_asteroid_collisions(self, bullets: list[Bullet], asteroids: list[Asteroid], asteroid_past_time_clamp: float, asteroid_list_idx_offset: int = 0, already_a_heap: bool = False, bullet_idxs_to_skip: list[int] | None = None) -> None:
         # Collect all potential bullet-asteroid collisions
         # Since bullets do not wrap, we treat the bullet hitbox as being clamped at the map edge.
         # The way to calculate the collision time interval is elegant. It considers two virtual bullets,
@@ -406,7 +406,19 @@ class KesslerGame:
         # So we clamp that time
         collision_past_time_clamp = min(asteroid_past_time_clamp, self.delta_time)
 
+        # Prelookup and precompute constants used for wrapping to bullet's frame of reference
+        map_width = self.scenario.map_width
+        map_height = self.scenario.map_height
+        half_map_width = 0.5 * map_width
+        half_map_height = 0.5 * map_height
+
         for bul_idx, bullet in enumerate(bullets):
+            if bullet_idxs_to_skip is not None and bul_idx in bullet_idxs_to_skip:
+                continue
+
+            bullet_vx = bullet.vx
+            bullet_vy = bullet.vy
+
             # Find unclamped bullet path (as if bullet passes through the map edge)
             bullet_head_x = bullet.x
             bullet_head_y = bullet.y
@@ -414,38 +426,40 @@ class KesslerGame:
             bullet_tail_y = bullet.y + bullet.tail_delta_y
 
             # Find when head and tail leave the visible map
-            t_head_exit = time_until_exit(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy, self.scenario.map_width, self.scenario.map_height)
-            t_tail_exit = time_until_exit(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy, self.scenario.map_width, self.scenario.map_height)
+            t_head_exit = time_until_exit(bullet_head_x, bullet_head_y, bullet_vx, bullet_vy, map_width, map_height)
+            t_tail_exit = time_until_exit(bullet_tail_x, bullet_tail_y, bullet_vx, bullet_vy, map_width, map_height)
             assert t_head_exit <= t_tail_exit
             # Find when head and tail enter the visible map
-            t_head_enter = time_until_enter(bullet_head_x, bullet_head_y, bullet.vx, bullet.vy, self.scenario.map_width, self.scenario.map_height)
-            t_tail_enter = time_until_enter(bullet_tail_x, bullet_tail_y, bullet.vx, bullet.vy, self.scenario.map_width, self.scenario.map_height)
+            t_head_enter = time_until_enter(bullet_head_x, bullet_head_y, bullet_vx, bullet_vy, map_width, map_height)
+            t_tail_enter = time_until_enter(bullet_tail_x, bullet_tail_y, bullet_vx, bullet_vy, map_width, map_height)
             assert t_head_enter <= t_tail_enter
 
-            for ast_idx, asteroid in enumerate(asteroids):
-                # Center the asteroid position relative to the bullet, accounting for wrapping of asteroids.
-                if asteroid.x - bullet.x > 0.5 * self.scenario.map_width:
-                    ast_x_centered = asteroid.x - self.scenario.map_width
-                elif asteroid.x - bullet.x < -0.5 * self.scenario.map_width:
-                    ast_x_centered = asteroid.x + self.scenario.map_width
-                else:
-                    ast_x_centered = asteroid.x
+            bullet_entirely_in_bounds: bool = t_head_exit >= 0.0 and t_tail_enter <= -collision_past_time_clamp
 
-                if asteroid.y - bullet.y > 0.5 * self.scenario.map_height:
-                    ast_y_centered = asteroid.y - self.scenario.map_height
-                elif asteroid.y - bullet.y < -0.5 * self.scenario.map_height:
-                    ast_y_centered = asteroid.y + self.scenario.map_height
-                else:
-                    ast_y_centered = asteroid.y
+            if bullet_entirely_in_bounds:
+                # This means that for the whole duration we're checking, the bullet is entirely within the map's visible bounds!
+                # The tail has entered the map before the interval starts, and the head will not leave until after the interval ends.
+                # This is the simplest case to handle. Do the normal collision check:
+                for ast_idx, asteroid in enumerate(asteroids):
+                    # Center the asteroid position relative to the bullet, accounting for wrapping of asteroids.
+                    if asteroid.x - bullet.x > half_map_width:
+                        ast_x_centered = asteroid.x - map_width
+                    elif asteroid.x - bullet.x < -half_map_width:
+                        ast_x_centered = asteroid.x + map_width
+                    else:
+                        ast_x_centered = asteroid.x
 
-                if t_head_exit >= 0.0 and t_tail_enter <= -collision_past_time_clamp:
-                    # This means that for the whole duration we're checking, the bullet is entirely within the map's visible bounds!
-                    # The tail has entered the map before the interval starts, and the head will not leave until after the interval ends.
-                    # This is the simplest case to handle. Do the normal collision check:
+                    if asteroid.y - bullet.y > half_map_height:
+                        ast_y_centered = asteroid.y - map_height
+                    elif asteroid.y - bullet.y < -half_map_height:
+                        ast_y_centered = asteroid.y + map_height
+                    else:
+                        ast_y_centered = asteroid.y
+
                     if circle_line_collision_continuous(
                         bullet_head_x, bullet_head_y,
                         bullet_tail_x, bullet_tail_y,
-                        bullet.vx, bullet.vy,
+                        bullet_vx, bullet_vy,
                         ast_x_centered, ast_y_centered,
                         asteroid.vx, asteroid.vy,
                         asteroid.radius,
@@ -454,7 +468,7 @@ class KesslerGame:
                         collision_start_time, _ = circle_line_collision_time_interval(
                             bullet_head_x, bullet_head_y,
                             bullet_tail_x, bullet_tail_y,
-                            bullet.vx, bullet.vy,
+                            bullet_vx, bullet_vy,
                             ast_x_centered, ast_y_centered,
                             asteroid.vx, asteroid.vy,
                             asteroid.radius
@@ -469,46 +483,71 @@ class KesslerGame:
                         assert -collision_past_time_clamp <= collision_time <= 0.0
 
                         # Calculate the distance between center of bullet and the asteroid at the time of collision, to use as a tiebreaker in ordering events
-                        bul_x_mid_collision = 0.5 * (bullet_head_x + bullet_tail_x) + collision_time * bullet.vx
-                        bul_y_mid_collision = 0.5 * (bullet_head_y + bullet_tail_y) + collision_time * bullet.vy
+                        bul_x_mid_collision = 0.5 * (bullet_head_x + bullet_tail_x) + collision_time * bullet_vx
+                        bul_y_mid_collision = 0.5 * (bullet_head_y + bullet_tail_y) + collision_time * bullet_vy
                         ast_x_collision = ast_x_centered + collision_time * asteroid.vx
                         ast_y_collision = ast_y_centered + collision_time * asteroid.vy
                         dx = ast_x_collision - bul_x_mid_collision
                         dy = ast_y_collision - bul_y_mid_collision
                         sq_dist = dx * dx + dy * dy
 
-                        bul_head_x_collision = bullet_head_x + collision_time * bullet.vx
-                        bul_head_y_collision = bullet_head_y + collision_time * bullet.vy
-                        bul_tail_x_collision = bullet_tail_x + collision_time * bullet.vx
-                        bul_tail_y_collision = bullet_tail_y + collision_time * bullet.vy
+                        bul_head_x_collision = bullet_head_x + collision_time * bullet_vx
+                        bul_head_y_collision = bullet_head_y + collision_time * bullet_vy
+                        bul_tail_x_collision = bullet_tail_x + collision_time * bullet_vx
+                        bul_tail_y_collision = bullet_tail_y + collision_time * bullet_vy
                         # Either the bullet head or tail should be inside the map bounds for this collision to be valid.
                         # This should be guaranteed, because at no point during this interval was the bullet expected to leave the map bound, and need to be clamped!
-                        assert (((0.0 <= bul_head_x_collision <= self.scenario.map_width) and (0.0 <= bul_head_y_collision <= self.scenario.map_height))
-                                or ((0.0 <= bul_tail_x_collision <= self.scenario.map_width) and (0.0 <= bul_tail_y_collision <= self.scenario.map_height)))
+                        assert (((0.0 <= bul_head_x_collision <= map_width) and (0.0 <= bul_head_y_collision <= map_height))
+                                or ((0.0 <= bul_tail_x_collision <= map_width) and (0.0 <= bul_tail_y_collision <= map_height)))
 
                         # It happens surprisingly frequently where an asteroid splits, and the three overlapping children asteroids get hit by a bullet. We need a tiebreaker for this situation!
                         # Or else we get weird random indeterminate behavior, and there goes our framerate independence.
-                        dot_bullet_vel_ast_vel_tiebreaker = bullet.vx * asteroid.vx + bullet.vy * asteroid.vy
+                        dot_bullet_vel_ast_vel_tiebreaker = bullet_vx * asteroid.vx + bullet_vy * asteroid.vy
                         collision_event = CollisionEvent(collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID, dot_bullet_vel_ast_vel_tiebreaker)
                         if already_a_heap:
                             heappush(self.collision_queue, collision_event)
                         else:
                             self.collision_queue.append(collision_event)
-                else:
-                    # During the time interval we're checking, either the whole time or a part of the time,
-                    # the bullet is at least partially out of bounds and has to have its hitbox clipped at the edge.
-                    # To do this check, we create two virtual bullets! The first virtual bullet is just the regular bullet, but it's
-                    # allowed to go out of bounds.
-                    # The second virtual bullet is a stationary one, with the head at the map border where the bullet leaves, and the tail
-                    # also on the border where the bullet would first enter the map
-                    # If we find the collision time interval between the asteroid and these two virtual bullets, and take
-                    # their intersections, we'll have the true collision interval of the clamped bullet.
+            else:
+                # During the time interval we're checking, either the whole time or a part of the time,
+                # the bullet is at least partially out of bounds and has to have its hitbox clipped at the edge.
+                # To do this check, we create two virtual bullets! The first virtual bullet is just the regular bullet, but it's
+                # allowed to go out of bounds.
+                # The second virtual bullet is a stationary one, with the head at the map border where the bullet leaves, and the tail
+                # also on the border where the bullet would first enter the map
+                # If we find the collision time interval between the asteroid and these two virtual bullets, and take
+                # their intersections, we'll have the true collision interval of the clamped bullet.
+
+                # Precompute this virtual bullet as it's specific to just the bullet, and not specific to any asteroid
+                # Virtual bullet 2: stationary bullet, where head and tails are pinned at the map border, along the bullet's line of travel
+                # Remember that the t_clamp_start is a negative number. The bullet head at the end of the frame is already past bound.
+                pinned_head_x = bullet_head_x + bullet_vx * t_head_exit
+                pinned_head_y = bullet_head_y + bullet_vy * t_head_exit
+                # Stick the tail of the bullet on the map border where the bullet would enter the map
+                pinned_tail_x = bullet_tail_x + bullet_vx * t_tail_enter
+                pinned_tail_y = bullet_tail_y + bullet_vy * t_tail_enter
+
+                for ast_idx, asteroid in enumerate(asteroids):
+                    # Center the asteroid position relative to the bullet, accounting for wrapping of asteroids.
+                    if asteroid.x - bullet.x > half_map_width:
+                        ast_x_centered = asteroid.x - map_width
+                    elif asteroid.x - bullet.x < -half_map_width:
+                        ast_x_centered = asteroid.x + map_width
+                    else:
+                        ast_x_centered = asteroid.x
+
+                    if asteroid.y - bullet.y > half_map_height:
+                        ast_y_centered = asteroid.y - map_height
+                    elif asteroid.y - bullet.y < -half_map_height:
+                        ast_y_centered = asteroid.y + map_height
+                    else:
+                        ast_y_centered = asteroid.y
 
                     # Virtual bullet 1: normal moving bullet that is unclamped as it goes beyond the border
                     hit1 = circle_line_collision_continuous(
                         bullet_head_x, bullet_head_y,
                         bullet_tail_x, bullet_tail_y,
-                        bullet.vx, bullet.vy,
+                        bullet_vx, bullet_vy,
                         ast_x_centered, ast_y_centered,
                         asteroid.vx, asteroid.vy,
                         asteroid.radius,
@@ -519,7 +558,7 @@ class KesslerGame:
                     t1_start, t1_end = circle_line_collision_time_interval(
                         bullet_head_x, bullet_head_y,
                         bullet_tail_x, bullet_tail_y,
-                        bullet.vx, bullet.vy,
+                        bullet_vx, bullet_vy,
                         ast_x_centered, ast_y_centered,
                         asteroid.vx, asteroid.vy,
                         asteroid.radius
@@ -529,14 +568,7 @@ class KesslerGame:
                         warnings.warn("Numeric instability in quadratic solver? VB1 collision time is NaN", RuntimeWarning)
                         continue
 
-                    # Virtual bullet 2: stationary bullet, where head and tails are pinned at the map border, along the bullet's line of travel
-                    # Remember that the t_clamp_start is a negative number. The bullet head at the end of the frame is already past bound.
-                    pinned_head_x = bullet_head_x + bullet.vx * t_head_exit
-                    pinned_head_y = bullet_head_y + bullet.vy * t_head_exit
-                    # Stick the tail of the bullet on the map border where the bullet would enter the map
-                    pinned_tail_x = bullet_tail_x + bullet.vx * t_tail_enter
-                    pinned_tail_y = bullet_tail_y + bullet.vy * t_tail_enter
-
+                    # Use the virtual bullet 2 we computed for this bullet
                     hit2 = circle_line_collision_continuous(
                         pinned_head_x, pinned_head_y,
                         pinned_tail_x, pinned_tail_y,
@@ -573,22 +605,22 @@ class KesslerGame:
 
                         # Calculate the distance between center of bullet and the asteroid at the time of collision, to use as a tiebreaker in ordering events
                         # This does not consider that the bullet could be clamped at the edge, and just uses the bullet passing through the border anyway.
-                        bul_x_mid_collision = 0.5 * (bullet_head_x + bullet_tail_x) + collision_time * bullet.vx
-                        bul_y_mid_collision = 0.5 * (bullet_head_y + bullet_tail_y) + collision_time * bullet.vy
+                        bul_x_mid_collision = 0.5 * (bullet_head_x + bullet_tail_x) + collision_time * bullet_vx
+                        bul_y_mid_collision = 0.5 * (bullet_head_y + bullet_tail_y) + collision_time * bullet_vy
                         ast_x_collision = ast_x_centered + collision_time * asteroid.vx
                         ast_y_collision = ast_y_centered + collision_time * asteroid.vy
                         dx = ast_x_collision - bul_x_mid_collision
                         dy = ast_y_collision - bul_y_mid_collision
                         sq_dist = dx * dx + dy * dy
 
-                        bul_head_x_collision = bullet_head_x + collision_time * bullet.vx
-                        bul_head_y_collision = bullet_head_y + collision_time * bullet.vy
-                        bul_tail_x_collision = bullet_tail_x + collision_time * bullet.vx
-                        bul_tail_y_collision = bullet_tail_y + collision_time * bullet.vy
+                        bul_head_x_collision = bullet_head_x + collision_time * bullet_vx
+                        bul_head_y_collision = bullet_head_y + collision_time * bullet_vy
+                        bul_tail_x_collision = bullet_tail_x + collision_time * bullet_vx
+                        bul_tail_y_collision = bullet_tail_y + collision_time * bullet_vy
 
                         # It happens surprisingly frequently where an asteroid splits, and the three overlapping children asteroids get hit by a bullet. We need a tiebreaker for this situation!
                         # Or else we get weird random indeterminate behavior, and there goes our framerate independence.
-                        dot_bullet_vel_ast_vel_tiebreaker = bullet.vx * asteroid.vx + bullet.vy * asteroid.vy
+                        dot_bullet_vel_ast_vel_tiebreaker = bullet_vx * asteroid.vx + bullet_vy * asteroid.vy
                         collision_event = CollisionEvent(collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID, dot_bullet_vel_ast_vel_tiebreaker)
                         if already_a_heap:
                             heappush(self.collision_queue, collision_event)
@@ -596,22 +628,28 @@ class KesslerGame:
                             self.collision_queue.append(collision_event)
 
     def enqueue_ship_asteroid_collisions(self, ships: list[Ship], asteroids: list[Asteroid], asteroid_past_time_clamp: float, asteroid_list_idx_offset: int = 0, already_a_heap: bool = False) -> None:
+        # Prelookup and precompute constants used for wrapping to bullet's frame of reference
+        map_width = self.scenario.map_width
+        map_height = self.scenario.map_height
+        half_map_width = 0.5 * map_width
+        half_map_height = 0.5 * map_height
+
         for ship_idx, ship in enumerate(ships):
             if ship.is_respawning_internal or not ship.alive:
                 continue
             for ast_idx, asteroid in enumerate(asteroids):
                 # Check for collisions in time interval [t - delta_time, t]
-                if asteroid.x - ship.x > 0.5 * self.scenario.map_width:
-                    ast_x_centered_around_ship = asteroid.x - self.scenario.map_width
-                elif asteroid.x - ship.x < -0.5 * self.scenario.map_width:
-                    ast_x_centered_around_ship = asteroid.x + self.scenario.map_width
+                if asteroid.x - ship.x > half_map_width:
+                    ast_x_centered_around_ship = asteroid.x - map_width
+                elif asteroid.x - ship.x < -half_map_width:
+                    ast_x_centered_around_ship = asteroid.x + map_width
                 else:
                     ast_x_centered_around_ship = asteroid.x
 
-                if asteroid.y - ship.y > 0.5 * self.scenario.map_height:
-                    ast_y_centered_around_ship = asteroid.y - self.scenario.map_height
-                elif asteroid.y - ship.y < -0.5 * self.scenario.map_height:
-                    ast_y_centered_around_ship = asteroid.y + self.scenario.map_height
+                if asteroid.y - ship.y > half_map_height:
+                    ast_y_centered_around_ship = asteroid.y - map_height
+                elif asteroid.y - ship.y < -half_map_height:
+                    ast_y_centered_around_ship = asteroid.y + map_height
                 else:
                     ast_y_centered_around_ship = asteroid.y
                 assert ship.respawn_time_internal <= 1e-12, f"{ship.respawn_time_internal=}"
@@ -629,10 +667,10 @@ class KesslerGame:
                     ship_past_x, ship_past_y = ship.get_past_position(collision_start_time, self.scenario.map_size)
                     dx = abs((asteroid.x + asteroid.vx * collision_start_time) - ship_past_x)
                     dy = abs((asteroid.y + asteroid.vy * collision_start_time) - ship_past_y)
-                    if dx > 0.5 * self.scenario.map_width:
-                        dx = self.scenario.map_width - dx
-                    if dy > 0.5 * self.scenario.map_height:
-                        dy = self.scenario.map_height - dy
+                    if dx > half_map_width:
+                        dx = map_width - dx
+                    if dy > half_map_height:
+                        dy = map_height - dy
                     sq_dist = dx * dx + dy * dy
 
                     # Break ties in case everything else matches, including asteroid distance from the ship
@@ -645,6 +683,12 @@ class KesslerGame:
                         self.collision_queue.append(collision_event)
 
     def enqueue_ship_ship_collisions(self, ships: list[Ship]) -> None:
+        # Prelookup and precompute constants used for wrapping to bullet's frame of reference
+        map_width = self.scenario.map_width
+        map_height = self.scenario.map_height
+        half_map_width = 0.5 * map_width
+        half_map_height = 0.5 * map_height
+
         num_ships = len(ships)
         for ship1_idx, ship1 in enumerate(ships):
             if ship1.alive and not ship1.is_respawning_internal:
@@ -653,17 +697,17 @@ class KesslerGame:
                     if ship2.alive and not ship2.is_respawning_internal:
                         # Check for collisions in time interval [t - delta_time, t]
                         # But clamp the start time to when both ships are out of respawn
-                        if ship2.x - ship1.x > 0.5 * self.scenario.map_width:
-                            ship2_x_centered_around_ship1 = ship2.x - self.scenario.map_width
-                        elif ship2.x - ship1.x < -0.5 * self.scenario.map_width:
-                            ship2_x_centered_around_ship1 = ship2.x + self.scenario.map_width
+                        if ship2.x - ship1.x > half_map_width:
+                            ship2_x_centered_around_ship1 = ship2.x - map_width
+                        elif ship2.x - ship1.x < -half_map_width:
+                            ship2_x_centered_around_ship1 = ship2.x + map_width
                         else:
                             ship2_x_centered_around_ship1 = ship2.x
 
-                        if ship2.y - ship1.y > 0.5 * self.scenario.map_height:
-                            ship2_y_centered_around_ship1 = ship2.y - self.scenario.map_height
-                        elif ship2.y - ship1.y < -0.5 * self.scenario.map_height:
-                            ship2_y_centered_around_ship1 = ship2.y + self.scenario.map_height
+                        if ship2.y - ship1.y > half_map_height:
+                            ship2_y_centered_around_ship1 = ship2.y - map_height
+                        elif ship2.y - ship1.y < -half_map_height:
+                            ship2_y_centered_around_ship1 = ship2.y + map_height
                         else:
                             ship2_y_centered_around_ship1 = ship2.y
 
@@ -679,10 +723,10 @@ class KesslerGame:
                             ship2_past_x, ship2_past_y = ship2.get_past_position(collision_start_time, self.scenario.map_size)
                             dx = abs(ship1_past_x - ship2_past_x)
                             dy = abs(ship1_past_y - ship2_past_y)
-                            if dx > 0.5 * self.scenario.map_width:
-                                dx = self.scenario.map_width - dx
-                            if dy > 0.5 * self.scenario.map_height:
-                                dy = self.scenario.map_height - dy
+                            if dx > half_map_width:
+                                dx = map_width - dx
+                            if dy > half_map_height:
+                                dy = map_height - dy
                             sq_dist = dx * dx + dy * dy
 
                             # This following test is to make sure that the ships end up in a definitely colliding state, and
@@ -712,10 +756,10 @@ class KesslerGame:
                                     ship2_past_x, ship2_past_y = ship2.get_past_position(collision_start_time, self.scenario.map_size)
                                     dx = abs(ship1_past_x - ship2_past_x)
                                     dy = abs(ship1_past_y - ship2_past_y)
-                                    if dx > 0.5 * self.scenario.map_width:
-                                        dx = self.scenario.map_width - dx
-                                    if dy > 0.5 * self.scenario.map_height:
-                                        dy = self.scenario.map_height - dy
+                                    if dx > half_map_width:
+                                        dx = map_width - dx
+                                    if dy > half_map_height:
+                                        dy = map_height - dy
                                     sq_dist = dx * dx + dy * dy
                                     if sq_dist + 1e-10 <= radii_sum_sq:
                                         verified_collision = True
@@ -727,6 +771,12 @@ class KesslerGame:
                                 self.collision_queue.append(collision_event)
 
     def enqueue_mine_asteroid_collisions(self, mines: list[Mine], asteroids: list[Asteroid], asteroid_past_time_clamp: float, asteroid_list_idx_offset: int = 0, already_a_heap: bool = False) -> None:
+        # Prelookup and precompute constants used for wrapping to bullet's frame of reference
+        map_width = self.scenario.map_width
+        map_height = self.scenario.map_height
+        half_map_width = 0.5 * map_width
+        half_map_height = 0.5 * map_height
+
         for mine_idx, mine in enumerate(mines):
             if mine.detonating:
                 if mine.countdown_timer < -asteroid_past_time_clamp + CollisionEvent.TOLERANCE:
@@ -745,10 +795,10 @@ class KesslerGame:
                         collision_time = min(0.0, mine.countdown_timer)  # This min clamp should be unnecessary, but just in case
                     dx = abs(ax - mine.x)
                     dy = abs(ay - mine.y)
-                    if dx > 0.5 * self.scenario.map_width:
-                        dx = self.scenario.map_width - dx
-                    if dy > 0.5 * self.scenario.map_height:
-                        dy = self.scenario.map_height - dy
+                    if dx > half_map_width:
+                        dx = map_width - dx
+                    if dy > half_map_height:
+                        dy = map_height - dy
 
                     radius_sum = mine.blast_radius + asteroid.radius
                     sq_dist = dx * dx + dy * dy
@@ -760,6 +810,12 @@ class KesslerGame:
                             self.collision_queue.append(collision_event)
 
     def enqueue_mine_ship_collisions(self, mines: list[Mine], ships: list[Ship]) -> None:
+        # Prelookup and precompute constants used for wrapping to bullet's frame of reference
+        map_width = self.scenario.map_width
+        map_height = self.scenario.map_height
+        half_map_width = 0.5 * map_width
+        half_map_height = 0.5 * map_height
+
         for mine_idx, mine in enumerate(mines):
             if mine.detonating:
                 # For each live, non-respawning ship, apply damage only from the closest mine within range
@@ -780,10 +836,10 @@ class KesslerGame:
                         collision_time = min(0.0, mine.countdown_timer)  # This min should be unnecessary, but just in case
                     dx = abs(sx - mine.x)
                     dy = abs(sy - mine.y)
-                    if dx > 0.5 * self.scenario.map_width:
-                        dx = self.scenario.map_width - dx
-                    if dy > 0.5 * self.scenario.map_height:
-                        dy = self.scenario.map_height - dy
+                    if dx > half_map_width:
+                        dx = map_width - dx
+                    if dy > half_map_height:
+                        dy = map_height - dy
 
                     radius_sum = mine.blast_radius + ship.radius
                     sq_dist = dx * dx + dy * dy
@@ -1072,7 +1128,7 @@ class KesslerGame:
                         # Take care of possible collision events from these children asteroids this frame
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             # Only do this if we have time left, and the collision didn't happen at the very end of the frame
-                            self.enqueue_bullet_asteroid_collisions(self.bullets, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_bullet_asteroid_collisions(self.bullets, new_asteroids, -dt, ast_idx_offset, True, bullets_to_cull)
                             self.enqueue_mine_asteroid_collisions(self.mines, new_asteroids, -dt, ast_idx_offset, True)
                             self.enqueue_ship_asteroid_collisions(self.ships, new_asteroids, -dt, ast_idx_offset, True)
 
@@ -1110,7 +1166,7 @@ class KesslerGame:
                             assert self.game_state is not None
                             self.game_state.add_asteroids([a.state for a in new_asteroids])
                         if abs(dt) > CollisionEvent.TOLERANCE:
-                            self.enqueue_bullet_asteroid_collisions(self.bullets, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_bullet_asteroid_collisions(self.bullets, new_asteroids, -dt, ast_idx_offset, True, bullets_to_cull)
                             self.enqueue_mine_asteroid_collisions(self.mines, new_asteroids, -dt, ast_idx_offset, True)
                             self.enqueue_ship_asteroid_collisions(self.ships, new_asteroids, -dt, ast_idx_offset, True)
 
@@ -1198,7 +1254,7 @@ class KesslerGame:
                         if abs(dt) > CollisionEvent.TOLERANCE:
                             # Enqueue new collisions, but be super careful not to allow this same mine to hit the asteroids' children again!
                             # But the mine collision check should be avoiding this case where the time interval is the explosion time. So it should be fine.
-                            self.enqueue_bullet_asteroid_collisions(self.bullets, new_asteroids, -dt, ast_idx_offset, True)
+                            self.enqueue_bullet_asteroid_collisions(self.bullets, new_asteroids, -dt, ast_idx_offset, True, bullets_to_cull)
                             self.enqueue_mine_asteroid_collisions(self.mines, new_asteroids, -dt, ast_idx_offset, True)
                             self.enqueue_ship_asteroid_collisions(self.ships, new_asteroids, -dt, ast_idx_offset, True)
 

@@ -30,6 +30,7 @@
 - Allow defining scenario asteroid states by both speed/angle, as well as velocity (vx, vy) components
 - Added comprehensive score tracking for all 5 collision types (bullet-asteroid, ship-asteroid, ship-ship, mine-ship, mine-asteroid)
 - Added comprehensive death tracking for 3 death types (asteroid, ship, mine)
+- Sanitize Scenarios to remove numpy types, and only use builtin Python types
 
 ## [2.4.0] - 28 July 2025
 - Fixed building MyPyC compiled wheels, so compiled modules are now actually being run to provide a 4-10X+ speed benefit over interpreted
