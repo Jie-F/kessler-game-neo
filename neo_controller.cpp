@@ -4,77 +4,93 @@
 // _  /|  / /  __/ /_/ /
 // /_/ |_/  \___/\____/ 
 
-// Kessler controller for Kessler v2.1.9
+// Kessler controller for Kessler v2.5.0
 // Jie Fan (jie.f@pm.me)
+// https://github.com/Jie-F/kessler-game-neo
 
-// TODO: Show stats at the end
-// DONE: Verify that frontrun protection's working (shot stealing protection), because it still feels like it's not totally working!
-// DONE: Make it so during a respawn maneuver, if I'm no longer gonna hit anything, I can begin to shoot!
-// TODO: Use the tolerance in the shot for the target selection so I don't just aim for the center all the time
-// KINDA DONE: Add error handling as a catch-all
-// TODO: Analyze each base state, and store analysis results. Like the heuristic FIS, except use more random search. Density affects the movement speed and cruise timesteps. Tune stuff much better.
-// TODO: Add error checks, so that if Neo thinks its done but there's still asteroids left, it'll realize that and re-ingest the updated state and finish off its job. This should NEVER happen though, but in the 1/1000000 chance a new bug happens during the competition, this would catch it.
-// DONE: Tune gc to maybe speed stuff up
-// DONE: Match collision checks with Kessler, including <= vs <
-// DONE: Add iteration boosting algorithm to do more iterations in critical moments
-// DONE: If we're chilling, have mines and lives, go and do some damage!
-// WON'T FIX: Optimally, the target selection will consider mines blowing up asteroids, and having forecasted asteroids there. But this is a super specific condition and it's very complex to implement correctly, so maybe let's just skip this lol. It's probably not worth spending 50 hours implementing something that will rarely come up, and there's plenty of other asteroids I can shoot, and not just ones coming off of a mine blast.
-// WON'T FIX: Remove unnecessary class attributes such as ship thrust range, asteroid mass, to speed up class creation and copying
-// DONE: Differentiate between my mine and adversary's mine, to know whether to shoot size 1's or not
-// TODO: Mine FIS currently doesn't take into account if an asteroid will ALREADY get hit by a mine, and drop another one anyway
-// DONE: When validating a sim is good when there's another ship, make sure the shots hit! The other ship might have shot those asteroids already.
-// DONE: Try a wider random search for maneuvers
-// KINDA DONE: GA to beat the random maneuver search, and narrow down the search space. In crowded areas, don't cruise for as long, for example!
-// TRIED, not faster: Add per-timestep velocities to asteroids and bullets and stuff to save a multiplication
-// TODO: Revisit the aimbot and improve things more
-// NO NEED TO FIX because Kessler changed it so that it'll wait out the bullet, as long as there's still time remaining: If we're gonna die and we're the only ship left, don't shoot a bullet if it doesn't land before I die, because it'll count as a miss
-// EHH WON'T MAKE THIS CHANGE BECAUSE IT'S KINDA BAD AND COMPLEX: Use math to see how the bullet lines up with the asteroid, to predict whether it's gonna hit before doing the bullet sim
-// DONE: get_next_extrapolated_asteroid_collision_time doesn't handle the edges properly! Collisions can't go through the edge but this can predict that. Do the checks!
-// DONE: Improve targeting during maneuvers to maintain random maneuvers. Each sim should target differently, not just always aim at the closest asteroid! But we need to maintain cohesion in the targets from one iteration to the next, so Neo doesn't switch targets randomly within the sim.
-// PROBABLY NOT WORTH ADDING: Add corner camping hardcoded logic
-// PROBABLY NOT WORTH ADDING: Add closing ring freezing
-// TODO: If nearing the end of a scenario, it might be worth getting closer to asteroids so the bullets take less time to shoot them, and I might be able to get an extra point or two before I start withholding shots
+/*
+================================================================================
+NEO OVERVIEW
+================================================================================
 
+Core Components
+--------------------------------------------------------------------------------
+1. NeoController (Top-Level Game AI)
+   - Called by the Kessler game each frame
+   - Maintains persistent knowledge between frames:
+       * Known asteroid splits (forecasted spawns)
+       * Asteroids already targeted/destroyed
+       * Search/maneuver history
+   - Runs the search/MCTS manager to evaluate candidate maneuvers
+   - Chooses the best maneuver from simulated outcomes and returns the control tuple to the game
+   - Keeps the public interface to the game simple
 
-// POST-XFC 2024 IMPROVEMENT IDEAS:
-// DONE (I THINK): Make it so that if the other ship steals my shots, I realize sooner and avoid shooting.
-// Currently Neo takes up to 2 planning periods to realize, but if I do a second pass check of the planned actions and make sure all shots land,
-// then I can reduce this down to up to 1 planning period of delay. Neo can be only 96% accurate with a good adversary, so hopefully this can be bumped to like 98%.
-// This is VERY important in scenarios with a bullet limit since a missed shot is a missed point
+2. Matrix (Simulation Harness)
+   - Encapsulates a self-contained simulation of the game state
+   - Owns an instance of KesslerGame (deterministic physics/rules engine)
+   - Runs the simulation forward using a Nova subcontroller until:
+       * Nova signals to stop
+       * The game ends (no lives, no asteroids, etc.)
+       * External stop conditions (e.g. time budget exceeded)
+   - Evaluates simulation outcome via FitnessEvaluator
+   - Can export final or intermediate game states for deeper rollouts (MCTS support)
 
-// DONE: Inspired by OMUlettes taking out the Fuzzifiers by crashing into them, I want to implement the following hard-coded logic:
-// if the other ship is on its last life and I have at least 2 lives:
-//     SLAM INTO THE OTHER SHIP AND TAKE THEIR LAST LIFE
+3. Nova (Subcontroller / Maneuver AI)
+   - Variants/personality seeds produce diversity in search candidates
+   - Short-term action planner for a single simulated run
+   - Given initial game state + personality seed, chooses actions each frame
+   - Returns:
+       (control_tuple, continue_flag)
+     where `continue_flag` determines if the maneuver is still running
+   - Encapsulates its own micro-tactics:
+       * Targeting
+       * Dodging
+       * Mine placement heuristics
 
-// TODO: Improve avoiding shooting size-1 asteroids within the blast radius of my own mine.
-// Currently it avoids targeting these, but it could still accidentally hit such asteroids in the way of their intended target
+4. KesslerGame (Game Rules & Physics)
+   - Standalone, deterministic game simulation
+   - Mirrors Kessler's actual rules:
+       * Ship movement, thrust, turning
+       * Bullets, mines, explosions
+       * Asteroid splitting, wrapping, collisions
+   - Provides:
+       * update(control_tuple) -> advances 1 frame
+       * is_over() -> checks win/lose conditions
+       * clone() -> returns a deep copy for branching simulations
+   - No AI or fitness logic here. purely the rules engine
 
-// DONE: Improve handling low bullet limits. Currently Neo just kinda chills and doesn't use its remaining mines effectively.
-// Improving its behavior here can help get a bit more score. Even sacrificing lives to get a couple more hits could be a good strat.
+5. FitnessEvaluator
+   - Computes multiple partial fitness metrics:
+       * Time-to-collision survival time
+       * Asteroid hit rate
+       * Lives lost/remaining
+       * Maneuver length
+       * Proximity/aggression toward opponent
+       * Mine placement effectiveness
+       * Post-maneuver targeting cone quality
+   - Computes overall fitness based on partial fitnesses
+   - Only depends on the game state at the end of the simulation
 
-// TODO: Ration mines better. Some scenarios Neo uses them too sparingly, and sometimes it dumps them all at the start, and doesn't have any left to use.
-// The former is a larger issue. If there's only 3 seconds left, Neo can dump a mine and it could get a few more hits at basically zero cost
-// The rationing issue might be solvable by scaling up and down what is considered a good number of asteroids within a blast radius. Currently these are hardcoded.
+Execution Flow (Per Frame)
+--------------------------------------------------------------------------------
+[Real Game State]
+   |
+   v
+NeoController.actions()
+   |
+   +--> Generate candidate Novas (different personalities/strategies)
+   +--> For each:
+           Create Matrix(game_state, ship_state, Nova)
+           Matrix.run() --> KesslerGame + Nova loop
+           Matrix.fitness() -> evaluate outcome
+   +--> Pick best candidate's first control_tuple
+   |
+   v
+[Return control_tuple to Game Engine]
 
-// DONE: Print out a build date at the start of each run, so during the competition I can make sure the correct version of my controller is run.
+================================================================================
+*/
 
-// WON'T FIX: Remove my training wheels artificial limitation of placing mines 3 seconds apart.
-// I can place them as low as 1 second apart, so removing this might add more strategic options.
-// But this will also give Neo more opportunities to bomb itself, so this is hard to implement well.
-
-// TODO: Consider the time limit better, and adapt my strategy based on that. Currently it's not considered (other than avoiding shooting a bullet that won't land before the time's up).
-// For example, if there's a very long time limit and I have unlimited bullets, then I probably want to focus on killing the other ship first.
-// Otherwise if there's a short time limit, I shouldn't waste time killing the other ship because even if I do,
-// I don't have time to hit all the asteroids myself, and it's better to just shoot asteroids and trust that I'm gaining score quicker than the other team is able to gain score,
-// or at least I'm no worse than the other team
-// DONE: Investigate why Neo just stayed on top of the mine near the end of the scenario for the closing double rings scenario
-// DONE: Don't place a mine if it can't explode before the time runs out
-// DONE: Dump mines if it can hit stuff right before the end of the scenario
-// DONE: Check for time running out condition to handle stuff like that better
-
-// TODO: Take full advantage of continuous collision detection for bullet-asteroid collisions by shooting the extremities of the asteroids and make some insane shots
-// TODO: Monte Carlo search the endgame, to find the most optimal way to eliminate the final few asteroids
-// TODO: Use asteroid back-to-start method to do shot tracking, instead of the current convoluted massive map of vectors of asteroids!
 
 // Standard Library
 #include <algorithm>
@@ -917,7 +933,7 @@ struct SimState {
             timestep,
             ship_state,
             game_state ? std::optional<GameState>{game_state->copy()} : std::nullopt,
-            asteroids_pending_death, // Shallow copy; for full deep copy you can implement as needed
+            asteroids_pending_death, // Shallow copy
             forecasted_asteroid_splits ? std::optional<std::vector<Asteroid>>{std::vector<Asteroid>(forecasted_asteroid_splits->begin(), forecasted_asteroid_splits->end())} : std::nullopt
         );
     }
