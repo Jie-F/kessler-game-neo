@@ -11,7 +11,7 @@ from .ship import Ship
 from .asteroid import Asteroid
 
 
-def coerce_to_builtin(obj):
+def coerce_to_builtin(obj: Any) -> Any:
     """
     Recursively coerce NumPy scalars/arrays (if present) into Python builtins,
     without importing numpy

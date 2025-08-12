@@ -65,7 +65,7 @@ mine_test_1 = Scenario(name=f"Mine Test 1",
                     stop_if_no_ammo=False,
                     stop_if_no_asteroids=False,
                     stop_if_no_ships=False,
-                    time_limit=10.0)
+                    time_limit=6.0)
 
 
 ship_states_2 = [
@@ -95,7 +95,7 @@ mine_test_2 = Scenario(name=f"Mine Test 2",
                     stop_if_no_ammo=False,
                     stop_if_no_asteroids=False,
                     stop_if_no_ships=False,
-                    time_limit=10.0)
+                    time_limit=6.0)
 
 
 ship_states_3 = [
@@ -125,7 +125,7 @@ mine_test_3 = Scenario(name=f"Mine Test 3",
                     stop_if_no_ammo=False,
                     stop_if_no_asteroids=False,
                     stop_if_no_ships=False,
-                    time_limit=10.0)
+                    time_limit=6.0)
 
 controllers = [MineTest()]
 
