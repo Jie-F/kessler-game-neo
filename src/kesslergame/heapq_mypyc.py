@@ -1,4 +1,4 @@
-# This is Python standard library's heapq.py, but with comments stripped out, and type hints added so it can be compiled with mypyc to get a fast priority queue!
+# This is Python standard library's heapq.py, but with type hints added so it can be compiled with mypyc to get a fast priority queue!
 
 """Heap queue algorithm (a.k.a. priority queue).
 
