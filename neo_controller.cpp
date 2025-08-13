@@ -9114,17 +9114,14 @@ public:
         // Method processed each time step by this controller.
 
         // Optionally reseed RNG if flag enabled
+        // TODO: Seed my own RNG!
         if constexpr (RESEED_RNG) {
             std::srand(static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count()));
         }
 
-        //if (unwrap_asteroid_call_count % 10000 == 0) {
-        //std::cout << "Unwrap asteroid called " << unwrap_asteroid_call_count << " times, and " << unwrap_asteroid_expensive_call_count << " calls did the full expensive thing!" << std::endl;
-        //}
         ++this->current_timestep;
         
         bool recovering_from_crash = false;
-        //std::cout << "Calling actions on timestep " << this->current_timestep << std::endl;
 
         // The ship state and game states are Python objects.
         // Call the .compact property on each, to get a dictionary
@@ -9134,11 +9131,7 @@ public:
         // Ingest the compact dictionaries into our own classes!
         Ship ship_state = create_ownship_from_compact(ship_state_list);
         GameState game_state = create_game_state_from_compact(game_state_dict);
-        std::cout << std::setprecision(17)
-          << "blublub " 
-          << ship_state.respawn_time << " " 
-          << ship_state.respawn_time_left 
-          << std::endl;
+
         // Check for simulator/controller desync and perform state recovery/reset as in Python
         if constexpr (CLEAN_UP_STATE_FOR_SUBSEQUENT_SCENARIO_RUNS || STATE_CONSISTENCY_CHECK_AND_RECOVERY) {
             bool timestep_mismatch = !(game_state.frame == this->current_timestep);
@@ -9168,19 +9161,19 @@ public:
 
         if (this->current_timestep == 0) {
             // Only do these on the first timestep
+            // This is just for explanations! This does not affect the strategy of Neo at all.
             inspect_scenario(game_state, ship_state);
         }
-
-        //reseed_rng(this->current_timestep);
 
         if (!this->init_done) {
             this->finish_init(game_state, ship_state);
             this->init_done = true;
         }
-        //this->performance_controller_enter();
 
         bool iterations_boost = false;
-        if (this->current_timestep == 0) iterations_boost = true;
+        if (this->current_timestep == 0) {
+            iterations_boost = true;
+        }
 
         // ------------------------------- PLANNING LOGIC ------------------------
 
@@ -9507,175 +9500,7 @@ public:
                     debug_print(success ? "Switched to a better maneuver" : "Didn't find better maneuvers");
                 }
             }
-        }/* else { DEPRECATED:
-            // == NON-CONTINUOUS LOOKAHEAD BLOCKS ==
-            if (this->other_ships_exist) {
-                // == NON-CONTINUOUS, other ships exist! ==
-                bool unexpected_death = false;
-                if ((ship_state.is_respawning &&
-                    this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining) == 0) ||
-                    (!this->action_queue.empty() && !this->last_timestep_ship_is_respawning && ship_state.is_respawning &&
-                    this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining)))
-                {
-                    print_explanation("Ouch, I died in the middle of a maneuver where I expected to survive, due to other ships being present!", this->current_timestep);
-                    std::cerr << "CLEAARING ACTION QUEUE\n";
-                    this->action_queue.clear();
-                    this->actioned_timesteps.clear();
-                    this->fire_next_timestep_flag = false;
-                    this->sims_this_planning_period.clear();
-                    this->best_fitness_this_planning_period_index = INT_NEG_INF;
-                    this->best_fitness_this_planning_period = -inf;
-                    this->second_best_fitness_this_planning_period_index = INT_NEG_INF;
-                    this->second_best_fitness_this_planning_period = -inf;
-                    this->base_gamestate_analysis = std::nullopt;
-                    unexpected_death = true;
-                    iterations_boost = true;
-                    if (this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining))
-                        this->lives_remaining_that_we_did_respawn_maneuver_for.erase(ship_state.lives_remaining);
-                }
-                bool unexpected_survival = false;
-                if (this->action_queue.empty() && game_state_to_base_planning.has_value() && !ship_state.is_respawning &&
-                    game_state_to_base_planning->ship_state.is_respawning && game_state_to_base_planning->respawning)
-                {
-                    print_explanation("\nI thought I would die, but the other ship saved me!!!", this->current_timestep);
-                    std::cerr << "CLEAARING ACTION QUEUE\n";
-                    this->action_queue.clear();
-                    this->actioned_timesteps.clear();
-                    this->fire_next_timestep_flag = false;
-                    this->sims_this_planning_period.clear();
-                    this->best_fitness_this_planning_period_index = INT_NEG_INF;
-                    this->best_fitness_this_planning_period = -inf;
-                    this->second_best_fitness_this_planning_period_index = INT_NEG_INF;
-                    this->second_best_fitness_this_planning_period = -inf;
-                    this->base_gamestate_analysis = std::nullopt;
-                    iterations_boost = true;
-                    unexpected_survival = true;
-                    if (this->lives_remaining_that_we_did_respawn_maneuver_for.contains(ship_state.lives_remaining-1))
-                        this->lives_remaining_that_we_did_respawn_maneuver_for.erase(ship_state.lives_remaining-1);
-                }
-                if (unexpected_death) {
-                    print_explanation("Ouch! Due to the other ship, I unexpectedly died!", this->current_timestep);
-                    if (!game_state_to_base_planning.has_value()) {
-                        debug_print("WARNING: The game state to base planning was none. This better be because I'm recovering from a controller exception!");
-                        this->game_state_to_base_planning = {
-                            this->current_timestep,
-                            recovering_from_crash, // respawning
-                            ship_state,
-                            game_state,
-                            {},    // asteroids_pending_death
-                            {},    // forecasted_asteroid_splits
-                            -1,    // last_timestep_fired
-                            -1,    // last_timestep_mined
-                            {},    // mine_positions_placed
-                            false  // fire_next_timestep_flag
-                        };
-                    }
-                    this->game_state_to_base_planning = {
-                        this->current_timestep,
-                        recovering_from_crash, // respawning
-                        ship_state,
-                        game_state,
-                        {},    // asteroids_pending_death
-                        {},    // forecasted_asteroid_splits
-                        -1,    // last_timestep_fired
-                        -1,    // last_timestep_mined
-                        {},    // mine_positions_placed
-                        false  // fire_next_timestep_flag
-                    };
-                    if (game_state_to_base_planning->respawning)
-                        this->lives_remaining_that_we_did_respawn_maneuver_for.insert(ship_state.lives_remaining);
-                } else if (unexpected_survival) {
-                    debug_print("Unexpected survival, the ship state is "+ship_state.str());
-                    this->game_state_to_base_planning = {
-                        this->current_timestep,
-                        false,  // respawning
-                        ship_state,
-                        game_state,
-                        {},     // asteroids_pending_death
-                        {},     // forecasted_asteroid_splits
-                        -1,     // last_timestep_fired
-                        -1,     // last_timestep_mined
-                        {},     // mine_positions_placed
-                        false   // fire_next_timestep_flag
-                    };
-                } else if (!game_state_to_base_planning.has_value()) {
-                    this->game_state_to_base_planning = {
-                        this->current_timestep,
-                        false,  // respawning
-                        ship_state,
-                        game_state,
-                        {},     // asteroids_pending_death
-                        {},     // forecasted_asteroid_splits
-                        -1,     // last_timestep_fired
-                        -1,     // last_timestep_mined
-                        {},     // mine_positions_placed
-                        false   // fire_next_timestep_flag
-                    };
-                    if (game_state_to_base_planning->respawning)
-                        this->lives_remaining_that_we_did_respawn_maneuver_for.insert(ship_state.lives_remaining);
-                    assert((bool)game_state_to_base_planning->ship_state.respawn_time_left == game_state_to_base_planning->ship_state.is_respawning);
-                }
-                if (!this->action_queue.empty()) {
-                    plan_action(this->other_ships_exist, false, iterations_boost, false);
-                } else {
-                    game_state_to_base_planning->ship_state = ship_state;
-                    game_state_to_base_planning->game_state = game_state;
-                    if (!game_state_to_base_planning->ship_state.is_respawning && bool(game_state_to_base_planning->ship_state.respawn_time_left))
-                        game_state_to_base_planning->ship_state.respawn_time_left = 0.0;
-                    assert((bool)game_state_to_base_planning->ship_state.respawn_time_left == game_state_to_base_planning->ship_state.is_respawning);
-                    plan_action(this->other_ships_exist, true, iterations_boost, true);
-                    assert(this->best_fitness_this_planning_period_index != INT_NEG_INF);
-                    while (this->sims_this_planning_period.size() < (get_planning_min_iterations())) {
-                        plan_action(this->other_ships_exist, true, false, false);
-                    }
-                    assert(this->current_timestep == game_state_to_base_planning->timestep);
-                    bool ok = decide_next_action(game_state, ship_state);
-                    if (!ok) {
-                        for (int j = 0; j < 60; ++j) {
-                            plan_action(this->other_ships_exist, true, false, false);
-                            if (this->second_best_fitness_this_planning_period > 0.93)
-                                break;
-                        }
-                        bool success = decide_next_action(game_state, ship_state);
-                        assert(success);
-                    }
-                }
-                if (get_other_ships(game_state, this->ship_id_internal).empty()) {
-                    print_explanation("I'm alone. I can see into the future perfectly now!", this->current_timestep);
-                    this->simulated_gamestate_history.clear();
-                    this->set_of_base_gamestate_timesteps.clear();
-                    this->other_ships_exist = false;
-                }
-            } else {
-                // == NON-CONTINUOUS, full deterministic plan ==
-                if (!game_state_to_base_planning.has_value()) {
-                    if (ENABLE_SANITY_CHECKS && !recovering_from_crash) {
-                        std::cerr << "WARNING, Why is the game state to plan empty when we're not on timestep 0?! Maybe we're recovering from a controller exception\n";
-                    }
-                    if (this->current_timestep == 0 || recovering_from_crash)
-                        iterations_boost = true;
-                    game_state_to_base_planning = create_base_planning_state(this->current_timestep, ship_state, game_state, 0.0, recovering_from_crash);
-                    if (recovering_from_crash)
-                        print_explanation("Recovering from crash! Setting the base gamestate. The timestep is "+std::to_string(this->current_timestep), this->current_timestep);
-                    assert((bool)game_state_to_base_planning->ship_state.respawn_time_left == game_state_to_base_planning->ship_state.is_respawning);
-                }
-                if (this->sims_this_planning_period.empty()) {
-                    plan_action(this->other_ships_exist, true, iterations_boost, true);
-                } else {
-                    plan_action(this->other_ships_exist, true, iterations_boost, false);
-                }
-                if (this->action_queue.empty()) {
-                    assert(this->best_fitness_this_planning_period_index != INT_NEG_INF);
-                    while (this->sims_this_planning_period.size() < (get_planning_min_iterations())) {
-                        plan_action(this->other_ships_exist, true, false, false);
-                    }
-                    if (!(this->current_timestep == game_state_to_base_planning->timestep && !recovering_from_crash))
-                        throw std::runtime_error("The actions queue is empty, however the base state's timestep doesn't match!");
-                    bool ok = decide_next_action(game_state, ship_state);
-                    assert(ok);
-                }
-            }
-        }*/
+        }
 
         // -- EXECUTE PLANNED ACTION FOR THIS TIMESTEP --
         double thrust = 0.0, turn_rate = 0.0;
