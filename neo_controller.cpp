@@ -1,6 +1,6 @@
 // _____   __           
-// ___  | / /__________ 
-// __   |/ /_  _ \  __ \
+// ___  | / /___________
+// __   |/ /_  _ \  __ /
 // _  /|  / /  __/ /_/ /
 // /_/ |_/  \___/\____/ 
 
@@ -146,7 +146,6 @@ NeoController.actions()
 //#include <nanobind/stl/vector.h>
 //#include <nanobind/stl/wstring.h>
 
-//namespace py = pybind11;
 namespace nb = nanobind;
 
 constexpr double PI = std::numbers::pi;
@@ -507,6 +506,27 @@ int64_t unwrap_asteroid_expensive_call_count = 0;
 
 int missed_shot = 0;
 int made_shot = 0;
+
+// Custom print function
+
+// Base case: no arguments left
+void print() {
+    std::cout << std::endl; // end the line like Python's print()
+}
+
+// Recursive case: at least one argument
+template<typename T, typename... Args>
+void print(const T& first, const Args&... rest) {
+    std::cout << first;
+    if constexpr (sizeof...(rest) > 0) {
+        std::cout << " "; // space between args
+        print(rest...);   // recursive call
+    } else {
+        std::cout << std::endl; // finish the line
+    }
+}
+
+
 
 template <typename T>
 void print_vector(const std::vector<T>& vec) {
