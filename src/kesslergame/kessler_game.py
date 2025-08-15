@@ -353,13 +353,23 @@ class KesslerGame:
             raise TypeError(f"competition_safe_mode must be bool, got {type(competition_safe_mode).__name__}")
         self.competition_safe_mode: bool = competition_safe_mode
 
+        # ------- UI_settings -------
+        default_ui: UISettingsDict = {
+            'ships': True, 'lives_remaining': True, 'accuracy': True,
+            'asteroids_hit': True, 'shots_fired': False, 'bullets_remaining': True, 'controller_name': True, 'scale': 1.0
+        }
+        UI_settings = settings.get("UI_settings", default_ui)
+        if not isinstance(UI_settings, dict):
+            raise TypeError(f"UI_settings must be a dict, got {type(UI_settings).__name__}")
+        self.UI_settings: UISettingsDict = validate_ui_settings(UI_settings)
+
         self.collision_queue: list[CollisionEvent] = []
 
         # Persistent state lists
-        self.asteroids: list[Asteroid] = []
-        self.bullets: list[Bullet] = []
         self.ships: list[Ship] = []
         self.liveships: list[Ship] = []
+        self.asteroids: list[Asteroid] = []
+        self.bullets: list[Bullet] = []
         self.mines: list[Mine] = []
 
         # Current scenario
@@ -379,17 +389,8 @@ class KesslerGame:
         # Graphics
         self.graphics: GraphicsHandler
 
+        # Performance tracker
         self.perf_dict: PerfDict
-
-        # ------- UI_settings -------
-        default_ui: UISettingsDict = {
-            'ships': True, 'lives_remaining': True, 'accuracy': True,
-            'asteroids_hit': True, 'shots_fired': False, 'bullets_remaining': True, 'controller_name': True, 'scale': 1.0
-        }
-        UI_settings = settings.get("UI_settings", default_ui)
-        if not isinstance(UI_settings, dict):
-            raise TypeError(f"UI_settings must be a dict, got {type(UI_settings).__name__}")
-        self.UI_settings: UISettingsDict = validate_ui_settings(UI_settings)
 
     def enqueue_bullet_asteroid_collisions(self, bullets: list[Bullet], asteroids: list[Asteroid], asteroid_past_time_clamp: float, asteroid_list_idx_offset: int = 0, already_a_heap: bool = False, bullet_idxs_to_skip: list[int] | None = None) -> None:
         # Collect all potential bullet-asteroid collisions
@@ -429,6 +430,7 @@ class KesslerGame:
             t_head_exit = time_until_exit(bullet_head_x, bullet_head_y, bullet_vx, bullet_vy, map_width, map_height)
             t_tail_exit = time_until_exit(bullet_tail_x, bullet_tail_y, bullet_vx, bullet_vy, map_width, map_height)
             assert t_head_exit <= t_tail_exit
+
             # Find when head and tail enter the visible map
             t_head_enter = time_until_enter(bullet_head_x, bullet_head_y, bullet_vx, bullet_vy, map_width, map_height)
             t_tail_enter = time_until_enter(bullet_tail_x, bullet_tail_y, bullet_vx, bullet_vy, map_width, map_height)
@@ -500,8 +502,8 @@ class KesslerGame:
                         assert (((0.0 <= bul_head_x_collision <= map_width) and (0.0 <= bul_head_y_collision <= map_height))
                                 or ((0.0 <= bul_tail_x_collision <= map_width) and (0.0 <= bul_tail_y_collision <= map_height)))
 
-                        # It happens surprisingly frequently where an asteroid splits, and the three overlapping children asteroids get hit by a bullet. We need a tiebreaker for this situation!
-                        # Or else we get weird random indeterminate behavior, and there goes our framerate independence.
+                        # It happens surprisingly frequently where an asteroid splits, and the three overlapping children asteroids get hit by a bullet.
+                        # We need a tiebreaker for this situation, or else we get framerate dependent behavior
                         dot_bullet_vel_ast_vel_tiebreaker = bullet_vx * asteroid.vx + bullet_vy * asteroid.vy
                         collision_event = CollisionEvent(collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset, CollisionType.BULLET_ASTEROID, dot_bullet_vel_ast_vel_tiebreaker)
                         if already_a_heap:
@@ -565,7 +567,26 @@ class KesslerGame:
                     )
                     if isnan(t1_start) or isnan(t1_end):
                         # This should never happen, but is here in case of numeric instability in a barely collision
-                        warnings.warn("Numeric instability in quadratic solver? VB1 collision time is NaN", RuntimeWarning)
+                        # Include all relevant parameters in the warning
+                        params = {
+                            "bullet_head_x": bullet_head_x,
+                            "bullet_head_y": bullet_head_y,
+                            "bullet_tail_x": bullet_tail_x,
+                            "bullet_tail_y": bullet_tail_y,
+                            "bullet_vx": bullet_vx,
+                            "bullet_vy": bullet_vy,
+                            "ast_x_centered": ast_x_centered,
+                            "ast_y_centered": ast_y_centered,
+                            "asteroid_vx": asteroid.vx,
+                            "asteroid_vy": asteroid.vy,
+                            "asteroid_radius": asteroid.radius,
+                            "collision_past_time_clamp": collision_past_time_clamp
+                        }
+                        warnings.warn(
+                            f"Numeric instability in quadratic solver? VB1 collision time is NaN.\n"
+                            f"This should not happen. Please file a bug report with these parameters:\n{params}",
+                            RuntimeWarning
+                        )
                         continue
 
                     # Use the virtual bullet 2 we computed for this bullet
@@ -590,16 +611,37 @@ class KesslerGame:
                     )
                     if isnan(t2_start) or isnan(t2_end):
                         # This should never happen, but is here in case of numeric instability in a barely collision
-                        warnings.warn("Numeric instability in quadratic solver? VB2 collision time is NaN", RuntimeWarning)
+                        # Include all relevant parameters in the warning
+                        params = {
+                            "pinned_head_x": pinned_head_x,
+                            "pinned_head_y": pinned_head_y,
+                            "pinned_tail_x": pinned_tail_x,
+                            "pinned_tail_y": pinned_tail_y,
+                            "bullet_vx": 0.0,
+                            "bullet_vy": 0.0,
+                            "ast_x_centered": ast_x_centered,
+                            "ast_y_centered": ast_y_centered,
+                            "asteroid_vx": asteroid.vx,
+                            "asteroid_vy": asteroid.vy,
+                            "asteroid_radius": asteroid.radius,
+                            "collision_past_time_clamp": collision_past_time_clamp
+                        }
+                        warnings.warn(
+                            f"Numeric instability in quadratic solver? VB2 collision time is NaN.\n"
+                            f"This should not happen. Please file a bug report with these parameters:\n{params}",
+                            RuntimeWarning
+                        )
                         continue
 
                     # Take the intersection of the intervals
                     # Use nested min/max instead of 3-arg min/max, because this is much faster for MyPyC compilation
+                    # This clamps the interval time to the two collision times, the time we're interested in,
+                    # and the time that the bullet is actually in the map
                     t_start = max(max(max(t1_start, t2_start), -collision_past_time_clamp), t_head_enter)
                     t_end = min(min(min(t1_end, t2_end), 0.0), t_tail_exit)
 
                     if t_start <= t_end:
-                        # The interval actually exists
+                        # The interval actually exists and has nonnegative size
                         collision_time = t_start
                         assert -collision_past_time_clamp <= collision_time <= 0.0
 
@@ -1007,7 +1049,7 @@ class KesslerGame:
                 except Exception as e:
                     if not self.competition_safe_mode:
                         raise  # In dev mode, fail loudly
-                    # Log the error if needed
+                    # Log the error
                     print(f"[Competition Safe Mode] Controller {ship_idx} error: {e!r}. Assigning null actions for frame {self.sim_frame}.")
 
                 ship.thrust = thrust
@@ -1025,7 +1067,7 @@ class KesslerGame:
                 self.perf_dict['total_controller_time'] += time.perf_counter() - step_start
                 prev = time.perf_counter()
 
-            # --- UPDATE TIME TO THE TIME AT THE END OF THIS FRAME
+            # --- UPDATE TIME TO THE TIME AT THE END OF THIS FRAME -----------------------------------------------------
             self.sim_frame += 1
             self.sim_time = self.sim_frame / self.frequency  # Derive time from integer frames, to avoid accumulated floating point errors
             if not self.competition_safe_mode:
@@ -1040,6 +1082,7 @@ class KesslerGame:
             # these updates automatically reflect in the game_state
             for ship in self.liveships:
                 # The ships shoot at the start of the frame
+                # These projectiles will get updated from the start of the frame to the end
                 new_bullet, new_mine = ship.update(self.delta_time, self.scenario.map_size, True)
                 if new_bullet is not None:
                     self.bullets.append(new_bullet)
@@ -1051,7 +1094,6 @@ class KesslerGame:
                     if not self.competition_safe_mode:
                         assert self.game_state is not None
                         self.game_state.add_mine(new_mine.state)
-            # The bullet and mine that the ship shot will get updated from the start of the frame to the end
             for asteroid in self.asteroids:
                 asteroid.update(self.delta_time, self.scenario.map_size)
             for bullet in self.bullets:
