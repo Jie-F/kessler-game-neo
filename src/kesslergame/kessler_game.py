@@ -479,7 +479,26 @@ class KesslerGame:
                             # This case should NEVER happen, but maybe due to some pathological numeric instability,
                             # it might be that the first function detected a barely collision, and then the second function
                             # missed it and the discriminant was -0.0000000000000001, and returns nan for collision time ¯\_(ツ)_/¯
-                            warnings.warn("Numeric instability in quadratic solver? Real bullet collision time is NaN", RuntimeWarning)
+                            # Include all relevant parameters in the warning
+                            params = {
+                                "bullet_head_x": bullet_head_x,
+                                "bullet_head_y": bullet_head_y,
+                                "bullet_tail_x": bullet_tail_x,
+                                "bullet_tail_y": bullet_tail_y,
+                                "bullet_vx": bullet_vx,
+                                "bullet_vy": bullet_vy,
+                                "ast_x_centered": ast_x_centered,
+                                "ast_y_centered": ast_y_centered,
+                                "asteroid_vx": asteroid.vx,
+                                "asteroid_vy": asteroid.vy,
+                                "asteroid_radius": asteroid.radius,
+                                "collision_past_time_clamp": collision_past_time_clamp
+                            }
+                            warnings.warn(
+                                f"Numeric instability in quadratic solver? Real bullet collision time is NaN.\n"
+                                f"This should not happen. Please file a bug report with these parameters:\n{params}",
+                                RuntimeWarning
+                            )
                             continue
                         collision_time = max(-collision_past_time_clamp, collision_start_time)
                         assert -collision_past_time_clamp <= collision_time <= 0.0
