@@ -526,8 +526,6 @@ void print(const T& first, const Args&... rest) {
     }
 }
 
-
-
 template <typename T>
 void print_vector(const std::vector<T>& vec) {
     for (size_t i = 0; i < vec.size(); ++i) {
@@ -562,46 +560,29 @@ struct pair_hash {
     }
 };
 
-
 struct Asteroid {
     double x, y, vx, vy;
     int64_t size;
     double mass, radius;
     int64_t timesteps_until_appearance;
-    bool alive;
 
     Asteroid() = default;
-    Asteroid(double x, double y, double vx, double vy, int64_t size, double mass, double radius, int64_t t = 0)
-        : x(x), y(y), vx(vx), vy(vy), size(size), mass(mass), radius(radius), timesteps_until_appearance(t), alive(true) {}
+    Asteroid(double x, double y, double vx, double vy, int64_t size, double mass, double radius, double age = 0.0)
+        : x(x), y(y), vx(vx), vy(vy), size(size), mass(mass), radius(radius), age(age) {}
 
     std::string str() const {
         return "Asteroid(position=(" + std::to_string(x) + ", " + std::to_string(y)
             + "), velocity=(" + std::to_string(vx) + ", " + std::to_string(vy) + "), size=" + std::to_string(size)
             + ", mass=" + std::to_string(mass) + ", radius=" + std::to_string(radius)
-            + ", timesteps_until_appearance=" + std::to_string(timesteps_until_appearance)
-            + ", alive=" + std::to_string(alive) + ")";
+            + ", age=" + std::to_string(age) + ")";
     }
     std::string repr() const { return str(); }
     bool operator==(const Asteroid& other) const {
         //return x == other.x && y == other.y && vx == other.vx && vy == other.vy && size == other.size && mass == other.mass && radius == other.radius && timesteps_until_appearance == other.timesteps_until_appearance;
         // Simplified equality, should hold
-        return x == other.x && y == other.y && vx == other.vx && vy == other.vy && size == other.size && timesteps_until_appearance == other.timesteps_until_appearance;
-    }
-    std::size_t hash() const {
-        double combined = x + 0.4266548291679171*y + 0.8164926348982552*vx + 0.8397584399461026*vy;
-        double scaled = combined * 1000000000.0;
-        return static_cast<std::size_t>(scaled) + static_cast<std::size_t>(size);
-    }
-    double float_hash() const {
-        return x + 0.4266548291679171*y + 0.8164926348982552*vx + 0.8397584399461026*vy;
-    }
-    int64_t int_hash() const {
-        return static_cast<int64_t>(1000000000.0*float_hash());
+        return x == other.x && y == other.y && vx == other.vx && vy == other.vy && size == other.size && age == other.age;
     }
 };
-
-// Unwrap cache
-std::unordered_map<int64_t, std::vector<Asteroid>> unwrap_cache;
 
 struct Ship {
     double x;
@@ -616,7 +597,6 @@ struct Ship {
     int64_t team;
     bool is_respawning;
     int64_t lives_remaining;
-    int64_t deaths;
     int64_t bullets_remaining;
     int64_t mines_remaining;
     bool can_fire;
@@ -691,14 +671,12 @@ struct Ship {
     }
 };
 
-
 struct Mine {
     double x, y, mass, fuse_time, remaining_time;
-    bool alive = true;
 
     Mine() = default;
     Mine(double x, double y, double mass, double fuse_time, double remaining_time)
-        : x(x), y(y), mass(mass), fuse_time(fuse_time), remaining_time(remaining_time), alive(true) {}
+        : x(x), y(y), mass(mass), fuse_time(fuse_time), remaining_time(remaining_time) {}
     std::string str() const {
         return "Mine(position=(" + std::to_string(x) + ", " + std::to_string(y)
             + "), mass=" + std::to_string(mass) + ", fuse_time=" + std::to_string(fuse_time)
@@ -713,11 +691,10 @@ struct Mine {
 
 struct Bullet {
     double x, y, vx, vy, tail_dx, tail_dy, heading, mass, length;
-    bool alive = true;
 
     Bullet() = default;
     Bullet(double x, double y, double vx, double vy, double tail_dx, double tail_dy, double heading, double mass, double length)
-        : x(x), y(y), vx(vx), vy(vy), tail_dx(tail_dx), tail_dy(tail_dy), heading(heading), mass(mass), alive(true) {}
+        : x(x), y(y), vx(vx), vy(vy), tail_dx(tail_dx), tail_dy(tail_dy), heading(heading), mass(mass) {}
     std::string str() const {
         return "Bullet(position=(" + std::to_string(x) + ", " + std::to_string(y) + "), "
             + "velocity=(" + std::to_string(vx) + ", " + std::to_string(vy) + "), "
@@ -733,8 +710,8 @@ struct Bullet {
 };
 
 struct GameState {
-    std::vector<Asteroid> asteroids;
     std::vector<Ship> ships;
+    std::vector<Asteroid> asteroids;
     std::vector<Bullet> bullets;
     std::vector<Mine> mines;
     double map_size_x;
@@ -791,20 +768,17 @@ struct GameState {
         std::vector<Asteroid> alive_asteroids;
         alive_asteroids.reserve(asteroids.size());
         for (const auto& a : asteroids)
-            if (a.alive)
-                alive_asteroids.push_back(a);
+            alive_asteroids.push_back(a);
 
         std::vector<Bullet> alive_bullets;
         alive_bullets.reserve(bullets.size());
         for (const auto& b : bullets)
-            if (b.alive)
-                alive_bullets.push_back(b);
+            alive_bullets.push_back(b);
 
         std::vector<Mine> alive_mines;
         alive_mines.reserve(mines.size());
         for (const auto& m : mines)
-            if (m.alive)
-                alive_mines.push_back(m);
+            alive_mines.push_back(m);
 
         std::vector<Ship> ships_copy;
         ships_copy.reserve(ships.size());
@@ -914,10 +888,6 @@ struct Action {
         return str();
     }
 
-    //Action copy() const {
-    //    return *this;
-    //}
-
 private:
     void validate() const {
         assert(thrust >= -SHIP_MAX_THRUST && thrust <= SHIP_MAX_THRUST && "Thrust out of bounds");
@@ -925,7 +895,6 @@ private:
         assert(timestep >= 0 && "Timestep is negative");
     }
 };
-
 
 struct SimState {
     int64_t timestep = 0;
@@ -1630,7 +1599,6 @@ struct BasePlanningGameState {
     bool fire_next_timestep_flag;
 };
 
-
 inline double pymod(double x, double y)
 {
     //return std::fmod(std::fmod(x, y) + y, y);
@@ -1705,10 +1673,10 @@ inline double rand_triangular(double low, double high, double mode) {
     }
 }
 
-inline double dist(double p1x, double p1y, double p2x, double p2y) {
+inline double dist(double ax, double ay, double bx, double by) {
     // Calculate the Euclidean distance between two points in 2D space.
-    double dx = p1x - p2x;
-    double dy = p1y - p2y;
+    double dx = ax - bx;
+    double dy = ay - by;
     return std::sqrt(dx * dx + dy * dy);
 }
 
@@ -1877,10 +1845,10 @@ inline bool heading_diff_within_threshold(double a_vec_theta_rad, double b_vec_x
     double a_vec_x = std::cos(a_vec_theta_rad);
     double a_vec_y = std::sin(a_vec_theta_rad);
     double dot_product = a_vec_x * b_vec_x + a_vec_y * b_vec_y;
-    double magnitude = std::sqrt(b_vec_x * b_vec_x + b_vec_y * b_vec_y);
+    double magnitude_sq = b_vec_x * b_vec_x + b_vec_y * b_vec_y;
     if (magnitude != 0.0) {
-        double cos_theta = dot_product / magnitude; // a_vec_norm is 1.0 since it's a unit vector, so we don't need to multiply by that
-        return cos_theta >= cos_threshold;
+        double cos_theta_sq = dot_product * dot_product / magnitude_sq; // a_vec_norm is 1.0 since it's a unit vector, so we don't need to multiply by that
+        return cos_theta_sq >= cos_threshold * cos_threshold;
     } else {
         // Zero magnitude means the "other" vector has no direction; treat as always "within"
         return true;
@@ -1954,8 +1922,6 @@ inline bool check_collision(double a_x, double a_y, double a_r, double b_x, doub
     }
 }
 
-// Mine FIS stuff is not included
-
 // Forward declarations for helpers/constants assumed as globals or methods somewhere:
 // int count_asteroids_in_mine_blast_radius(const GameState&, double x, double y, int timesteps);
 // bool mine_fis(int64_t mines_remaining, int64_t lives_remaining, int64_t mine_ast_count);
@@ -1978,6 +1944,429 @@ inline int64_t count_asteroids_in_mine_blast_radius(const GameState& game_state,
     }
     return count;
 }
+
+class KesslerGame() {
+private:
+    enum CollisionType {
+        BULLET_ASTEROID,
+        SHIP_ASTEROID,
+        SHIP_SHIP,
+        MINE_ASTEROID,
+        MINE_SHIP
+    }
+
+    struct CollisionEvent {
+        // Constants
+        static constexpr double TOLERANCE = 1e-10;
+        static constexpr double WEAK_TOLERANCE = 1e-6;
+
+        // Shared by all events
+        static int64_t counter;
+
+        // Data members
+        double time_offset;
+        double distance;
+        int64_t object_a_idx;
+        int64_t object_b_idx;
+        CollisionType collision_type;
+        double specific_tiebreaker;
+        int64_t insertion_order;
+
+        CollisionEvent(double time_offset, double distance, int64_t object_a_idx, int64_t object_b_idx, CollisionType collision_type, double specific_tiebreaker = 0.0)
+        : time_offset(time_offset), distance(distance), object_a_idx(object_a_idx), object_b_idx(object_b_idx), collision_type(collision_type), specific_tiebreaker(specific_tiebreaker), insertion_order(counter++) {}
+        
+        // Comparison helpers
+        static bool less(double a, double b) {
+            return a < b - TOLERANCE;
+        }
+        static bool greater(double a, double b) {
+            return a > b + TOLERANCE;
+        }
+        static bool equal(double a, double b) {
+            return std::abs(a - b) <= TOLERANCE;
+        }
+        static bool weak_less(double a, double b) {
+            return a < b - WEAK_TOLERANCE;
+        }
+        static bool weak_greater(double a, double b) {
+            return a > b + WEAK_TOLERANCE;
+        }
+        static bool weak_equal(double a, double b) {
+            return std::abs(a - b) <= WEAK_TOLERANCE;
+        }
+
+        // Operators
+        bool operator<(const CollisionEvent& other) const {
+            if (less(time_offset, other.time_offset)) return true;
+            if (greater(time_offset, other.time_offset)) return false;
+
+            if (collision_type < other.collision_type) return true;
+            if (collision_type > other.collision_type) return false;
+
+            if (weak_less(distance, other.distance)) return true;
+            if (weak_greater(distance, other.distance)) return false;
+
+            if (less(specific_tiebreaker, other.specific_tiebreaker)) return true;
+            if (greater(specific_tiebreaker, other.specific_tiebreaker)) return false;
+
+            return insertion_order < other.insertion_order;
+        }
+
+        bool operator<=(const CollisionEvent& other) const {
+            if (less(time_offset, other.time_offset)) return true;
+            if (greater(time_offset, other.time_offset)) return false;
+
+            if (collision_type < other.collision_type) return true;
+            if (collision_type > other.collision_type) return false;
+
+            if (weak_less(distance, other.distance)) return true;
+            if (weak_greater(distance, other.distance)) return false;
+
+            if (less(specific_tiebreaker, other.specific_tiebreaker)) return true;
+            if (greater(specific_tiebreaker, other.specific_tiebreaker)) return false;
+
+            return insertion_order <= other.insertion_order;
+        }
+
+        bool operator==(const CollisionEvent& other) const {
+            return equal(time_offset, other.time_offset)
+                && collision_type == other.collision_type
+                && weak_equal(distance, other.distance)
+                && equal(specific_tiebreaker, other.specific_tiebreaker)
+                && insertion_order == other.insertion_order;
+        }
+
+        bool operator!=(const CollisionEvent& other) const {
+            return !(*this == other);
+        }
+
+        bool operator>(const CollisionEvent& other) const {
+            if (greater(time_offset, other.time_offset)) return true;
+            if (less(time_offset, other.time_offset)) return false;
+
+            if (collision_type > other.collision_type) return true;
+            if (collision_type < other.collision_type) return false;
+
+            if (weak_greater(distance, other.distance)) return true;
+            if (weak_less(distance, other.distance)) return false;
+
+            if (greater(specific_tiebreaker, other.specific_tiebreaker)) return true;
+            if (less(specific_tiebreaker, other.specific_tiebreaker)) return false;
+
+            return insertion_order > other.insertion_order;
+        }
+
+        bool operator>=(const CollisionEvent& other) const {
+            if (greater(time_offset, other.time_offset)) return true;
+            if (less(time_offset, other.time_offset)) return false;
+
+            if (collision_type > other.collision_type) return true;
+            if (collision_type < other.collision_type) return false;
+
+            if (weak_greater(distance, other.distance)) return true;
+            if (weak_less(distance, other.distance)) return false;
+
+            if (greater(specific_tiebreaker, other.specific_tiebreaker)) return true;
+            if (less(specific_tiebreaker, other.specific_tiebreaker)) return false;
+
+            return insertion_order >= other.insertion_order;
+        }
+
+        // Debug output
+        friend std::ostream& operator<<(std::ostream& os, const CollisionEvent& ev) {
+            os << "<CollisionEvent time_offset=" << ev.time_offset
+               << "s distance=" << ev.distance
+               << " type=" << static_cast<int>(ev.collision_type)
+               << " obj_a_idx=" << ev.object_a_idx
+               << " obj_b_idx=" << ev.object_b_idx
+               << " specific_tiebreaker=" << ev.specific_tiebreaker
+               << " insertion_order=" << ev.insertion_order << ">";
+            return os;
+        }
+    };
+
+    // References to game entities
+    std::vector<Ship>& ships;
+    std::vector<Asteroid>& asteroids;
+    std::vector<Bullets>& bullets;
+    std::vector<Mine>& mines;
+    double& time;
+    double& frame;
+    double& delta_time;
+
+    std::vector<Asteroid>& asteroids;
+    std::vector<Bullet>& bullets;
+    std::vector<Mine>& mines;
+
+    double& time;
+    double& frame;
+    double& delta_time;
+    SubController controller;
+    ShipState& ship_state;
+    GameState& game_state;
+
+    std::vector<CollisionEvent> collision_queue;
+
+    // -----------------------------------------------------------------
+    // FAITHFUL PORTS
+    // -----------------------------------------------------------------
+    void enqueue_bullet_asteroid_collisions(std::vector<Bullet>& bullets,
+                                            std::vector<Asteroid>& asteroids) {
+        double collision_past_time_clamp = delta_time;
+        double map_width = game_state.map_width;
+        double map_height = game_state.map_height;
+        double half_map_width = 0.5 * map_width;
+        double half_map_height = 0.5 * map_height;
+
+        for (size_t bul_idx = 0; bul_idx < bullets.size(); ++bul_idx) {
+            Bullet& bullet = bullets[bul_idx];
+            double bullet_vx = bullet.vx;
+            double bullet_vy = bullet.vy;
+            double bullet_head_x = bullet.x;
+            double bullet_head_y = bullet.y;
+            double bullet_tail_x = bullet.x + bullet.tail_dx;
+            double bullet_tail_y = bullet.y + bullet.tail_dy;
+
+            for (size_t ast_idx = 0; ast_idx < asteroids.size(); ++ast_idx) {
+                Asteroid& asteroid = asteroids[ast_idx];
+                double ax = asteroid.x;
+                double ay = asteroid.y;
+                if (ax - bullet.x > half_map_width) ax -= map_width;
+                else if (ax - bullet.x < -half_map_width) ax += map_width;
+                if (ay - bullet.y > half_map_height) ay -= map_height;
+                else if (ay - bullet.y < -half_map_height) ay += map_height;
+
+                if (circle_line_collision_continuous(bullet_head_x, bullet_head_y,
+                                                     bullet_tail_x, bullet_tail_y,
+                                                     bullet_vx, bullet_vy,
+                                                     ax, ay,
+                                                     asteroid.vx, asteroid.vy,
+                                                     asteroid.radius,
+                                                     collision_past_time_clamp)) {
+                    auto [col_start_time, col_end_time] =
+                        circle_line_collision_time_interval(bullet_head_x, bullet_head_y,
+                                                            bullet_tail_x, bullet_tail_y,
+                                                            bullet_vx, bullet_vy,
+                                                            ax, ay,
+                                                            asteroid.vx, asteroid.vy,
+                                                            asteroid.radius);
+                    double collision_time = std::max(-collision_past_time_clamp, col_start_time);
+                    double bul_mid_x = 0.5*(bullet_head_x + bullet_tail_x) + collision_time * bullet_vx;
+                    double bul_mid_y = 0.5*(bullet_head_y + bullet_tail_y) + collision_time * bullet_vy;
+                    double ast_x_col = ax + collision_time * asteroid.vx;
+                    double ast_y_col = ay + collision_time * asteroid.vy;
+                    double dx = ast_x_col - bul_mid_x;
+                    double dy = ast_y_col - bul_mid_y;
+                    double sq_dist = dx*dx + dy*dy;
+                    double tie = bullet_vx * asteroid.vx + bullet_vy * asteroid.vy;
+                    collision_queue.emplace_back(collision_time, sq_dist,
+                                                 bul_idx, ast_idx,
+                                                 CollisionType::BULLET_ASTEROID,
+                                                 tie);
+                }
+            }
+        }
+    }
+
+    void enqueue_ship_asteroid_collisions(std::vector<Ship>& ships_ref,
+                                          std::vector<Asteroid>& asteroids_ref) {
+        double map_width = game_state.map_width;
+        double map_height = game_state.map_height;
+        double half_map_width = 0.5 * map_width;
+        double half_map_height = 0.5 * map_height;
+
+        for (size_t ship_idx = 0; ship_idx < ships_ref.size(); ++ship_idx) {
+            Ship& ship = ships_ref[ship_idx];
+            if (ship.is_respawning_internal || !ship.alive) continue;
+            for (size_t ast_idx = 0; ast_idx < asteroids_ref.size(); ++ast_idx) {
+                Asteroid& asteroid = asteroids_ref[ast_idx];
+
+                double ax = asteroid.x;
+                double ay = asteroid.y;
+                if (ax - ship.x > half_map_width) ax -= map_width;
+                else if (ax - ship.x < -half_map_width) ax += map_width;
+                if (ay - ship.y > half_map_height) ay -= map_height;
+                else if (ay - ship.y < -half_map_height) ay += map_height;
+
+                double col_start_time =
+                    ship_asteroid_continuous_collision_time(ship.x, ship.y, ship.radius,
+                                                            ship.speed, ship.integration_initial_states,
+                                                            ax, ay, asteroid.vx, asteroid.vy,
+                                                            asteroid.radius, asteroid.speed,
+                                                            -delta_time, 0.0);
+                if (!std::isnan(col_start_time)) {
+                    auto [px, py] = ship.get_past_position(col_start_time, game_state.map_size);
+                    double dx = std::abs((asteroid.x + asteroid.vx * col_start_time) - px);
+                    double dy = std::abs((asteroid.y + asteroid.vy * col_start_time) - py);
+                    if (dx > half_map_width) dx = map_width - dx;
+                    if (dy > half_map_height) dy = map_height - dy;
+                    double sq_dist = dx*dx + dy*dy;
+                    collision_queue.emplace_back(col_start_time, sq_dist,
+                                                 ship_idx, ast_idx,
+                                                 CollisionType::SHIP_ASTEROID, 0.0);
+                }
+            }
+        }
+    }
+
+    void enqueue_ship_ship_collisions(std::vector<Ship>& ships_ref) {
+        double map_width = game_state.map_width;
+        double map_height = game_state.map_height;
+        double half_map_width = 0.5 * map_width;
+        double half_map_height = 0.5 * map_height;
+
+        for (size_t s1 = 0; s1 < ships_ref.size(); ++s1) {
+            Ship& ship1 = ships_ref[s1];
+            if (ship1.alive && !ship1.is_respawning_internal) {
+                for (size_t s2 = s1 + 1; s2 < ships_ref.size(); ++s2) {
+                    Ship& ship2 = ships_ref[s2];
+                    if (ship2.alive && !ship2.is_respawning_internal) {
+                        double dx = ship2.x - ship1.x;
+                        double dy = ship2.y - ship1.y;
+                        if (dx > half_map_width) dx -= map_width;
+                        else if (dx < -half_map_width) dx += map_width;
+                        if (dy > half_map_height) dy -= map_height;
+                        else if (dy < -half_map_height) dy += map_height;
+
+                        double col_start_time =
+                            ship_ship_continuous_collision_time(ship1.x, ship1.y, ship1.radius, ship1.speed,
+                                                                ship1.integration_initial_states,
+                                                                dx, dy, ship2.radius, ship2.speed,
+                                                                ship2.integration_initial_states,
+                                                                -delta_time, 0.0);
+                        if (!std::isnan(col_start_time)) {
+                            double sq_dist = dx*dx + dy*dy;
+                            collision_queue.emplace_back(col_start_time, sq_dist,
+                                                         s1, s2,
+                                                         CollisionType::SHIP_SHIP, 0.0);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    void enqueue_mine_asteroid_collisions(std::vector<Mine>& mines_ref,
+                                          std::vector<Asteroid>& asteroids_ref) {
+        double map_width = game_state.map_width;
+        double map_height = game_state.map_height;
+        double half_map_width = 0.5 * map_width;
+        double half_map_height = 0.5 * map_height;
+
+        for (size_t m_idx = 0; m_idx < mines_ref.size(); ++m_idx) {
+            Mine& mine = mines_ref[m_idx];
+            if (mine.detonating) {
+                for (size_t a_idx = 0; a_idx < asteroids_ref.size(); ++a_idx) {
+                    Asteroid& asteroid = asteroids_ref[a_idx];
+                    double ax = asteroid.x;
+                    double ay = asteroid.y;
+                    double dx = std::abs(ax - mine.x);
+                    double dy = std::abs(ay - mine.y);
+                    if (dx > half_map_width) dx = map_width - dx;
+                    if (dy > half_map_height) dy = map_height - dy;
+                    double rs = mine.blast_radius + asteroid.radius;
+                    double sq_dist = dx*dx + dy*dy;
+                    if (sq_dist <= rs*rs) {
+                        collision_queue.emplace_back(0.0, sq_dist,
+                                                     m_idx, a_idx,
+                                                     CollisionType::MINE_ASTEROID, 0.0);
+                    }
+                }
+            }
+        }
+    }
+
+    void enqueue_mine_ship_collisions(std::vector<Mine>& mines_ref,
+                                      std::vector<Ship>& ships_ref) {
+        double map_width = game_state.map_width;
+        double map_height = game_state.map_height;
+        double half_map_width = 0.5 * map_width;
+        double half_map_height = 0.5 * map_height;
+
+        for (size_t m_idx = 0; m_idx < mines_ref.size(); ++m_idx) {
+            Mine& mine = mines_ref[m_idx];
+            if (mine.detonating) {
+                for (size_t s_idx = 0; s_idx < ships_ref.size(); ++s_idx) {
+                    Ship& ship = ships_ref[s_idx];
+                    if (ship.is_respawning_internal || !ship.alive) continue;
+                    double sx = ship.x;
+                    double sy = ship.y;
+                    double dx = std::abs(sx - mine.x);
+                    double dy = std::abs(sy - mine.y);
+                    if (dx > half_map_width) dx = map_width - dx;
+                    if (dy > half_map_height) dy = map_height - dy;
+                    double rs = mine.blast_radius + ship.radius;
+                    double sq_dist = dx*dx + dy*dy;
+                    if (sq_dist <= rs*rs) {
+                        collision_queue.emplace_back(0.0, sq_dist,
+                                                     m_idx, s_idx,
+                                                     CollisionType::MINE_SHIP, 0.0);
+                    }
+                }
+            }
+        }
+    }
+
+    // Process heap like Python
+    void process_collisions() {
+        std::make_heap(collision_queue.begin(), collision_queue.end(),
+                       std::greater<CollisionEvent>());
+        while (!collision_queue.empty()) {
+            std::pop_heap(collision_queue.begin(), collision_queue.end(),
+                          std::greater<CollisionEvent>());
+            CollisionEvent ev = collision_queue.back();
+            collision_queue.pop_back();
+            // handle like Python
+        }
+    }
+
+public:
+    KesslerGame(ShipState& ss, GameState& gs)
+    : asteroids(gs.asteroids), bullets(gs.bullets),
+      mines(gs.mines), ships(gs.ships),
+      time(gs.time), frame(gs.frame),
+      delta_time(gs.delta_time),
+      game_state(gs), ship_state(ss) {}
+
+    void run() {
+        while (true) {
+            auto [thrust, turn_rate, fire, drop_mine, terminate] =
+                controller.actions(ship_state, game_state);
+            if (terminate) break;
+
+            ship_state.apply_controls(thrust, turn_rate, fire, drop_mine);
+
+            ++frame;
+            time = frame * delta_time;
+
+            for (auto& s : ships) s.update(delta_time);
+            for (auto& a : asteroids) a.update(delta_time);
+            for (auto& b : bullets) b.update(delta_time);
+            for (auto& m : mines) m.update(delta_time);
+
+            collision_queue.clear();
+            enqueue_bullet_asteroid_collisions(bullets, asteroids);
+            enqueue_ship_asteroid_collisions(ships, asteroids);
+            enqueue_ship_ship_collisions(ships);
+            enqueue_mine_asteroid_collisions(mines, asteroids);
+            enqueue_mine_ship_collisions(mines, ships);
+
+            process_collisions();
+        }
+    }
+};
+
+int64_t KesslerGame::CollisionEvent::counter = 0;
+
+
+
+
+
+
+
+
+
+
 
 
 // Actual splitting logic
