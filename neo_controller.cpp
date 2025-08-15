@@ -1960,7 +1960,8 @@ private:
         static constexpr double TOLERANCE = 1e-10;
         static constexpr double WEAK_TOLERANCE = 1e-6;
 
-        // Shared by all events
+        // Global counter shared by all events
+        // This makes sure that all events are unique, and sorted in the order of creation
         static int64_t counter;
 
         // Data members
@@ -2088,81 +2089,306 @@ private:
     // References to game entities
     std::vector<Ship>& ships;
     std::vector<Asteroid>& asteroids;
-    std::vector<Bullets>& bullets;
-    std::vector<Mine>& mines;
-    double& time;
-    double& frame;
-    double& delta_time;
-
-    std::vector<Asteroid>& asteroids;
     std::vector<Bullet>& bullets;
     std::vector<Mine>& mines;
-
     double& time;
     double& frame;
     double& delta_time;
+
     SubController controller;
     ShipState& ship_state;
     GameState& game_state;
 
     std::vector<CollisionEvent> collision_queue;
 
-    // -----------------------------------------------------------------
-    // FAITHFUL PORTS
-    // -----------------------------------------------------------------
-    void enqueue_bullet_asteroid_collisions(std::vector<Bullet>& bullets,
-                                            std::vector<Asteroid>& asteroids) {
-        double collision_past_time_clamp = delta_time;
-        double map_width = game_state.map_width;
-        double map_height = game_state.map_height;
+    void enqueue_bullet_asteroid_collisions(
+        std::vector<Bullet>& bullets,
+        std::vector<Asteroid>& asteroids,
+        double asteroid_past_time_clamp,
+        size_t asteroid_list_idx_offset = 0,
+        bool already_a_heap = false,
+        std::vector<size_t> bullet_idxs_to_skip = {}
+    ) {
+        // Collect all potential bullet-asteroid collisions
+        // Since bullets do not wrap, we treat the bullet hitbox as being clamped at the map edge.
+        // The way to calculate the collision time interval is elegant. It considers two virtual bullets,
+        // the intersection of the two being the true bullet's position:
+        // 1. The bullet that passes right through without getting clamped
+        // 2. The bullet that is stationary, with its head right on the border, and the tail sticking into the map
+        // The intersection of these two form the clamped bullet hitbox we're interested in, during the time
+        // interval from when the bullet head first hits the edge, until the tail also leaves. This construction
+        // is invalid before this time interval!
+
+        // We might not be able to go back a full delta_time if the asteroid wasn't alive for that long yet!
+        // So we clamp that time
+        double collision_past_time_clamp = std::min(asteroid_past_time_clamp, this->delta_time);
+
+        // Prelookup and precompute constants used for wrapping to bullet's frame of reference
+        double map_width = this->game_state.map_width;
+        double map_height = this->game_state.map_height;
         double half_map_width = 0.5 * map_width;
         double half_map_height = 0.5 * map_height;
 
         for (size_t bul_idx = 0; bul_idx < bullets.size(); ++bul_idx) {
+            if (!bullet_idxs_to_skip.empty() &&
+                std::find(bullet_idxs_to_skip.begin(), bullet_idxs_to_skip.end(), bul_idx) != bullet_idxs_to_skip.end()) {
+                continue;
+            }
+
             Bullet& bullet = bullets[bul_idx];
+
             double bullet_vx = bullet.vx;
             double bullet_vy = bullet.vy;
+
+            // Find unclamped bullet path (as if bullet passes through the map edge)
             double bullet_head_x = bullet.x;
             double bullet_head_y = bullet.y;
-            double bullet_tail_x = bullet.x + bullet.tail_dx;
-            double bullet_tail_y = bullet.y + bullet.tail_dy;
+            double bullet_tail_x = bullet.x + bullet.tail_delta_x;
+            double bullet_tail_y = bullet.y + bullet.tail_delta_y;
 
-            for (size_t ast_idx = 0; ast_idx < asteroids.size(); ++ast_idx) {
-                Asteroid& asteroid = asteroids[ast_idx];
-                double ax = asteroid.x;
-                double ay = asteroid.y;
-                if (ax - bullet.x > half_map_width) ax -= map_width;
-                else if (ax - bullet.x < -half_map_width) ax += map_width;
-                if (ay - bullet.y > half_map_height) ay -= map_height;
-                else if (ay - bullet.y < -half_map_height) ay += map_height;
+            // Find when head and tail leave the visible map
+            double t_head_exit = time_until_exit(
+                bullet_head_x, bullet_head_y, bullet_vx, bullet_vy,
+                map_width, map_height
+            );
+            double t_tail_exit = time_until_exit(
+                bullet_tail_x, bullet_tail_y, bullet_vx, bullet_vy,
+                map_width, map_height
+            );
+            assert(t_head_exit <= t_tail_exit);
 
-                if (circle_line_collision_continuous(bullet_head_x, bullet_head_y,
-                                                     bullet_tail_x, bullet_tail_y,
-                                                     bullet_vx, bullet_vy,
-                                                     ax, ay,
-                                                     asteroid.vx, asteroid.vy,
-                                                     asteroid.radius,
-                                                     collision_past_time_clamp)) {
-                    auto [col_start_time, col_end_time] =
-                        circle_line_collision_time_interval(bullet_head_x, bullet_head_y,
-                                                            bullet_tail_x, bullet_tail_y,
-                                                            bullet_vx, bullet_vy,
-                                                            ax, ay,
-                                                            asteroid.vx, asteroid.vy,
-                                                            asteroid.radius);
-                    double collision_time = std::max(-collision_past_time_clamp, col_start_time);
-                    double bul_mid_x = 0.5*(bullet_head_x + bullet_tail_x) + collision_time * bullet_vx;
-                    double bul_mid_y = 0.5*(bullet_head_y + bullet_tail_y) + collision_time * bullet_vy;
-                    double ast_x_col = ax + collision_time * asteroid.vx;
-                    double ast_y_col = ay + collision_time * asteroid.vy;
-                    double dx = ast_x_col - bul_mid_x;
-                    double dy = ast_y_col - bul_mid_y;
-                    double sq_dist = dx*dx + dy*dy;
-                    double tie = bullet_vx * asteroid.vx + bullet_vy * asteroid.vy;
-                    collision_queue.emplace_back(collision_time, sq_dist,
-                                                 bul_idx, ast_idx,
-                                                 CollisionType::BULLET_ASTEROID,
-                                                 tie);
+            // Find when head and tail enter the visible map
+            double t_head_enter = time_until_enter(
+                bullet_head_x, bullet_head_y, bullet_vx, bullet_vy,
+                map_width, map_height
+            );
+            double t_tail_enter = time_until_enter(
+                bullet_tail_x, bullet_tail_y, bullet_vx, bullet_vy,
+                map_width, map_height
+            );
+            assert(t_head_enter <= t_tail_enter);
+
+            bool bullet_entirely_in_bounds = t_head_exit >= 0.0 && t_tail_enter <= -collision_past_time_clamp;
+
+            if (bullet_entirely_in_bounds) {
+                // This means that for the whole duration we're checking, the bullet is entirely within the map's visible bounds!
+                // The tail has entered the map before the interval starts, and the head will not leave until after the interval ends.
+                // This is the simplest case to handle. Do the normal collision check:
+                for (size_t ast_idx = 0; ast_idx < asteroids.size(); ++ast_idx) {
+                    Asteroid& asteroid = asteroids[ast_idx];
+
+                    // Center the asteroid position relative to the bullet, accounting for wrapping of asteroids.
+                    double ast_x_centered, ast_y_centered;
+                    if (asteroid.x - bullet.x > half_map_width) {
+                        ast_x_centered = asteroid.x - map_width;
+                    } else if (asteroid.x - bullet.x < -half_map_width) {
+                        ast_x_centered = asteroid.x + map_width;
+                    } else {
+                        ast_x_centered = asteroid.x;
+                    }
+                    if (asteroid.y - bullet.y > half_map_height) {
+                        ast_y_centered = asteroid.y - map_height;
+                    } else if (asteroid.y - bullet.y < -half_map_height) {
+                        ast_y_centered = asteroid.y + map_height;
+                    } else {
+                        ast_y_centered = asteroid.y;
+                    }
+
+                    if (circle_line_collision_continuous(
+                            bullet_head_x, bullet_head_y,
+                            bullet_tail_x, bullet_tail_y,
+                            bullet_vx, bullet_vy,
+                            ast_x_centered, ast_y_centered,
+                            asteroid.vx, asteroid.vy,
+                            asteroid.radius,
+                            collision_past_time_clamp
+                    )) {
+                        double collision_start_time, __; // ignore end time
+                        std::tie(collision_start_time, std::ignore)
+                            = circle_line_collision_time_interval(
+                                bullet_head_x, bullet_head_y,
+                                bullet_tail_x, bullet_tail_y,
+                                bullet_vx, bullet_vy,
+                                ast_x_centered, ast_y_centered,
+                                asteroid.vx, asteroid.vy,
+                                asteroid.radius
+                            );
+                        if (std::isnan(collision_start_time)) {
+                            // This case should NEVER happen, but maybe due to some pathological numeric instability,
+                            // it might be that the first function detected a barely collision, and then the second function
+                            // missed it and the discriminant was -0.0000000000000001, and returns nan for collision time ¯\_(ツ)_/¯
+                            // fprintf(stderr, "Numeric instability in quadratic solver? Real bullet collision time is NaN\n");
+                            continue;
+                        }
+                        double collision_time = std::max(-collision_past_time_clamp, collision_start_time);
+                        // assert(-collision_past_time_clamp <= collision_time && collision_time <= 0.0);
+
+                        // Calculate the distance between center of bullet and the asteroid at the time of collision, to use as a tiebreaker in ordering events
+                        double bul_x_mid_collision = 0.5 * (bullet_head_x + bullet_tail_x) + collision_time * bullet_vx;
+                        double bul_y_mid_collision = 0.5 * (bullet_head_y + bullet_tail_y) + collision_time * bullet_vy;
+                        double ast_x_collision = ast_x_centered + collision_time * asteroid.vx;
+                        double ast_y_collision = ast_y_centered + collision_time * asteroid.vy;
+                        double dx = ast_x_collision - bul_x_mid_collision;
+                        double dy = ast_y_collision - bul_y_mid_collision;
+                        double sq_dist = dx * dx + dy * dy;
+
+                        double bul_head_x_collision = bullet_head_x + collision_time * bullet_vx;
+                        double bul_head_y_collision = bullet_head_y + collision_time * bullet_vy;
+                        double bul_tail_x_collision = bullet_tail_x + collision_time * bullet_vx;
+                        double bul_tail_y_collision = bullet_tail_y + collision_time * bullet_vy;
+                        // Either the bullet head or tail should be inside the map bounds for this collision to be valid.
+                        // This should be guaranteed, because at no point during this interval was the bullet expected to leave the map bound, and need to be clamped!
+                        // assert( ((0.0 <= bul_head_x_collision && bul_head_x_collision <= map_width) && (0.0 <= bul_head_y_collision && bul_head_y_collision <= map_height))
+                        //         || ((0.0 <= bul_tail_x_collision && bul_tail_x_collision <= map_width) && (0.0 <= bul_tail_y_collision && bul_tail_y_collision <= map_height)) );
+
+                        // It happens surprisingly frequently where an asteroid splits, and the three overlapping children asteroids get hit by a bullet.
+                        // We need a tiebreaker for this situation, or else we get framerate dependent behavior
+                        double dot_bullet_vel_ast_vel_tiebreaker = bullet_vx * asteroid.vx + bullet_vy * asteroid.vy;
+                        CollisionEvent collision_event(
+                            collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset,
+                            CollisionType::BULLET_ASTEROID, dot_bullet_vel_ast_vel_tiebreaker
+                        );
+                        if (already_a_heap) {
+                            // push onto heap
+                            this->collision_queue.push_back(collision_event);
+                            std::push_heap(this->collision_queue.begin(), this->collision_queue.end());
+                        } else {
+                            this->collision_queue.push_back(collision_event);
+                        }
+                    }
+                }
+            } else {
+                // During the time interval we're checking, either the whole time or a part of the time,
+                // the bullet is at least partially out of bounds and has to have its hitbox clipped at the edge.
+                // To do this check, we create two virtual bullets! The first virtual bullet is just the regular bullet, but it's
+                // allowed to go out of bounds.
+                // The second virtual bullet is a stationary one, with the head at the map border where the bullet leaves, and the tail
+                // also on the border where the bullet would first enter the map
+                // If we find the collision time interval between the asteroid and these two virtual bullets, and take
+                // their intersections, we'll have the true collision interval of the clamped bullet.
+
+                // Precompute this virtual bullet as it's specific to just the bullet, and not specific to any asteroid
+                // Virtual bullet 2: stationary bullet, where head and tails are pinned at the map border, along the bullet's line of travel
+                // Remember that the t_clamp_start is a negative number. The bullet head at the end of the frame is already past bound.
+                double pinned_head_x = bullet_head_x + bullet_vx * t_head_exit;
+                double pinned_head_y = bullet_head_y + bullet_vy * t_head_exit;
+                // Stick the tail of the bullet on the map border where the bullet would enter the map
+                double pinned_tail_x = bullet_tail_x + bullet_vx * t_tail_enter;
+                double pinned_tail_y = bullet_tail_y + bullet_vy * t_tail_enter;
+
+                for (size_t ast_idx = 0; ast_idx < asteroids.size(); ++ast_idx) {
+                    Asteroid& asteroid = asteroids[ast_idx];
+
+                    // Center the asteroid position relative to the bullet, accounting for wrapping of asteroids.
+                    double ast_x_centered, ast_y_centered;
+                    if (asteroid.x - bullet.x > half_map_width) {
+                        ast_x_centered = asteroid.x - map_width;
+                    } else if (asteroid.x - bullet.x < -half_map_width) {
+                        ast_x_centered = asteroid.x + map_width;
+                    } else {
+                        ast_x_centered = asteroid.x;
+                    }
+                    if (asteroid.y - bullet.y > half_map_height) {
+                        ast_y_centered = asteroid.y - map_height;
+                    } else if (asteroid.y - bullet.y < -half_map_height) {
+                        ast_y_centered = asteroid.y + map_height;
+                    } else {
+                        ast_y_centered = asteroid.y;
+                    }
+
+                    // Virtual bullet 1: normal moving bullet that is unclamped as it goes beyond the border
+                    bool hit1 = circle_line_collision_continuous(
+                        bullet_head_x, bullet_head_y,
+                        bullet_tail_x, bullet_tail_y,
+                        bullet_vx, bullet_vy,
+                        ast_x_centered, ast_y_centered,
+                        asteroid.vx, asteroid.vy,
+                        asteroid.radius,
+                        collision_past_time_clamp
+                    );
+                    if (!hit1) continue;
+                    double t1_start, t1_end;
+                    std::tie(t1_start, t1_end) = circle_line_collision_time_interval(
+                        bullet_head_x, bullet_head_y,
+                        bullet_tail_x, bullet_tail_y,
+                        bullet_vx, bullet_vy,
+                        ast_x_centered, ast_y_centered,
+                        asteroid.vx, asteroid.vy,
+                        asteroid.radius
+                    );
+                    if (std::isnan(t1_start) || std::isnan(t1_end)) {
+                        // This should never happen, but is here in case of numeric instability in a barely collision
+                        // Include all relevant parameters in the warning
+                        // fprintf(stderr, "Numeric instability in quadratic solver? VB1 collision time is NaN.\n");
+                        continue;
+                    }
+
+                    // Use the virtual bullet 2 we computed for this bullet
+                    bool hit2 = circle_line_collision_continuous(
+                        pinned_head_x, pinned_head_y,
+                        pinned_tail_x, pinned_tail_y,
+                        0.0, 0.0,  // Stationary bullet for clamping to bound!
+                        ast_x_centered, ast_y_centered,
+                        asteroid.vx, asteroid.vy,
+                        asteroid.radius,
+                        collision_past_time_clamp
+                    );
+                    if (!hit2) continue;
+                    double t2_start, t2_end;
+                    std::tie(t2_start, t2_end) = circle_line_collision_time_interval(
+                        pinned_head_x, pinned_head_y,
+                        pinned_tail_x, pinned_tail_y,
+                        0.0, 0.0,
+                        ast_x_centered, ast_y_centered,
+                        asteroid.vx, asteroid.vy,
+                        asteroid.radius
+                    );
+                    if (std::isnan(t2_start) || std::isnan(t2_end)) {
+                        // This should never happen, but is here in case of numeric instability in a barely collision
+                        // Include all relevant parameters in the warning
+                        // fprintf(stderr, "Numeric instability in quadratic solver? VB2 collision time is NaN.\n");
+                        continue;
+                    }
+
+                    // Take the intersection of the intervals
+                    double t_start = std::max({t1_start, t2_start, -collision_past_time_clamp, t_head_enter});
+                    double t_end = std::min({t1_end, t2_end, 0.0, t_tail_exit});
+
+                    if (t_start <= t_end) {
+                        // The interval actually exists and has nonnegative size
+                        double collision_time = t_start;
+                        // assert(-collision_past_time_clamp <= collision_time && collision_time <= 0.0);
+
+                        // Calculate the distance between center of bullet and the asteroid at the time of collision, to use as a tiebreaker in ordering events
+                        // This does not consider that the bullet could be clamped at the edge, and just uses the bullet passing through the border anyway.
+                        double bul_x_mid_collision = 0.5 * (bullet_head_x + bullet_tail_x) + collision_time * bullet_vx;
+                        double bul_y_mid_collision = 0.5 * (bullet_head_y + bullet_tail_y) + collision_time * bullet_vy;
+                        double ast_x_collision = ast_x_centered + collision_time * asteroid.vx;
+                        double ast_y_collision = ast_y_centered + collision_time * asteroid.vy;
+                        double dx = ast_x_collision - bul_x_mid_collision;
+                        double dy = ast_y_collision - bul_y_mid_collision;
+                        double sq_dist = dx * dx + dy * dy;
+
+                        double bul_head_x_collision = bullet_head_x + collision_time * bullet_vx;
+                        double bul_head_y_collision = bullet_head_y + collision_time * bullet_vy;
+                        double bul_tail_x_collision = bullet_tail_x + collision_time * bullet_vx;
+                        double bul_tail_y_collision = bullet_tail_y + collision_time * bullet_vy;
+
+                        // It happens surprisingly frequently where an asteroid splits, and the three overlapping children asteroids get hit by a bullet.
+                        // We need a tiebreaker for this situation!
+                        // Or else we get weird random indeterminate behavior, and there goes our framerate independence.
+                        double dot_bullet_vel_ast_vel_tiebreaker = bullet_vx * asteroid.vx + bullet_vy * asteroid.vy;
+                        CollisionEvent collision_event(
+                            collision_time, sq_dist, bul_idx, ast_idx + asteroid_list_idx_offset,
+                            CollisionType::BULLET_ASTEROID, dot_bullet_vel_ast_vel_tiebreaker
+                        );
+                        if (already_a_heap) {
+                            this->collision_queue.push_back(collision_event);
+                            std::push_heap(this->collision_queue.begin(), this->collision_queue.end());
+                        } else {
+                            this->collision_queue.push_back(collision_event);
+                        }
+                    }
                 }
             }
         }
