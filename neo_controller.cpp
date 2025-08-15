@@ -1967,13 +1967,13 @@ private:
         // Data members
         double time_offset;
         double distance;
-        int64_t object_a_idx;
-        int64_t object_b_idx;
+        size_t object_a_idx;
+        size_t object_b_idx;
         CollisionType collision_type;
         double specific_tiebreaker;
         int64_t insertion_order;
 
-        CollisionEvent(double time_offset, double distance, int64_t object_a_idx, int64_t object_b_idx, CollisionType collision_type, double specific_tiebreaker = 0.0)
+        CollisionEvent(double time_offset, double distance, size_t object_a_idx, size_t object_b_idx, CollisionType collision_type, double specific_tiebreaker = 0.0)
         : time_offset(time_offset), distance(distance), object_a_idx(object_a_idx), object_b_idx(object_b_idx), collision_type(collision_type), specific_tiebreaker(specific_tiebreaker), insertion_order(counter++) {}
         
         // Comparison helpers
@@ -2093,13 +2093,20 @@ private:
     std::vector<Mine>& mines;
     double& time;
     double& frame;
-    double& delta_time;
+    double delta_time;
+    double map_size_x;
+    double map_size_y;
 
     SubController controller;
     ShipState& ship_state;
     GameState& game_state;
 
     std::vector<CollisionEvent> collision_queue;
+
+    void update_asteroid(Asteroid& asteroid) {
+        asteroid.x = pymod(asteroid.x + asteroid.vx * delta_time, map_size_x);
+        asteroid.y = pymod(asteroid.y + asteroid.vy * delta_time, map_size_y);
+    }
 
     void enqueue_bullet_asteroid_collisions(
         std::vector<Bullet>& bullets,
@@ -2221,7 +2228,7 @@ private:
                             continue;
                         }
                         double collision_time = std::max(-collision_past_time_clamp, collision_start_time);
-                        // assert(-collision_past_time_clamp <= collision_time && collision_time <= 0.0);
+                        assert(-collision_past_time_clamp <= collision_time && collision_time <= 0.0);
 
                         // Calculate the distance between center of bullet and the asteroid at the time of collision, to use as a tiebreaker in ordering events
                         double bul_x_mid_collision = 0.5 * (bullet_head_x + bullet_tail_x) + collision_time * bullet_vx;
@@ -2238,8 +2245,7 @@ private:
                         double bul_tail_y_collision = bullet_tail_y + collision_time * bullet_vy;
                         // Either the bullet head or tail should be inside the map bounds for this collision to be valid.
                         // This should be guaranteed, because at no point during this interval was the bullet expected to leave the map bound, and need to be clamped!
-                        // assert( ((0.0 <= bul_head_x_collision && bul_head_x_collision <= map_width) && (0.0 <= bul_head_y_collision && bul_head_y_collision <= map_height))
-                        //         || ((0.0 <= bul_tail_x_collision && bul_tail_x_collision <= map_width) && (0.0 <= bul_tail_y_collision && bul_tail_y_collision <= map_height)) );
+                        assert(((0.0 <= bul_head_x_collision && bul_head_x_collision <= map_width) && (0.0 <= bul_head_y_collision && bul_head_y_collision <= map_height)) || ((0.0 <= bul_tail_x_collision && bul_tail_x_collision <= map_width) && (0.0 <= bul_tail_y_collision && bul_tail_y_collision <= map_height)));
 
                         // It happens surprisingly frequently where an asteroid splits, and the three overlapping children asteroids get hit by a bullet.
                         // We need a tiebreaker for this situation, or else we get framerate dependent behavior
@@ -2357,7 +2363,7 @@ private:
                     if (t_start <= t_end) {
                         // The interval actually exists and has nonnegative size
                         double collision_time = t_start;
-                        // assert(-collision_past_time_clamp <= collision_time && collision_time <= 0.0);
+                        assert(-collision_past_time_clamp <= collision_time && collision_time <= 0.0);
 
                         // Calculate the distance between center of bullet and the asteroid at the time of collision, to use as a tiebreaker in ordering events
                         // This does not consider that the bullet could be clamped at the edge, and just uses the bullet passing through the border anyway.
@@ -2394,77 +2400,198 @@ private:
         }
     }
 
-    void enqueue_ship_asteroid_collisions(std::vector<Ship>& ships_ref,
-                                          std::vector<Asteroid>& asteroids_ref) {
-        double map_width = game_state.map_width;
-        double map_height = game_state.map_height;
+    void enqueue_ship_asteroid_collisions(
+        std::vector<Ship>& ships,
+        std::vector<Asteroid>& asteroids,
+        double asteroid_past_time_clamp,
+        size_t asteroid_list_idx_offset = 0,
+        bool already_a_heap = false
+    ) {
+        // Prelookup and precompute constants used for wrapping to bullet's frame of reference
+        double map_width = this->game_state.map_size_x;
+        double map_height = this->game_state.map_size_y;
         double half_map_width = 0.5 * map_width;
         double half_map_height = 0.5 * map_height;
 
-        for (size_t ship_idx = 0; ship_idx < ships_ref.size(); ++ship_idx) {
-            Ship& ship = ships_ref[ship_idx];
-            if (ship.is_respawning_internal || !ship.alive) continue;
-            for (size_t ast_idx = 0; ast_idx < asteroids_ref.size(); ++ast_idx) {
-                Asteroid& asteroid = asteroids_ref[ast_idx];
+        for (size_t ship_idx = 0; ship_idx < ships.size(); ++ship_idx) {
+            Ship& ship = ships[ship_idx];
+            if (ship.is_respawning_internal || !ship.alive) {
+                continue;
+            }
+            for (size_t ast_idx = 0; ast_idx < asteroids.size(); ++ast_idx) {
+                Asteroid& asteroid = asteroids[ast_idx];
+                // Check for collisions in time interval [t - delta_time, t]
+                double ast_x_centered_around_ship, ast_y_centered_around_ship;
+                if (asteroid.x - ship.x > half_map_width) {
+                    ast_x_centered_around_ship = asteroid.x - map_width;
+                } else if (asteroid.x - ship.x < -half_map_width) {
+                    ast_x_centered_around_ship = asteroid.x + map_width;
+                } else {
+                    ast_x_centered_around_ship = asteroid.x;
+                }
 
-                double ax = asteroid.x;
-                double ay = asteroid.y;
-                if (ax - ship.x > half_map_width) ax -= map_width;
-                else if (ax - ship.x < -half_map_width) ax += map_width;
-                if (ay - ship.y > half_map_height) ay -= map_height;
-                else if (ay - ship.y < -half_map_height) ay += map_height;
+                if (asteroid.y - ship.y > half_map_height) {
+                    ast_y_centered_around_ship = asteroid.y - map_height;
+                } else if (asteroid.y - ship.y < -half_map_height) {
+                    ast_y_centered_around_ship = asteroid.y + map_height;
+                } else {
+                    ast_y_centered_around_ship = asteroid.y;
+                }
 
-                double col_start_time =
-                    ship_asteroid_continuous_collision_time(ship.x, ship.y, ship.radius,
-                                                            ship.speed, ship.integration_initial_states,
-                                                            ax, ay, asteroid.vx, asteroid.vy,
-                                                            asteroid.radius, asteroid.speed,
-                                                            -delta_time, 0.0);
-                if (!std::isnan(col_start_time)) {
-                    auto [px, py] = ship.get_past_position(col_start_time, game_state.map_size);
-                    double dx = std::abs((asteroid.x + asteroid.vx * col_start_time) - px);
-                    double dy = std::abs((asteroid.y + asteroid.vy * col_start_time) - py);
+                assert(ship.respawn_time_internal <= 1e-12);
+                double tmax1 = -std::min(asteroid_past_time_clamp, this->delta_time);
+                double tmax2 = std::min(0.0, ship.respawn_time_internal);
+                double tmin = std::max(tmax1, tmax2);
+                double collision_start_time = ship_asteroid_continuous_collision_time(
+                    ship.x, ship.y, ship.radius, ship.speed, ship.integration_initial_states,
+                    ast_x_centered_around_ship, ast_y_centered_around_ship, asteroid.vx, asteroid.vy, asteroid.radius, asteroid.speed,
+                    tmin, 0.0 // Only check collisions starting from when the ship's respawn invincibility wore off
+                );
+
+                if (!std::isnan(collision_start_time)) {
+                    assert(-this->delta_time <= collision_start_time && collision_start_time <= 0.0);
+                    // As a tiebreaker, we need to get the positions of the objects during the collision, which is at offset collision_start_time
+                    // This is VERY IMPORTANT because if a ship was respawning and suddenly it wears off while the ship is inside multiple asteroids,
+                    // the tiebreaker will be used, and the ship will collide with whatever is closer. Otherwise, framerate-dependent behavior will leak in,
+                    // and asteroid order will then decide how it ends up in the queue and subsequently gets resolved.
+                    double ship_past_x, ship_past_y;
+                    std::tie(ship_past_x, ship_past_y) = ship.get_past_position(collision_start_time, this->game_state.map_size_x, this->game_state.map_size_y);
+
+                    double asteroid_x_at_collision = asteroid.x + asteroid.vx * collision_start_time;
+                    double asteroid_y_at_collision = asteroid.y + asteroid.vy * collision_start_time;
+                    double dx = std::abs(asteroid_x_at_collision - ship_past_x);
+                    double dy = std::abs(asteroid_y_at_collision - ship_past_y);
                     if (dx > half_map_width) dx = map_width - dx;
                     if (dy > half_map_height) dy = map_height - dy;
-                    double sq_dist = dx*dx + dy*dy;
-                    collision_queue.emplace_back(col_start_time, sq_dist,
-                                                 ship_idx, ast_idx,
-                                                 CollisionType::SHIP_ASTEROID, 0.0);
+                    double sq_dist = dx * dx + dy * dy;
+
+                    // Break ties in case everything else matches, including asteroid distance from the ship
+                    double ship_heading_collision = std::radians(ship.heading + ship.turn_rate * collision_start_time);
+                    double dot_product_tiebreaker_ship_ast = std::cos(ship_heading_collision) * asteroid.vx + std::sin(ship_heading_collision) * asteroid.vy;
+                    CollisionEvent collision_event(
+                        collision_start_time, sq_dist, ship_idx, ast_idx + asteroid_list_idx_offset, CollisionType::SHIP_ASTEROID, dot_product_tiebreaker_ship_ast);
+                    if (already_a_heap) {
+                        this->collision_queue.push_back(collision_event);
+                        std::push_heap(this->collision_queue.begin(), this->collision_queue.end());
+                    } else {
+                        this->collision_queue.push_back(collision_event);
+                    }
                 }
             }
         }
     }
 
-    void enqueue_ship_ship_collisions(std::vector<Ship>& ships_ref) {
-        double map_width = game_state.map_width;
-        double map_height = game_state.map_height;
+    void enqueue_ship_ship_collisions(std::vector<Ship>& ships) {
+        // Prelookup and precompute constants used for wrapping to bullet's frame of reference
+        double map_width = this->game_state.map_size_x;
+        double map_height = this->game_state.map_size_y;
         double half_map_width = 0.5 * map_width;
         double half_map_height = 0.5 * map_height;
 
-        for (size_t s1 = 0; s1 < ships_ref.size(); ++s1) {
-            Ship& ship1 = ships_ref[s1];
+        size_t num_ships = ships.size();
+        for (size_t ship1_idx = 0; ship1_idx < num_ships; ++ship1_idx) {
+            Ship& ship1 = ships[ship1_idx];
             if (ship1.alive && !ship1.is_respawning_internal) {
-                for (size_t s2 = s1 + 1; s2 < ships_ref.size(); ++s2) {
-                    Ship& ship2 = ships_ref[s2];
+                for (size_t ship2_idx = ship1_idx + 1; ship2_idx < num_ships; ++ship2_idx) {
+                    Ship& ship2 = ships[ship2_idx];
                     if (ship2.alive && !ship2.is_respawning_internal) {
-                        double dx = ship2.x - ship1.x;
-                        double dy = ship2.y - ship1.y;
-                        if (dx > half_map_width) dx -= map_width;
-                        else if (dx < -half_map_width) dx += map_width;
-                        if (dy > half_map_height) dy -= map_height;
-                        else if (dy < -half_map_height) dy += map_height;
+                        // Check for collisions in time interval [t - delta_time, t]
+                        // But clamp the start time to when both ships are out of respawn
+                        double ship2_x_centered_around_ship1;
+                        double ship2_y_centered_around_ship1;
+                        if (ship2.x - ship1.x > half_map_width) {
+                            ship2_x_centered_around_ship1 = ship2.x - map_width;
+                        } else if (ship2.x - ship1.x < -half_map_width) {
+                            ship2_x_centered_around_ship1 = ship2.x + map_width;
+                        } else {
+                            ship2_x_centered_around_ship1 = ship2.x;
+                        }
 
-                        double col_start_time =
-                            ship_ship_continuous_collision_time(ship1.x, ship1.y, ship1.radius, ship1.speed,
-                                                                ship1.integration_initial_states,
-                                                                dx, dy, ship2.radius, ship2.speed,
-                                                                ship2.integration_initial_states,
-                                                                -delta_time, 0.0);
-                        if (!std::isnan(col_start_time)) {
-                            double sq_dist = dx*dx + dy*dy;
-                            collision_queue.emplace_back(col_start_time, sq_dist,
-                                                         s1, s2,
-                                                         CollisionType::SHIP_SHIP, 0.0);
+                        if (ship2.y - ship1.y > half_map_height) {
+                            ship2_y_centered_around_ship1 = ship2.y - map_height;
+                        } else if (ship2.y - ship1.y < -half_map_height) {
+                            ship2_y_centered_around_ship1 = ship2.y + map_height;
+                        } else {
+                            ship2_y_centered_around_ship1 = ship2.y;
+                        }
+
+                        double collision_check_interval_start = std::max(
+                            -this->delta_time,
+                            std::min(0.0, std::max(ship1.respawn_time_internal, ship2.respawn_time_internal))
+                        );
+                        double collision_start_time = ship_ship_continuous_collision_time(
+                            ship1.x, ship1.y, ship1.radius, ship1.speed, ship1.integration_initial_states,
+                            ship2_x_centered_around_ship1, ship2_y_centered_around_ship1, ship2.radius, ship2.speed, ship2.integration_initial_states,
+                            collision_check_interval_start, 0.0
+                        );
+                        if (!std::isnan(collision_start_time)) {
+                            assert(-this->delta_time <= collision_start_time && collision_start_time <= 0.0); // Collision happened within past frame
+
+                            double ship1_past_x, ship1_past_y;
+                            double ship2_past_x, ship2_past_y;
+                            std::tie(ship1_past_x, ship1_past_y) = ship1.get_past_position(collision_start_time, this->game_state.map_size_x, this->game_state.map_size_y);
+                            std::tie(ship2_past_x, ship2_past_y) = ship2.get_past_position(collision_start_time, this->game_state.map_size_x, this->game_state.map_size_y);
+
+                            double dx = std::abs(ship1_past_x - ship2_past_x);
+                            double dy = std::abs(ship1_past_y - ship2_past_y);
+                            if (dx > half_map_width) {
+                                dx = map_width - dx;
+                            }
+                            if (dy > half_map_height) {
+                                dy = map_height - dy;
+                            }
+                            double sq_dist = dx * dx + dy * dy;
+
+                            // This following test is to make sure that the ships end up in a definitely colliding state, and
+                            // is good for ensuring framerate independence. So that at other framerates, the ships don't end up not actually colliding
+                            // The root finder is meant to find the time that the ships begin colliding, but due to imprecision, it might find the time right before they start colliding.
+                            double radii_sum = ship1.radius + ship2.radius;
+                            double radii_sum_sq = radii_sum * radii_sum;
+                            bool verified_collision = true;
+                            if (!(sq_dist + 1e-10 <= radii_sum_sq)) {
+                                verified_collision = false;
+                                // Ships aren't colliding. Nudge the time forward and hope that makes them collide.
+                                // Add an eps to REALLY make sure the ships are colliding!
+                                // But we only want to do this if the root was found in the middle of the interval when the function
+                                // dips down. If the interval start is negative, then we do NOT nudge this forward, or else wacky stuff
+                                // will happen, and we get edge cases where the ship on the edge of respawn will have framerate dependence due
+                                // to floating point error. Especially in mine-ship collisions which happen on integer seconds.
+                                double nudgification_factor = 1e-12;
+                                for (int i = 0; i < 64; ++i) {
+                                    // Instead of using a while loop, it's better to use a for loop and have an upper bound on this,
+                                    // just so we don't infinite loop here in some super weird case
+                                    collision_start_time += nudgification_factor;
+                                    if (collision_start_time > 0.0) {
+                                        // We reached the end of the interval, so this is hopeless. These ships are not colliding!
+                                        break;
+                                    }
+
+                                    std::tie(ship1_past_x, ship1_past_y) = ship1.get_past_position(collision_start_time, this->game_state.map_size_x, this->game_state.map_size_y);
+                                    std::tie(ship2_past_x, ship2_past_y) = ship2.get_past_position(collision_start_time, this->game_state.map_size_x, this->game_state.map_size_y);
+
+                                    dx = std::abs(ship1_past_x - ship2_past_x);
+                                    dy = std::abs(ship1_past_y - ship2_past_y);
+                                    if (dx > half_map_width) {
+                                        dx = map_width - dx;
+                                    }
+                                    if (dy > half_map_height) {
+                                        dy = map_height - dy;
+                                    }
+                                    sq_dist = dx * dx + dy * dy;
+                                    if (sq_dist + 1e-10 <= radii_sum_sq) {
+                                        verified_collision = true;
+                                        break;
+                                    }
+                                    nudgification_factor *= 2.0; // Exponentially increase the nudge
+                                }
+                            }
+
+                            if (verified_collision) {
+                                CollisionEvent collision_event(
+                                    collision_start_time, sq_dist, ship1_idx, ship2_idx, CollisionType::SHIP_SHIP
+                                );
+                                this->collision_queue.push_back(collision_event);
+                            }
                         }
                     }
                 }
@@ -2472,61 +2599,117 @@ private:
         }
     }
 
-    void enqueue_mine_asteroid_collisions(std::vector<Mine>& mines_ref,
-                                          std::vector<Asteroid>& asteroids_ref) {
-        double map_width = game_state.map_width;
-        double map_height = game_state.map_height;
+    void enqueue_mine_asteroid_collisions(
+        std::vector<Mine>& mines,
+        std::vector<Asteroid>& asteroids,
+        double asteroid_past_time_clamp,
+        size_t asteroid_list_idx_offset = 0,
+        bool already_a_heap = false
+    ) {
+        // Prelookup and precompute constants used for wrapping to bullet's frame of reference
+        double map_width = this->game_state.map_size_x;
+        double map_height = this->game_state.map_size_y;
         double half_map_width = 0.5 * map_width;
         double half_map_height = 0.5 * map_height;
 
-        for (size_t m_idx = 0; m_idx < mines_ref.size(); ++m_idx) {
-            Mine& mine = mines_ref[m_idx];
+        for (size_t mine_idx = 0; mine_idx < mines.size(); ++mine_idx) {
+            Mine& mine = mines[mine_idx];
             if (mine.detonating) {
-                for (size_t a_idx = 0; a_idx < asteroids_ref.size(); ++a_idx) {
-                    Asteroid& asteroid = asteroids_ref[a_idx];
-                    double ax = asteroid.x;
-                    double ay = asteroid.y;
+                if (mine.countdown_timer < -asteroid_past_time_clamp + CollisionEvent::TOLERANCE) {
+                    // The mine blows up earlier than we're allowed to check for it
+                    continue;
+                }
+                for (size_t ast_idx = 0; ast_idx < asteroids.size(); ++ast_idx) {
+                    Asteroid& asteroid = asteroids[ast_idx];
+                    double ax, ay, collision_time;
+                    if (std::abs(mine.countdown_timer) <= 1e-12) {
+                        // The mine is exploding on a frame boundary, so no need to rewind anything
+                        ax = asteroid.x;
+                        ay = asteroid.y;
+                        collision_time = 0.0;
+                    } else {
+                        // Rewind objects
+                        ax = asteroid.x + mine.countdown_timer * asteroid.vx;
+                        ay = asteroid.y + mine.countdown_timer * asteroid.vy;
+                        collision_time = std::min(0.0, mine.countdown_timer);  // This min clamp should be unnecessary, but just in case
+                    }
                     double dx = std::abs(ax - mine.x);
                     double dy = std::abs(ay - mine.y);
-                    if (dx > half_map_width) dx = map_width - dx;
-                    if (dy > half_map_height) dy = map_height - dy;
-                    double rs = mine.blast_radius + asteroid.radius;
-                    double sq_dist = dx*dx + dy*dy;
-                    if (sq_dist <= rs*rs) {
-                        collision_queue.emplace_back(0.0, sq_dist,
-                                                     m_idx, a_idx,
-                                                     CollisionType::MINE_ASTEROID, 0.0);
+                    if (dx > half_map_width) {
+                        dx = map_width - dx;
+                    }
+                    if (dy > half_map_height) {
+                        dy = map_height - dy;
+                    }
+
+                    double radius_sum = mine.blast_radius + asteroid.radius;
+                    double sq_dist = dx * dx + dy * dy;
+                    if (sq_dist <= radius_sum * radius_sum) {
+                        CollisionEvent collision_event(
+                            collision_time, sq_dist, mine_idx, ast_idx + asteroid_list_idx_offset, CollisionType::MINE_ASTEROID
+                        );
+                        if (already_a_heap) {
+                            this->collision_queue.push_back(collision_event);
+                            std::push_heap(this->collision_queue.begin(), this->collision_queue.end());
+                        } else {
+                            this->collision_queue.push_back(collision_event);
+                        }
                     }
                 }
             }
         }
     }
 
-    void enqueue_mine_ship_collisions(std::vector<Mine>& mines_ref,
-                                      std::vector<Ship>& ships_ref) {
-        double map_width = game_state.map_width;
-        double map_height = game_state.map_height;
+    void enqueue_mine_ship_collisions(
+        std::vector<Mine>& mines,
+        std::vector<Ship>& ships
+    ) {
+        // Prelookup and precompute constants used for wrapping to bullet's frame of reference
+        double map_width = this->game_state.map_size_x;
+        double map_height = this->game_state.map_size_y;
         double half_map_width = 0.5 * map_width;
         double half_map_height = 0.5 * map_height;
 
-        for (size_t m_idx = 0; m_idx < mines_ref.size(); ++m_idx) {
-            Mine& mine = mines_ref[m_idx];
+        for (size_t mine_idx = 0; mine_idx < mines.size(); ++mine_idx) {
+            Mine& mine = mines[mine_idx];
             if (mine.detonating) {
-                for (size_t s_idx = 0; s_idx < ships_ref.size(); ++s_idx) {
-                    Ship& ship = ships_ref[s_idx];
-                    if (ship.is_respawning_internal || !ship.alive) continue;
-                    double sx = ship.x;
-                    double sy = ship.y;
+                // For each live, non-respawning ship, apply damage only from the closest mine within range
+                for (size_t ship_idx = 0; ship_idx < ships.size(); ++ship_idx) {
+                    Ship& ship = ships[ship_idx];
+                    if (ship.is_respawning_internal || !ship.alive) {
+                        continue;
+                    }
+                    if (ship.respawn_time_internal + CollisionEvent::TOLERANCE >= mine.countdown_timer) {
+                        // The mine blew up before the ship got out of respawn invincibility
+                        continue;
+                    }
+                    double sx, sy, collision_time;
+                    if (std::abs(mine.countdown_timer) <= 1e-12) {
+                        // The mine is exploding on a frame boundary, so no need to rewind anything
+                        sx = ship.x;
+                        sy = ship.y;
+                        collision_time = 0.0;
+                    } else {
+                        // Rewind objects
+                        std::tie(sx, sy) = ship.get_past_position(mine.countdown_timer, this->game_state.map_size_x, this->game_state.map_size_y);
+                        collision_time = std::min(0.0, mine.countdown_timer); // This min should be unnecessary, but just in case
+                    }
                     double dx = std::abs(sx - mine.x);
                     double dy = std::abs(sy - mine.y);
-                    if (dx > half_map_width) dx = map_width - dx;
-                    if (dy > half_map_height) dy = map_height - dy;
-                    double rs = mine.blast_radius + ship.radius;
-                    double sq_dist = dx*dx + dy*dy;
-                    if (sq_dist <= rs*rs) {
-                        collision_queue.emplace_back(0.0, sq_dist,
-                                                     m_idx, s_idx,
-                                                     CollisionType::MINE_SHIP, 0.0);
+                    if (dx > half_map_width) {
+                        dx = map_width - dx;
+                    }
+                    if (dy > half_map_height) {
+                        dy = map_height - dy;
+                    }
+
+                    double radius_sum = mine.blast_radius + ship.radius;
+                    double sq_dist = dx * dx + dy * dy;
+                    if (sq_dist <= radius_sum * radius_sum) {
+                        CollisionEvent collision_event(
+                            collision_time, sq_dist, mine_idx, ship_idx, CollisionType::MINE_SHIP
+                        );
+                        this->collision_queue.push_back(collision_event);
                     }
                 }
             }
@@ -2547,12 +2730,13 @@ private:
     }
 
 public:
-    KesslerGame(ShipState& ss, GameState& gs)
-    : asteroids(gs.asteroids), bullets(gs.bullets),
-      mines(gs.mines), ships(gs.ships),
-      time(gs.time), frame(gs.frame),
-      delta_time(gs.delta_time),
-      game_state(gs), ship_state(ss) {}
+    KesslerGame(ShipState& ship_state, GameState& game_state)
+    : asteroids(game_state.asteroids), bullets(game_state.bullets),
+      mines(game_state.mines), ships(game_state.ships),
+      time(game_state.time), frame(game_state.frame),
+      delta_time(game_state.delta_time),
+      game_state(game_state), ship_state(ship_state),
+      map_size_x(game_state.map_size_x), map_size_y(game_state.map_size_y) {}
 
     void run() {
         while (true) {
