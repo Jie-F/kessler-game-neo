@@ -6,6 +6,8 @@
 from typing import Any, Mapping, TypeVar, Callable, TypedDict
 from math import isfinite, isnan, inf, isinf
 
+from .settings_dicts import SettingsDict, UISettingsDict
+
 
 T = TypeVar('T')
 E = TypeVar('E')
@@ -97,8 +99,8 @@ UI_SETTINGS_SCHEMA: dict[str, UISchemaEntry] = {
 }
 
 
-def validate_ui_settings(ui: Mapping[str, Any]) -> dict[str, Any]:
-    out: dict[str, Any] = {}
+def validate_ui_settings(ui: UISettingsDict) -> UISettingsDict:
+    out: UISettingsDict = {}
     allowed_keys = set(UI_SETTINGS_SCHEMA)
     extra = set(ui) - allowed_keys
     if extra:
@@ -106,9 +108,9 @@ def validate_ui_settings(ui: Mapping[str, Any]) -> dict[str, Any]:
     for k, spec in UI_SETTINGS_SCHEMA.items():
         if k in ui:
             try:
-                val = spec['type'](ui[k])
+                val = spec['type'](ui[k])  # type: ignore[literal-required]
             except Exception as te:
-                raise type(te)(f"UI_settings['{k}'] is invalid: {te} (got value {ui[k]!r})") from te
+                raise type(te)(f"UI_settings['{k}'] is invalid: {te} (got value {ui[k]!r})") from te  # type: ignore[literal-required]
             # min/max constraints if provided
             if 'min' in spec or 'max' in spec:
                 try:
@@ -120,17 +122,17 @@ def validate_ui_settings(ui: Mapping[str, Any]) -> dict[str, Any]:
                     )
                 except Exception as ve:
                     raise type(ve)(f"UI_settings['{k}'] validation failed: {ve}") from ve
-            out[k] = val
+            out[k] = val  # type: ignore[literal-required]
         else:
-            out[k] = spec['default']
+            out[k] = spec['default']  # type: ignore[literal-required]
     return out
 
 
 def validate_game_settings(
-    settings: Mapping[str, Any], 
+    settings: SettingsDict, 
     GraphicsType: Any, 
     KesslerGraphics: type
-) -> dict[str, Any]:
+) -> SettingsDict:
     SCHEMA: dict[str, dict[str, Any]] = {
         'frequency':          {'type': coerce_float, 'default': 30.0, 'min': 0.0, 'field': 'frequency'},
         'perf_tracker':       {'type': coerce_bool,  'default': False},
@@ -145,7 +147,7 @@ def validate_game_settings(
         'competition_safe_mode': {'type': coerce_bool, 'default': True},
         'UI_settings':        {'type': lambda v: validate_ui_settings(v), 'default': None}
     }
-    out: dict[str, Any] = {}
+    out: SettingsDict = {}
     for k, spec in SCHEMA.items():
         if k == 'realtime_multiplier':
             # Needs default based on graphics_type (has to be validated *after* graphics_type)
@@ -158,7 +160,7 @@ def validate_game_settings(
         # Coercion/type validation and error wrapping
         try:
             if k in settings:
-                val = spec['type'](settings[k])
+                val = spec['type'](settings[k])  # type: ignore[literal-required]
             else:
                 val = spec['default']
         except Exception as te:
@@ -178,7 +180,7 @@ def validate_game_settings(
             except Exception as ve:
                 raise type(ve)(f"game_settings['{k}'] validation failed: {ve}") from ve
 
-        out[k] = val
+        out[k] = val  # type: ignore[literal-required]
 
     # Default logic for realtime_multiplier depends on graphics_type (0 if NoGraphics, 1 otherwise)
     graphics_type = out['graphics_type']
@@ -416,7 +418,7 @@ def validate_scenario_params(params: dict[str, Any]) -> dict[str, Any]:
     if asteroid_states is not None and num_asteroids is not None:
         raise ValueError("Specify only one of asteroid_states or num_asteroids, not both.")
     if asteroid_states is None and num_asteroids is None:
-        raise ValueError("Specify asteroid_states (list of dict) *or* num_asteroids (int).")
+        raise ValueError("Specify asteroid_states (list of dict) or num_asteroids (int).")
 
     # Validate map_size
     map_size_val = params.get("map_size", (1000, 800))

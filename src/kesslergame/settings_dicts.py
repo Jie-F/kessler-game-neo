@@ -30,4 +30,4 @@ class SettingsDict(TypedDict, total=False):
     time_limit: float
     random_ast_splits: bool
     competition_safe_mode: bool
-    UI_settings: UISettingsDict | str
+    UI_settings: UISettingsDict

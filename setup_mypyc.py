@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright © 2022 Thales. All Rights Reserved.
+# Copyright © 2025 Thales. All Rights Reserved.
 # NOTICE: This file is subject to the license agreement defined in file 'LICENSE', which is part of
 # this source code package.
 
@@ -29,6 +29,7 @@ mypyc_modules = [
     "src/kesslergame/math_utils.py",
     "src/kesslergame/mines.py",
     "src/kesslergame/collisions.py",
+    "src/kesslergame/collision_event.py",
 #    "src/kesslergame/controller.py", DO NOT compile the controller.py, because adding the ship_id attribute from the derived class gets really messy and buggy
 #    "src/kesslergame/controller_gamepad.py",
     "src/kesslergame/kessler_game.py",
