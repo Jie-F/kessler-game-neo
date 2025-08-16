@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright © 2018-2020 Thales Avionics USA
+# Copyright © 2025 Thales. All Rights Reserved.
 # NOTICE: This file is subject to the license agreement defined in file 'LICENSE', which is part of
 # this source code package.
 
@@ -9,39 +9,7 @@ from math import isclose, inf, isinf, hypot, degrees, radians, atan2, cos, sin
 
 from .ship import Ship
 from .asteroid import Asteroid
-
-
-def coerce_to_builtin(obj: Any) -> Any:
-    """
-    Recursively coerce NumPy scalars/arrays (if present) into Python builtins,
-    without importing numpy
-    """
-    t = type(obj)
-    module = t.__module__
-
-    # NumPy scalar (np.float64, np.int32, etc.)
-    if module.startswith("numpy") and hasattr(obj, "item") and callable(obj.item):
-        try:
-            return obj.item()
-        except Exception:
-            pass  # fallthrough to original
-
-    # NumPy array (convert to tuple)
-    if module.startswith("numpy") and hasattr(obj, "tolist") and callable(obj.tolist):
-        try:
-            return tuple(coerce_to_builtin(x) for x in obj.tolist())
-        except Exception:
-            pass
-
-    # Builtin collections
-    if isinstance(obj, list):
-        return [coerce_to_builtin(x) for x in obj]
-    if isinstance(obj, tuple):
-        return tuple(coerce_to_builtin(x) for x in obj)
-    if isinstance(obj, dict):
-        return {k: coerce_to_builtin(v) for k, v in obj.items()}
-
-    return obj
+from .validate import validate_scenario_params
 
 
 def wrap_asteroid(asteroid_dict: dict[str, Any], map_size: tuple[int, int]) -> dict[str, Any]:
@@ -101,11 +69,22 @@ def nudge_asteroid_away_from_border(asteroid_dict: dict[str, Any], map_size: tup
 
 
 class Scenario:
-    def __init__(self, name: str = "Scenario", num_asteroids: int | None = None, asteroid_states: list[dict[str, Any]] | None = None,
-                 ship_states: list[dict[str, Any]] | None = None, map_size: tuple[int, int] | None = None, seed: int | None = None,
-                 time_limit: float | None = None, ammo_limit_multiplier: float | None = None, bullet_limit: int | None = None,
-                 mine_limit: int | None = None, stop_if_no_ammo: bool | None = None, stop_if_no_asteroids: bool | None = None,
-                 stop_if_no_ships: bool | None = None) -> None:
+    def __init__(
+        self,
+        name: str = "Scenario",
+        num_asteroids: int | None = None,
+        asteroid_states: list[dict[str, Any]] | None = None,
+        ship_states: list[dict[str, Any]] | None = None,
+        map_size: tuple[int, int] | None = None,
+        seed: int | None = None,
+        time_limit: float | None = None,
+        ammo_limit_multiplier: float | None = None,
+        bullet_limit: int | None = None,
+        mine_limit: int | None = None,
+        stop_if_no_ammo: bool | None = None,
+        stop_if_no_asteroids: bool | None = None,
+        stop_if_no_ships: bool | None = None
+    ) -> None:
         """
         Represents the configuration and initial state of a game scenario,
         including ships, asteroids, map size, ammo limits, and victory conditions.
@@ -124,141 +103,56 @@ class Scenario:
         :param stop_if_no_ships: Optional flag for stopping the scenario if no ships remain
         """
 
-        # Convert all inputs to builtin types from potentially numpy numbers or arrays
-        map_size = coerce_to_builtin(map_size) if map_size is not None else None
-        asteroid_states = coerce_to_builtin(asteroid_states) if asteroid_states is not None else None
-        ship_states = coerce_to_builtin(ship_states) if ship_states is not None else None
-        seed = coerce_to_builtin(seed)
-        time_limit = coerce_to_builtin(time_limit)
-        ammo_limit_multiplier = coerce_to_builtin(ammo_limit_multiplier)
-        bullet_limit = coerce_to_builtin(bullet_limit)
-        mine_limit = coerce_to_builtin(mine_limit)
+        # Validate and coerce scenario params (dict of all fields except self)
+        params = {
+            "name": name,
+            "num_asteroids": num_asteroids,
+            "asteroid_states": asteroid_states,
+            "ship_states": ship_states,
+            "map_size": map_size,
+            "seed": seed,
+            "time_limit": time_limit,
+            "ammo_limit_multiplier": ammo_limit_multiplier,
+            "bullet_limit": bullet_limit,
+            "mine_limit": mine_limit,
+            "stop_if_no_ammo": stop_if_no_ammo,
+            "stop_if_no_asteroids": stop_if_no_asteroids,
+            "stop_if_no_ships": stop_if_no_ships,
+        }
+        # Remove keys where the argument is None
+        params = {k: v for k, v in params.items() if v is not None}
+        validated = validate_scenario_params(params)
 
-        # Protected variable for managing the name, through getter/setter interface
-        self._name: str | None = None
+        # Assign all validated/canonical values
+        self._name: str = validated["name"]
+        self.map_size: tuple[int, int] = validated["map_size"]
+        self.asteroid_states: list[dict[str, Any]] = validated["asteroid_states"]
+        self.ship_states: list[dict[str, Any]] = validated["ship_states"]
+        self.seed: int | None = validated["seed"]
+        self.time_limit: float | None = validated["time_limit"]
+        self._ammo_limit_multiplier: float | None = validated["ammo_limit_multiplier"]
+        self.bullet_limit: int | None = validated["bullet_limit"]
+        self.mine_limit: int | None = validated["mine_limit"]
+        self.stop_if_no_ammo: bool = validated["stop_if_no_ammo"]
+        self.stop_if_no_asteroids: bool = validated["stop_if_no_asteroids"]
+        self.stop_if_no_ships: bool = validated["stop_if_no_ships"]
 
-        # Store name as string using setter
-        self.name = name
-
-        # Store map size
-        if map_size is None:
-            self.map_size = (1000, 800)
-        else:
-            if not (
-                isinstance(map_size, tuple) and
-                len(map_size) == 2 and
-                all(isinstance(x, int) and x > 0 for x in map_size)
-            ):
-                raise ValueError(f"map_size must be a tuple of two positive integers, got {map_size!r}")
-            self.map_size = map_size
-
-        # Store ship states if not None, otherwise, create one ship at center
-        self.ship_states = ship_states if ship_states is not None else [{"position": (self.map_size[0] / 2, self.map_size[1] / 2)}]
-
-        # Set the time_limit to infinity if it is 0
-        # If the time limit was not defined, leave it as none, so that the game settings could potentially override this
-        self.time_limit: float | None
-        if time_limit is None:
-            self.time_limit = None
-        elif time_limit == 0.0 or (isinf(time_limit) and time_limit > 0.0):
-            self.time_limit = inf
-        elif time_limit > 0.0:
-            self.time_limit = time_limit
-        else:
-            raise ValueError("time_limit must be positive, 0 for unlimited, or None")
-
-        # Store random seed
-        if seed is not None and not isinstance(seed, int):
-            raise ValueError(f"seed must be an integer or None, got {type(seed).__name__}")
-        self.seed = seed
-
-        # Build asteroids list
-        self.asteroid_states = list()
-        # Check for mismatch between explicitly defined number of asteroids and tuple of states
-        if num_asteroids is not None and asteroid_states is not None:
-            raise ValueError("Both 'num_asteroids' and 'asteroid_states' are specified for Scenario() constructor. Make sure to only define one of these arguments")
-        elif asteroid_states is not None:
-            # Store asteroid states
-            self.asteroid_states = asteroid_states
-        elif num_asteroids is not None:
-            self.asteroid_states = [dict() for _ in range(num_asteroids)]
-        else:
-            raise (ValueError("Please define 'num_asteroids' or 'asteroid_states' to create valid custom starting states for the environment"))
-
-        # Set the ammo limit multiplier
-        if ammo_limit_multiplier is not None and ammo_limit_multiplier < 0.0:
-            raise ValueError("Ammo limit multiplier must be > 0. If unlimited ammo is desired, use 0.0, or do not pass the ammo limit multiplier")
-
-        if ammo_limit_multiplier is not None and bullet_limit is not None:
-            raise ValueError("Both 'ammo_limit_multiplier' and 'bullet_limit' are specified for Scenario() constructor. Please define at most one of these arguments.")
-
-        self._ammo_limit_multiplier = ammo_limit_multiplier
-
-        # Validate bullet_limit
-        if bullet_limit is not None:
-            if not isinstance(bullet_limit, int):
-                raise ValueError(f"bullet_limit must be an integer, got {type(bullet_limit).__name__}")
-            if bullet_limit < -1:
-                raise ValueError("bullet_limit must be -1 for unlimited, or a nonnegative integer")
-        self.bullet_limit = bullet_limit
-
-        # If using ammo_limit_multiplier, estimate bullets now
-        if self._ammo_limit_multiplier is not None:
-            assert self.bullet_limit is None
+        # If using ammo_limit_multiplier, estimate bullets now if not provided
+        if self._ammo_limit_multiplier is not None and self.bullet_limit is None:
             if self._ammo_limit_multiplier == 0.0:
                 self.bullet_limit = -1  # Unlimited
             else:
                 estimated_asteroid_count = sum(
-                    Scenario.count_asteroids(state.get("size", 3)) for state in self.asteroid_states
+                    Scenario.count_asteroids(ast.get("size", 3)) for ast in self.asteroid_states
                 )
                 self.bullet_limit = max(0, round(estimated_asteroid_count * self._ammo_limit_multiplier))
 
-        # Validate mine_limit
-        if mine_limit is not None:
-            if not isinstance(mine_limit, int):
-                raise ValueError(f"mine_limit must be an integer, got {type(mine_limit).__name__}")
-            if mine_limit < -1:
-                raise ValueError("mine_limit must be -1 for unlimited, or a nonnegative integer")
-        self.mine_limit = mine_limit
-
-        # Validate that bullets are specified either nowhere, in the ship state, or in the scenario. But not both!
-        if any("bullets_remaining" in ship for ship in self.ship_states) and self.bullet_limit is not None:
-            raise ValueError("Both 'bullets_remaining' in ship states, and 'bullet_limit' in the scenario are specified. Please only specify in one place or the other.")
-
-        # Validate that mines are specified either nowhere, in the ship state, or in the scenario. But not both!
-        if any("mines_remaining" in ship for ship in self.ship_states) and self.mine_limit is not None:
-            raise ValueError("Both 'mines_remaining' in ship states, and 'mine_limit' in the scenario are specified. Please only specify in one place or the other.")
-
-        # Validate the ship states' bullet and mine limits
+        # Inject bullet/mine limits into ships, if global limit provided and not set in ship
         for ship in self.ship_states:
-            if "bullets_remaining" in ship:
-                if not isinstance(ship["bullets_remaining"], int) or ship["bullets_remaining"] < -1:
-                    raise ValueError("Ship's bullets_remaining must be an integer of -1 for infinite, or nonnegative.")
-            if "mines_remaining" in ship:
-                if not isinstance(ship["mines_remaining"], int) or ship["mines_remaining"] < -1:
-                    raise ValueError("Ship's mines_remaining must be an integer of -1 for infinite, or nonnegative.")
-
-        # Inject the bullets and mines limit into the ship states, if specified
-        if self.bullet_limit is not None:
-            for ship in self.ship_states:
-                if "bullets_remaining" not in ship:
-                    ship["bullets_remaining"] = self.bullet_limit
-        if self.mine_limit is not None:
-            for ship in self.ship_states:
-                if "mines_remaining" not in ship:
-                    ship["mines_remaining"] = self.mine_limit
-
-        if stop_if_no_ammo is not None and not isinstance(stop_if_no_ammo, bool):
-            raise ValueError(f"stop_if_no_ammo must be a boolean or None, got {type(stop_if_no_ammo).__name__}")
-        self.stop_if_no_ammo = stop_if_no_ammo if stop_if_no_ammo is not None else False
-
-        if stop_if_no_asteroids is not None and not isinstance(stop_if_no_asteroids, bool):
-            raise ValueError(f"stop_if_no_asteroids must be a boolean or None, got {type(stop_if_no_asteroids).__name__}")
-        self.stop_if_no_asteroids = stop_if_no_asteroids if stop_if_no_asteroids is not None else True
-
-        if stop_if_no_ships is not None and not isinstance(stop_if_no_ships, bool):
-            raise ValueError(f"stop_if_no_ships must be a boolean or None, got {type(stop_if_no_ships).__name__}")
-        self.stop_if_no_ships = stop_if_no_ships if stop_if_no_ships is not None else True
+            if self.bullet_limit is not None and "bullets_remaining" not in ship:
+                ship["bullets_remaining"] = self.bullet_limit
+            if self.mine_limit is not None and "mines_remaining" not in ship:
+                ship["mines_remaining"] = self.mine_limit
 
     @property
     def name(self) -> str | None:

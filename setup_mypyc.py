@@ -39,6 +39,7 @@ mypyc_modules = [
     "src/kesslergame/ship.py",
     "src/kesslergame/state_models.py",
     "src/kesslergame/team.py",
+    "src/kesslergame/validate.py",
     "src/kesslergame/graphics/graphics_base.py",
     "src/kesslergame/graphics/graphics_handler.py",
     "src/kesslergame/graphics/graphics_plt.py",
