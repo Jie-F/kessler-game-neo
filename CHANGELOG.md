@@ -31,6 +31,7 @@
 - Added comprehensive score tracking for all 5 collision types (bullet-asteroid, ship-asteroid, ship-ship, mine-ship, mine-asteroid)
 - Added comprehensive death tracking for 3 death types (asteroid, ship, mine)
 - Sanitize Scenarios to remove numpy types, and only use builtin Python types
+- For PEP 517/518 compliance, unified setup.py and setup_mypyc.py and use "python -m build --wheel" to build wheels instead of "python setup_mypyc.py bdist_wheel"
 
 ## [2.4.0] - 28 July 2025
 - Fixed building MyPyC compiled wheels, so compiled modules are now actually being run to provide a 4-10X+ speed benefit over interpreted
