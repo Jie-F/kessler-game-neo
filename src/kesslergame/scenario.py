@@ -5,7 +5,7 @@
 
 from typing import Any
 import random
-from math import isclose, inf, isinf, hypot, degrees, radians, atan2, cos, sin
+from math import isclose, hypot, degrees, radians, atan2, cos, sin
 
 from .ship import Ship
 from .asteroid import Asteroid
@@ -215,11 +215,7 @@ class Scenario:
                 has_angle = "angle" in asteroid_state
 
                 if has_velocity:
-                    if has_speed or has_angle:
-                        raise ValueError(
-                            "Asteroid state cannot contain both 'velocity' and 'speed' or 'angle'. "
-                            "If specifying 'velocity', please omit 'speed/angle'"
-                        )
+                    assert not (has_speed or has_angle)
                     vx, vy = asteroid_state.pop("velocity")
                     speed = hypot(vx, vy)
                     angle = degrees(atan2(vy, vx)) % 360.0
@@ -231,7 +227,8 @@ class Scenario:
 
                 # Apply position preprocessing as needed
                 asteroid_state = wrap_asteroid(asteroid_state, self.map_size)
-                asteroid_state = nudge_asteroid_away_from_border(asteroid_state, self.map_size)
+                if "speed" in asteroid_state and "angle" in asteroid_state:
+                    asteroid_state = nudge_asteroid_away_from_border(asteroid_state, self.map_size)
 
                 # Create the asteroid object
                 asteroids.append(Asteroid(**asteroid_state))

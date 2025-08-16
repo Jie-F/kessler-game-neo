@@ -53,7 +53,7 @@ class KesslerGame:
             settings = {}
         validated_settings = validate_game_settings(
             settings,
-            GraphicsType=GraphicsType, 
+            GraphicsType=GraphicsType,
             KesslerGraphics=KesslerGraphics
         )
 

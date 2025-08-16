@@ -3,6 +3,8 @@
 # NOTICE: This file is subject to the license agreement defined in file 'LICENSE', which is part of
 # this source code package.
 
+from __future__ import annotations
+
 from typing import ClassVar
 from enum import IntEnum
 

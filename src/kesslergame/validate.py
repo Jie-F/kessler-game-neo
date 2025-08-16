@@ -3,7 +3,7 @@
 # NOTICE: This file is subject to the license agreement defined in file 'LICENSE', which is part of
 # this source code package.
 
-from typing import Any, Mapping, TypeVar, Callable, TypedDict
+from typing import Any, Mapping, TypeVar, Callable, TypedDict, NoReturn
 from math import isfinite, isnan, inf, isinf
 
 from .settings_dicts import SettingsDict, UISettingsDict
@@ -11,6 +11,10 @@ from .settings_dicts import SettingsDict, UISettingsDict
 
 T = TypeVar('T')
 E = TypeVar('E')
+
+
+def raise_(ex: Exception) -> NoReturn:
+    raise ex
 
 
 def is_numpy_scalar(obj: Any) -> bool:
@@ -129,23 +133,23 @@ def validate_ui_settings(ui: UISettingsDict) -> UISettingsDict:
 
 
 def validate_game_settings(
-    settings: SettingsDict, 
-    GraphicsType: Any, 
+    settings: SettingsDict,
+    GraphicsType: Any,
     KesslerGraphics: type
 ) -> SettingsDict:
     SCHEMA: dict[str, dict[str, Any]] = {
-        'frequency':          {'type': coerce_float, 'default': 30.0, 'min': 0.0, 'field': 'frequency'},
-        'perf_tracker':       {'type': coerce_bool,  'default': False},
-        'prints_on':          {'type': coerce_bool,  'default': True},
-        'graphics_type':      {'type': lambda v: coerce_enum(GraphicsType, v), 'default': GraphicsType.Tkinter},
-        'graphics_obj':       {'type': lambda v: v if (v is None or isinstance(v, KesslerGraphics)) else (_ for _ in ()).throw(TypeError("graphics_obj must be KesslerGraphics or None")), 'default': None},
+        'frequency': {'type': coerce_float, 'default': 30.0, 'min': 0.0, 'field': 'frequency'},
+        'perf_tracker': {'type': coerce_bool, 'default': False},
+        'prints_on': {'type': coerce_bool, 'default': True},
+        'graphics_type': {'type': lambda v: coerce_enum(GraphicsType, v), 'default': GraphicsType.Tkinter},
+        'graphics_obj': {'type': lambda v: v if (v is None or isinstance(v, KesslerGraphics)) else raise_(TypeError("graphics_obj must be KesslerGraphics or None")), 'default': None},
         # Special logic for default depends on graphics_type
-        'realtime_multiplier':{'type': coerce_float, 'default': None, 'min': 0.0, 'field': 'realtime_multiplier'},
-        'frame_skip':         {'type': coerce_int,   'default': None, 'min': 1, 'field': 'frame_skip'},
-        'time_limit':         {'type': coerce_float, 'default': inf, 'min': 0.0, 'allow_inf': True, 'field': 'time_limit'},
-        'random_ast_splits':  {'type': coerce_bool,  'default': False},
+        'realtime_multiplier': {'type': coerce_float, 'default': None, 'min': 0.0, 'field': 'realtime_multiplier'},
+        'frame_skip': {'type': coerce_int, 'default': None, 'min': 1, 'field': 'frame_skip'},
+        'time_limit': {'type': coerce_float, 'default': inf, 'min': 0.0, 'allow_inf': True, 'field': 'time_limit'},
+        'random_ast_splits': {'type': coerce_bool, 'default': False},
         'competition_safe_mode': {'type': coerce_bool, 'default': True},
-        'UI_settings':        {'type': lambda v: validate_ui_settings(v), 'default': None}
+        'UI_settings': {'type': lambda v: validate_ui_settings(v), 'default': None}
     }
     out: SettingsDict = {}
     for k, spec in SCHEMA.items():
@@ -270,7 +274,7 @@ def validate_ship_state(ship: Mapping[str, Any]) -> dict[str, Any]:
             if spec['type'] == 'tuple2':
                 # Must be tuple or list of length 2 of numbers
                 if not (isinstance(val, (tuple, list)) and len(val) == 2):
-                    raise TypeError(f"ship_state['position'] must be tuple/list of length 2")
+                    raise TypeError("ship_state['position'] must be tuple/list of length 2")
                 x, y = val
                 try:
                     x_f = coerce_float(x)
@@ -298,9 +302,9 @@ def validate_ship_state(ship: Mapping[str, Any]) -> dict[str, Any]:
                     raise TypeError(f"ship_state['{k}'] is invalid: {te} (got value {val!r})")
                 try:
                     val_valid = validate_number(
-                        val_f, 
-                        min_val=spec.get('min'), 
-                        max_val=spec.get('max'), 
+                        val_f,
+                        min_val=spec.get('min'),
+                        max_val=spec.get('max'),
                         field=f"ship_state['{k}']"
                     )
                 except Exception as ve:
@@ -414,7 +418,7 @@ def validate_scenario_params(params: dict[str, Any]) -> dict[str, Any]:
     """
     # num_asteroids OR asteroid_states, not both, not neither
     asteroid_states = params.get("asteroid_states")
-    num_asteroids  = params.get("num_asteroids")
+    num_asteroids = params.get("num_asteroids")
     if asteroid_states is not None and num_asteroids is not None:
         raise ValueError("Specify only one of asteroid_states or num_asteroids, not both.")
     if asteroid_states is None and num_asteroids is None:
@@ -512,10 +516,10 @@ def validate_scenario_params(params: dict[str, Any]) -> dict[str, Any]:
 
     # ENFORCE CROSS-LIMITS: bullets/mines scenario vs per-ship
     has_bullet_limit = res["bullet_limit"] is not None
-    has_mine_limit   = res["mine_limit"] is not None
+    has_mine_limit = res["mine_limit"] is not None
 
     any_ship_bullets = any("bullets_remaining" in ship for ship in valid_ships)
-    any_ship_mines   = any("mines_remaining" in ship for ship in valid_ships)
+    any_ship_mines = any("mines_remaining" in ship for ship in valid_ships)
 
     if has_bullet_limit and any_ship_bullets:
         raise ValueError(
