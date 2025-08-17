@@ -841,10 +841,21 @@ class KesslerGame:
             self.enqueue_bullet_asteroid_collisions(self.bullets, self.asteroids, self.delta_time)
             self.enqueue_ship_asteroid_collisions(self.ships, self.asteroids, self.delta_time)
             self.enqueue_ship_ship_collisions(self.ships)
-            self.enqueue_mine_asteroid_collisions(self.mines, self.asteroids, self.delta_time)
-            self.enqueue_mine_ship_collisions(self.mines, self.ships)
 
-            heapify(self.collision_queue)  # Create priority queue in O(n)
+            # Check whether mines are detonating
+            mines_to_cull.clear()
+            mines_detonating: bool = False
+            for mine_idx, mine in enumerate(self.mines):
+                if mine.detonating:
+                    mines_detonating = True
+                    mines_to_cull.append(mine_idx)
+                    mine.destruct()  # The mine destruct method currently does nothing
+            if mines_detonating:
+                self.enqueue_mine_asteroid_collisions(self.mines, self.asteroids, self.delta_time)
+                self.enqueue_mine_ship_collisions(self.mines, self.ships)
+
+            # Create priority queue in O(n). This is faster than doing heappush for each event, which would be O(nlogn) overall
+            heapify(self.collision_queue)
 
             # --- RESOLVE COLLISIONS IN THE QUEUE UNTIL IT IS EMPTY ---
 
@@ -913,8 +924,10 @@ class KesslerGame:
                             continue
 
                         ship = self.ships[ship_idx]
+
                         assert ship.alive
                         if ship.is_respawning_internal:
+                            # The ship is alive, but it's currently in respawn invulnerability, so skip
                             continue
                         asteroid = self.asteroids[ast_idx]
 
@@ -963,6 +976,7 @@ class KesslerGame:
 
                         assert ship1.alive and ship2.alive
                         if ship1.is_respawning_internal or ship2.is_respawning_internal:
+                            # The ship is alive, but it's currently in respawn invulnerability, so skip
                             continue
 
                         # Rollback
@@ -1043,6 +1057,7 @@ class KesslerGame:
 
                         assert ship.alive
                         if ship.is_respawning_internal:
+                            # The ship is alive, but it's currently in respawn invulnerability, so skip
                             continue
 
                         # Rewind if necessary
@@ -1067,7 +1082,7 @@ class KesslerGame:
                         ship.mine_deaths += 1
 
             # Now that all collisions are handled and resolved, the final step is to cull the removed objects
-            # Cull asteroids using swap and pop. The list of indices to cull is unique
+            # Cull asteroids using swap and pop, in reverse index order. The list of indices to cull is unique
             for ast_idx in sorted(asteroids_to_cull, reverse=True):
                 self.asteroids[ast_idx] = self.asteroids[-1]
                 self.asteroids.pop()
@@ -1076,8 +1091,8 @@ class KesslerGame:
                     self.game_state.remove_asteroid(ast_idx)
 
             # Cull bullets that are off the map
-            # It might be tempting to cull a bullet if both the head and tail are out of bounds. And this was the original logic.
-            # But this misses something. What if the tail and head were out of bounds, but the middle of the bullet was still inbounds in the corner of a map?
+            # It is tempting, but insufficient to cull a bullet if just both the head and tail are out of bounds.
+            # Because in the case of if the tail and head were out of bounds, but the middle of the bullet was still inbounds in the corner of a map.
             # This is something that is geometrically plausible especially at higher framerates, and the ship is peeking its head into the map when shooting a bullet!
             for bul_idx, bullet in enumerate(self.bullets):
                 if bul_idx in bullets_to_cull:
@@ -1088,7 +1103,7 @@ class KesslerGame:
                     bullet.destruct()
                     bullets_to_cull.append(bul_idx)
 
-            # Cull bullets using swap and pop
+            # Cull bullets using swap and pop, in reverse index order
             for bul_idx in sorted(bullets_to_cull, reverse=True):
                 self.bullets[bul_idx] = self.bullets[-1]
                 self.bullets.pop()
@@ -1096,28 +1111,23 @@ class KesslerGame:
                     assert self.game_state is not None
                     self.game_state.remove_bullet(bul_idx)
 
-            # Cull mines
-            mines_to_cull.clear()
-            for mine_idx, mine in enumerate(self.mines):
-                if mine.detonating:
-                    mines_to_cull.append(mine_idx)
-                    mine.destruct()  # The mine destruct method does nothing
-            mines_to_cull.reverse()  # It's in sorted ascending order, but we need it in descending order
-            for mine_idx in mines_to_cull:
-                self.mines[mine_idx] = self.mines[-1]
-                self.mines.pop()
-                if not self.competition_safe_mode:
-                    assert self.game_state is not None
-                    self.game_state.remove_mine(mine_idx)
+            if mines_detonating:
+                # Must swap and pop with indices sorted in descending order
+                # No need to sort, since they were collected in ascending order. Just reverse iterate.
+                for mine_idx in reversed(mines_to_cull):
+                    self.mines[mine_idx] = self.mines[-1]
+                    self.mines.pop()
+                    if not self.competition_safe_mode:
+                        assert self.game_state is not None
+                        self.game_state.remove_mine(mine_idx)
 
             # Cull ships if they are all out of lives
-            # We don't cull a ship just because it took damage this frame! They may still have more lives.
-            new_liveships = [ship for ship in self.liveships if ship.alive]
             if ships_to_cull:
+                new_liveships = [ship for ship in self.liveships if ship.alive]
                 self.liveships = new_liveships
                 if not self.competition_safe_mode:
                     assert self.game_state is not None
-                    self.game_state.update_ships([ship.state for ship in self.liveships])
+                    self.game_state.update_ships([ship.state for ship in new_liveships])
 
             # Update performance tracker with collisions timing
             if self.perf_tracker:
