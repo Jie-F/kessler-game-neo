@@ -2,8 +2,15 @@ import random
 import logging
 import os
 from kesslergame import Scenario, KesslerGame, GraphicsType, KesslerController, StopReason
-from math import sqrt, inf
+from math import inf
 import argparse
+
+# The purpose of this test is to ensure that the game's physics work the same way regardless of framerate (within reasonable bounds)
+# A controller that only changes its action each second is used. For integer framerates, the seconds are guaranteed to be multiples of
+# the two framerates used, so this ensures that the same actions are commanded in both cases, at the same times.
+# This test can catch many bugs in the game's physics.
+# The expected behavior of this test is that mismatches should occur about one in a million trials, due to numeric imprecision. The game should also never crash.
+# 100% framerate independence is not possible due to floating point precision error, and the butterfly effect over long scenarios.
 
 # Command-line argument parsing
 parser = argparse.ArgumentParser(description='Run Kessler game simulations.')

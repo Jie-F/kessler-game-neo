@@ -2,6 +2,16 @@ import random
 from kesslergame import Scenario, KesslerGame, GraphicsType, KesslerController
 from math import atan2, hypot, degrees
 
+# This test defines three scenarios where the mine explodes at the exact same coordinate as the asteroid.
+# The expected behavior is that the asteroid should split in the direction it was originally moving.
+# If the asteroid is not moving, then it defaults to an angle of 0, which is to the right.
+
+# Expected behaviors:
+# All cases: The mines explode on top of the asteroid with a distance of exactly 0. The game should not divide by zero, and should not crash.
+# Case 1: The asteroid splits and continues in its direction of travel
+# Case 2: The asteroid splits and continues in its direction of travel
+# Case 3: The asteroid splits, and as it was not traveling, it defaults to splitting with an angle of 0, and a (cos, sin) of (1, 0)
+
 # Set seed and graphics flag
 GRAPHICS = True
 FPS = 30
@@ -147,9 +157,3 @@ game = KesslerGame(settings=settings)
 score, _ = game.run(mine_test_1, controllers)
 score, _ = game.run(mine_test_2, controllers)
 score, _ = game.run(mine_test_3, controllers)
-
-# Expected behaviors:
-# All cases: The mines explode on top of the asteroid with a distance of exactly 0. The game should not divide by zero, and should not crash.
-# Case 1: The asteroid splits and continues in its direction of travel
-# Case 2: The asteroid splits and continues in its direction of travel
-# Case 3: The asteroid splits, and as it was not traveling, it defaults to splitting with an angle of 0, and a (cos, sin) of (1, 0)

@@ -1,9 +1,12 @@
 import random
 import logging
-import os
 from kesslergame import Scenario, KesslerGame, GraphicsType, KesslerController, StopReason
-from math import sqrt, inf
+from math import inf
 import argparse
+
+# This test uses a controller that randomly will raise exceptions, and also output invalid values.
+# The expected behavior is that, when COMPETITION_SAFE_MODE is True, the game should catch these errors and assign null actions to the ship for that timestep, and print a warning.
+# When COMPETITION_SAFE_MODE is False, the game should raise the exception at the controller call site, without the error propagating into the game.
 
 # Command-line argument parsing
 parser = argparse.ArgumentParser(description='Run Kessler game simulations.')
