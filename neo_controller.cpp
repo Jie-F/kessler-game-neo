@@ -570,6 +570,11 @@ struct Asteroid {
     Asteroid(double x, double y, double vx, double vy, int64_t size, double mass, double radius, double age = 0.0)
         : x(x), y(y), vx(vx), vy(vy), size(size), mass(mass), radius(radius), age(age) {}
 
+    void update(double delta_time, double map_size_x, double map_size_y) {
+        x = pymod(x + vx * delta_time, map_size_x);
+        y = pymod(y + vy * delta_time, map_size_y);
+    }
+
     std::string str() const {
         return "Asteroid(position=(" + std::to_string(x) + ", " + std::to_string(y)
             + "), velocity=(" + std::to_string(vx) + ", " + std::to_string(vy) + "), size=" + std::to_string(size)
@@ -677,12 +682,21 @@ struct Mine {
     Mine() = default;
     Mine(double x, double y, double mass, double fuse_time, double remaining_time)
         : x(x), y(y), mass(mass), fuse_time(fuse_time), remaining_time(remaining_time) {}
+    
+    void update(double delta_time) {
+        remaining_time -= delta_time;
+    }
+
     std::string str() const {
         return "Mine(position=(" + std::to_string(x) + ", " + std::to_string(y)
             + "), mass=" + std::to_string(mass) + ", fuse_time=" + std::to_string(fuse_time)
             + ", remaining_time=" + std::to_string(remaining_time) + ")";
     }
-    std::string repr() const { return str(); }
+
+    std::string repr() const {
+        return str();
+    }
+
     bool operator==(const Mine& other) const {
         //return x == other.x && y == other.y && mass == other.mass && fuse_time == other.fuse_time && remaining_time == other.remaining_time;
         return x == other.x && y == other.y && remaining_time == other.remaining_time;
@@ -693,8 +707,15 @@ struct Bullet {
     double x, y, vx, vy, tail_dx, tail_dy, heading, mass, length;
 
     Bullet() = default;
+
     Bullet(double x, double y, double vx, double vy, double tail_dx, double tail_dy, double heading, double mass, double length)
         : x(x), y(y), vx(vx), vy(vy), tail_dx(tail_dx), tail_dy(tail_dy), heading(heading), mass(mass) {}
+
+    void update(double delta_time, double map_size_x, double map_size_y) {
+        x += vx * delta_time;
+        y += vy * delta_time;
+    }
+
     std::string str() const {
         return "Bullet(position=(" + std::to_string(x) + ", " + std::to_string(y) + "), "
             + "velocity=(" + std::to_string(vx) + ", " + std::to_string(vy) + "), "
@@ -702,7 +723,11 @@ struct Bullet {
             + "heading=" + std::to_string(heading) + ", mass=" + std::to_string(mass) + "), "
             + "length=" + std::to_string(length) + ")";
     }
-    std::string repr() const { return str(); }
+
+    std::string repr() const {
+        return str();
+    }
+
     bool operator==(const Bullet& other) const {
         //return x == other.x && y == other.y && vx == other.vx && vy == other.vy && heading == other.heading && mass == other.mass && tail_dx == other.tail_dx && tail_dy == other.tail_dy;
         return x == other.x && y == other.y && vx == other.vx && vy == other.vy;
@@ -714,8 +739,7 @@ struct GameState {
     std::vector<Asteroid> asteroids;
     std::vector<Bullet> bullets;
     std::vector<Mine> mines;
-    double map_size_x;
-    double map_size_y;
+    std::pair<double, double> map_size;
     double time;
     double delta_time;
     double frame_rate;
@@ -727,11 +751,11 @@ struct GameState {
 
     GameState(const std::vector<Asteroid>& asteroids, const std::vector<Ship>& ships,
               const std::vector<Bullet>& bullets, const std::vector<Mine>& mines,
-              double map_size_x, double map_size_y,
+              std::pair<double, double> map_size,
               double time, double delta_time, double frame_rate,
               int64_t frame, double time_limit, bool random_asteroid_splits)
         : asteroids(asteroids), ships(ships), bullets(bullets), mines(mines),
-          map_size_x(map_size_x), map_size_y(map_size_y),
+          map_size(map_size),
           time(time), delta_time(delta_time), frame_rate(frame_rate),
           frame(frame), time_limit(time_limit),
           random_asteroid_splits(random_asteroid_splits) {}
@@ -751,7 +775,7 @@ struct GameState {
         for (const auto& m : mines)
             result += "    " + m.str() + ",\n";
         result += "  ],\n";
-        result += "  map_size=(" + std::to_string(map_size_x) + ", " + std::to_string(map_size_y) + "),\n";
+        result += "  map_size=(" + std::to_string(map_size.first) + ", " + std::to_string(map_size.second) + "),\n";
         result += "  time=" + std::to_string(time) + ",\n";
         result += "  delta_time=" + std::to_string(delta_time) + ",\n";
         result += "  frame_rate=" + std::to_string(frame_rate) + ",\n";
@@ -790,7 +814,7 @@ struct GameState {
             std::move(ships_copy),
             std::move(alive_bullets),
             std::move(alive_mines),
-            map_size_x, map_size_y,
+            map_size,
             time, delta_time, frame_rate,
             frame, time_limit, random_asteroid_splits
         );
@@ -809,8 +833,8 @@ struct GameState {
             return false;
         for (size_t i = 0; i < mines.size(); ++i)
             if (!(mines[i] == other.mines[i])) return false;
-        return map_size_x == other.map_size_x
-            && map_size_y == other.map_size_y
+        return map_size.first == other.map_size.first
+            && map_size.second == other.map_size.second
             && time == other.time
             && delta_time == other.delta_time
             && frame_rate == other.frame_rate
@@ -2103,6 +2127,12 @@ private:
 
     std::vector<CollisionEvent> collision_queue;
 
+    std::vector<size_t> ships_to_cull;
+    std::vector<size_t> asteroids_to_cull;
+    std::vector<size_t> bullets_to_cull;
+    std::vector<size_t> mines_to_cull;
+    std::vector<Asteroid> new_asteroids;
+
     void update_asteroid(Asteroid& asteroid) {
         asteroid.x = pymod(asteroid.x + asteroid.vx * delta_time, map_size_x);
         asteroid.y = pymod(asteroid.y + asteroid.vy * delta_time, map_size_y);
@@ -2716,16 +2746,337 @@ private:
         }
     }
 
-    // Process heap like Python
     void process_collisions() {
-        std::make_heap(collision_queue.begin(), collision_queue.end(),
-                       std::greater<CollisionEvent>());
+        // Create priority queue in O(n)
+        std::make_heap(collision_queue.begin(), collision_queue.end(), std::greater<CollisionEvent>());
+
+        // --- RESOLVE COLLISIONS IN THE QUEUE UNTIL IT IS EMPTY ---
+        ships_to_cull.clear();
+        asteroids_to_cull.clear();
+        bullets_to_cull.clear();
+        mines_to_cull.clear();
+        bool mines_detonating = false;
+        double last_time_offset = -delta_time;
+
         while (!collision_queue.empty()) {
-            std::pop_heap(collision_queue.begin(), collision_queue.end(),
-                          std::greater<CollisionEvent>());
-            CollisionEvent ev = collision_queue.back();
+            std::pop_heap(collision_queue.begin(), collision_queue.end(), std::greater<CollisionEvent>());
+            CollisionEvent event = collision_queue.back();
             collision_queue.pop_back();
-            // handle like Python
+
+            double dt = event.time_offset;
+
+            assert(-delta_time <= dt && dt <= 0.0);  // All events must happen within the previous frame
+            assert(dt + CollisionEvent::TOLERANCE >= last_time_offset);
+            last_time_offset = dt;
+
+            switch(event.collision_type) {
+            case CollisionEvent::BULLET_ASTEROID: {
+                size_t bul_idx = event.object_a_idx;
+                size_t ast_idx = event.object_b_idx;
+
+                if (std::find(bullets_to_cull.begin(), bullets_to_cull.end(), bul_idx) != bullets_to_cull.end() ||
+                    std::find(asteroids_to_cull.begin(), asteroids_to_cull.end(), ast_idx) != asteroids_to_cull.end())
+                    break;
+
+                Bullet& bullet = bullets[bul_idx];
+                Asteroid& asteroid = asteroids[ast_idx];
+
+                // Rewind
+                if (std::abs(dt) > CollisionEvent::TOLERANCE) {
+                    bullet.update(dt);
+                    asteroid.update(dt, map_size_x, map_size_y);
+                }
+
+                // Handle collision
+                bullets_to_cull.push_back(bul_idx);
+                asteroids_to_cull.push_back(ast_idx);
+
+                std::vector<Asteroid> new_asteroids = asteroid.destruct(&bullet, scenario.map_size, random_ast_splits);
+                bullet.destruct();
+
+                if (std::abs(dt) > CollisionEvent::TOLERANCE) {
+                    for (auto& a : new_asteroids) {
+                        a.update(-dt, map_size_x, map_size_y);
+                    }
+                }
+                size_t ast_idx_offset = asteroids.size();
+                asteroids.insert(asteroids.end(), new_asteroids.begin(), new_asteroids.end());
+
+                if (!competition_safe_mode) {
+                    assert(game_state != nullptr);
+                    std::vector<AsteroidState> states;
+                    for (const auto& a : new_asteroids) {
+                        states.push_back(a.state);
+                    }
+                    game_state->add_asteroids(states);
+                }
+                // Take care of possible collision events from these children asteroids this frame
+                if (std::abs(dt) > CollisionEvent::TOLERANCE) {
+                    enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset, true, bullets_to_cull);
+                    enqueue_mine_asteroid_collisions(mines, new_asteroids, -dt, ast_idx_offset, true);
+                    enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset, true);
+                }
+                // Track stats
+                bullet.owner->bullet_asteroid_hits += 1;
+                break;
+            }
+            case CollisionEvent::SHIP_ASTEROID: {
+                size_t ship_idx = event.object_a_idx;
+                size_t ast_idx  = event.object_b_idx;
+
+                if (std::find(ships_to_cull.begin(), ships_to_cull.end(), ship_idx) != ships_to_cull.end() ||
+                    std::find(asteroids_to_cull.begin(), asteroids_to_cull.end(), ast_idx) != asteroids_to_cull.end())
+                    break;
+
+                Ship& ship = ships[ship_idx];
+                assert(ship.alive);
+                if (ship.is_respawning_internal)
+                    break; // skip respawning ships
+
+                Asteroid& asteroid = asteroids[ast_idx];
+
+                // Rewind
+                if (std::abs(dt) > CollisionEvent::TOLERANCE) {
+                    ship.update(dt, map_size_x, map_size_y, false);
+                    asteroid.update(dt, map_size_x, map_size_y);
+                }
+
+                // Handle collision
+                std::vector<Asteroid> new_asteroids = asteroid.destruct(&ship, map_size_x, map_size_y, random_ast_splits);
+                ship.destruct(map_size_x, map_size_y);
+
+                if (std::abs(dt) > CollisionEvent::TOLERANCE) {
+                    for (auto& a : new_asteroids)
+                        a.update(-dt, map_size_x, map_size_y);
+                }
+                size_t ast_idx_offset = asteroids.size();
+                asteroids.insert(asteroids.end(), new_asteroids.begin(), new_asteroids.end());
+
+                if (!competition_safe_mode) {
+                    assert(game_state != nullptr);
+                    std::vector<AsteroidState> states;
+                    for (const auto& a : new_asteroids) states.push_back(a.state);
+                    game_state->add_asteroids(states);
+                }
+                if (std::abs(dt) > CollisionEvent::TOLERANCE) {
+                    enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset, true, bullets_to_cull);
+                    enqueue_mine_asteroid_collisions(mines, new_asteroids, -dt, ast_idx_offset, true);
+                    enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset, true);
+                }
+                if (ship.alive) {
+                    if (std::abs(dt) > CollisionEvent::TOLERANCE)
+                        ship.update(-dt, map_size_x, map_size_y, false);
+                } else {
+                    ships_to_cull.push_back(ship_idx);
+                }
+                asteroids_to_cull.push_back(ast_idx);
+                // Track stats
+                ship.ship_asteroid_hits += 1;
+                ship.asteroid_deaths += 1;
+                break;
+            }
+            case CollisionEvent::SHIP_SHIP: {
+                size_t ship1_idx = event.object_a_idx;
+                size_t ship2_idx = event.object_b_idx;
+
+                if (std::find(ships_to_cull.begin(), ships_to_cull.end(), ship1_idx) != ships_to_cull.end() ||
+                    std::find(ships_to_cull.begin(), ships_to_cull.end(), ship2_idx) != ships_to_cull.end())
+                    break;
+
+                Ship& ship1 = ships[ship1_idx];
+                Ship& ship2 = ships[ship2_idx];
+                assert(ship1.alive && ship2.alive);
+                if (ship1.is_respawning_internal || ship2.is_respawning_internal)
+                    break;
+
+                // Rollback
+                if (std::abs(dt) > CollisionEvent::TOLERANCE) {
+                    ship1.update(dt, map_size_x, map_size_y, false);
+                    ship2.update(dt, map_size_x, map_size_y, false);
+                }
+
+                // Handle collision
+                ship1.destruct(map_size_x, map_size_y);
+                ship2.destruct(map_size_x, map_size_y);
+
+                // Roll forward if alive
+                if (ship1.alive) {
+                    if (std::abs(dt) > CollisionEvent::TOLERANCE)
+                        ship1.update(-dt, map_size_x, map_size_y, false);
+                } else {
+                    ships_to_cull.push_back(ship1_idx);
+                }
+                if (ship2.alive) {
+                    if (std::abs(dt) > CollisionEvent::TOLERANCE)
+                        ship2.update(-dt, map_size_x, map_size_y, false);
+                } else {
+                    ships_to_cull.push_back(ship2_idx);
+                }
+                // Track stats
+                ship1.ship_ship_hits += 1;
+                ship2.ship_ship_hits += 1;
+                ship1.ship_deaths += 1;
+                ship2.ship_deaths += 1;
+                break;
+            }
+            case CollisionEvent::MINE_ASTEROID: {
+                size_t mine_idx = event.object_a_idx;
+                size_t ast_idx  = event.object_b_idx;
+
+                if (std::find(asteroids_to_cull.begin(), asteroids_to_cull.end(), ast_idx) != asteroids_to_cull.end()) {
+                    break;
+                }
+
+                Mine& mine = mines[mine_idx];
+                Asteroid& asteroid = asteroids[ast_idx];
+
+                mines_detonating = true;
+
+                // Rewind if necessary
+                if (std::abs(dt) > CollisionEvent::TOLERANCE) {
+                    mine.update(dt);
+                    asteroid.update(dt, map_size_x, map_size_y);
+                }
+
+                // Handle collision
+                std::vector<Asteroid> new_asteroids = asteroid.destruct(&mine, map_size_x, map_size_y, random_ast_splits);
+                asteroids_to_cull.push_back(ast_idx);
+
+                // Move back to the present
+                if (std::abs(dt) > CollisionEvent::TOLERANCE) {
+                    mine.update(-dt);
+                    for (auto& a : new_asteroids)
+                        a.update(-dt, map_size_x, map_size_y);
+                }
+                size_t ast_idx_offset = asteroids.size();
+                asteroids.insert(asteroids.end(), new_asteroids.begin(), new_asteroids.end());
+
+                if (!competition_safe_mode) {
+                    assert(game_state != nullptr);
+                    std::vector<AsteroidState> states;
+                    for (const auto& a : new_asteroids) states.push_back(a.state);
+                    game_state->add_asteroids(states);
+                }
+                if (std::abs(dt) > CollisionEvent::TOLERANCE) {
+                    enqueue_bullet_asteroid_collisions(bullets, new_asteroids, -dt, ast_idx_offset, true, bullets_to_cull);
+                    enqueue_mine_asteroid_collisions(mines, new_asteroids, -dt, ast_idx_offset, true);
+                    enqueue_ship_asteroid_collisions(ships, new_asteroids, -dt, ast_idx_offset, true);
+                }
+                // Track stats
+                mine.owner->mine_asteroid_hits += 1;
+                // This case doesn't cull the mine directly, assumes handled elsewhere if detonated.
+                break;
+            }
+            case CollisionEvent::MINE_SHIP: {
+                size_t mine_idx = event.object_a_idx;
+                size_t ship_idx = event.object_b_idx;
+
+                if (std::find(ships_to_cull.begin(), ships_to_cull.end(), ship_idx) != ships_to_cull.end())
+                    break;
+
+                Mine& mine = mines[mine_idx];
+                Ship& ship = ships[ship_idx];
+                assert(ship.alive);
+                if (ship.is_respawning_internal)
+                    break;
+
+                // Rewind if necessary
+                if (std::abs(dt) > CollisionEvent::TOLERANCE) {
+                    mine.update(dt);
+                    ship.update(dt, map_size_x, map_size_y, false);
+                }
+                // Handle collision
+                mine.destruct();
+                ship.destruct(map_size_x, map_size_y);
+                if (!ship.alive) {
+                    ships_to_cull.push_back(ship_idx);
+                }
+
+                // Rewind if necessary
+                if (std::abs(dt) > CollisionEvent::TOLERANCE) {
+                    mine.update(-dt);
+                    ship.update(-dt, map_size_x, map_size_y, false);
+                }
+                // Track stats
+                mine.owner->mine_ship_hits += 1;
+                ship.mine_deaths += 1;
+                break;
+            }
+            default:
+                // Handle or ignore unknown event
+                break;
+            }
+        }
+
+        // Cull asteroids, swap and pop in reverse index order, indices must be unique!
+        if (!asteroids_to_cull.empty()) {
+            std::sort(asteroids_to_cull.begin(), asteroids_to_cull.end(), std::greater<int>());
+            asteroids_to_cull.erase(std::unique(asteroids_to_cull.begin(), asteroids_to_cull.end()), asteroids_to_cull.end());
+            for (auto ast_idx : asteroids_to_cull) {
+                asteroids[ast_idx] = asteroids.back();
+                asteroids.pop_back();
+                if (!competition_safe_mode) {
+                    assert(game_state != nullptr);
+                    game_state->remove_asteroid(ast_idx);
+                }
+            }
+        }
+
+        // Cull bullets that are off the map
+        for (size_t bul_idx = 0; bul_idx < bullets.size(); ++bul_idx) {
+            if (std::find(bullets_to_cull.begin(), bullets_to_cull.end(), bul_idx) != bullets_to_cull.end())
+                continue;
+            Bullet& bullet = bullets[bul_idx];
+            double time_for_tail_to_leave = time_until_exit(
+                bullet.x + bullet.tail_delta_x, bullet.y + bullet.tail_delta_y,
+                bullet.vx, bullet.vy, scenario.map_width, scenario.map_height
+            );
+            if (time_for_tail_to_leave <= 0.0) {
+                bullet.destruct();
+                bullets_to_cull.push_back(bul_idx);
+            }
+        }
+        // Cull bullets using swap and pop, in reverse index order
+        if (!bullets_to_cull.empty()) {
+            std::sort(bullets_to_cull.begin(), bullets_to_cull.end(), std::greater<int>());
+            bullets_to_cull.erase(std::unique(bullets_to_cull.begin(), bullets_to_cull.end()), bullets_to_cull.end());
+            for (auto bul_idx : bullets_to_cull) {
+                bullets[bul_idx] = bullets.back();
+                bullets.pop_back();
+                if (!competition_safe_mode) {
+                    assert(game_state != nullptr);
+                    game_state->remove_bullet(bul_idx);
+                }
+            }
+        }
+
+        // Cull mines, if detonated
+        if (mines_detonating && !mines_to_cull.empty()) {
+            // Indices collected ascending: reverse iterate for swap and pop
+            for (auto it = mines_to_cull.rbegin(); it != mines_to_cull.rend(); ++it) {
+                int mine_idx = *it;
+                mines[mine_idx] = mines.back();
+                mines.pop_back();
+                if (!competition_safe_mode) {
+                    assert(game_state != nullptr);
+                    game_state->remove_mine(mine_idx);
+                }
+            }
+        }
+
+        // Cull ships if they are all out of lives
+        if (!ships_to_cull.empty()) {
+            std::vector<Ship> new_liveships;
+            for (auto& ship : liveships) {
+                if (ship.alive) new_liveships.push_back(ship);
+            }
+            liveships = new_liveships;
+            if (!competition_safe_mode) {
+                assert(game_state != nullptr);
+                std::vector<ShipState> new_states;
+                for (auto& ship : liveships) new_states.push_back(ship.state);
+                game_state->update_ships(new_states);
+            }
         }
     }
 
@@ -2739,25 +3090,36 @@ public:
       map_size_x(game_state.map_size_x), map_size_y(game_state.map_size_y) {}
 
     void run() {
-        while (true) {
-            auto [thrust, turn_rate, fire, drop_mine, terminate] =
-                controller.actions(ship_state, game_state);
-            if (terminate) break;
+        collision_queue.clear();
 
-            ship_state.apply_controls(thrust, turn_rate, fire, drop_mine);
+        while (true) {
+            auto [thrust, turn_rate, fire, drop_mine, terminate] = controller.actions(ship_state, game_state);
+            if (terminate) {
+                break;
+            }
+
+            ship_state.update(delta_time, thrust, turn_rate, fire, drop_mine);
 
             ++frame;
             time = frame * delta_time;
 
-            for (auto& s : ships) s.update(delta_time);
-            for (auto& a : asteroids) a.update(delta_time);
-            for (auto& b : bullets) b.update(delta_time);
-            for (auto& m : mines) m.update(delta_time);
+            //for (auto& s : ships) {
+            //    s.update(delta_time);
+            //}
+            for (auto& a : asteroids) {
+                a.update(delta_time, map_size_x, map_size_y);
+            }
+            for (auto& b : bullets) {
+                b.update(delta_time);
+            }
+            for (auto& m : mines) {
+                m.update(delta_time);
+            }
 
             collision_queue.clear();
             enqueue_bullet_asteroid_collisions(bullets, asteroids);
             enqueue_ship_asteroid_collisions(ships, asteroids);
-            enqueue_ship_ship_collisions(ships);
+            //enqueue_ship_ship_collisions(ships);
             enqueue_mine_asteroid_collisions(mines, asteroids);
             enqueue_mine_ship_collisions(mines, ships);
 
