@@ -146,8 +146,6 @@ NeoController.actions()
 //#include <nanobind/stl/vector.h>
 //#include <nanobind/stl/wstring.h>
 
-namespace nb = nanobind;
-
 constexpr double PI = std::numbers::pi;
 constexpr double TAU = 2.0 * PI;
 
@@ -240,11 +238,11 @@ constexpr inline double constexpr_sin(double x) {
     return negate ? -y : y;
 }
 
-constexpr double inf = std::numeric_limits<double>::infinity();
-//constexpr double nan = std::numeric_limits<double>::quiet_NaN();
+constexpr double INF = std::numeric_limits<double>::infinity();
+constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
 
 // Build Info
-constexpr const char* BUILD_NUMBER = "2025-07-08 Neo, for Kessler v2's latest version TBD";
+constexpr const char* BUILD_NUMBER = "2025-08-19 Neo, for Kessler v2.5.0";
 
 // Output Config
 constexpr bool DEBUG_MODE = false;
@@ -276,7 +274,7 @@ constexpr double UNWRAP_ASTEROID_TARGET_SELECTION_TIME_HORIZON = 2.3;
 constexpr double TARGETING_AIMING_UNDERTURN_ALLOWANCE_DEG = 6.0;
 
 // Asteroid priorities
-constexpr std::array<double, 5> ASTEROID_SIZE_SHOT_PRIORITY = {std::numeric_limits<double>::quiet_NaN(), 1, 2, 3, 4};
+constexpr std::array<double, 5> ASTEROID_SIZE_SHOT_PRIORITY = {NaN, 1, 2, 3, 4};
 
 // Optional weights for fitness function
 std::optional<std::array<double, 9>> fitness_function_weights = std::nullopt;
@@ -421,7 +419,7 @@ constexpr bool NEXT_TARGET_PLOTTING = false;
 constexpr bool MANEUVER_SIM_PLOTTING = false;
 constexpr double START_GAMESTATE_PLOTTING_AT_SECOND = 0.0;
 constexpr double NEW_TARGET_PLOT_PAUSE_TIME_S = 0.5;
-constexpr double SLOW_DOWN_GAME_AFTER_SECOND = inf;
+constexpr double SLOW_DOWN_GAME_AFTER_SECOND = INF;
 constexpr double SLOW_DOWN_GAME_PAUSE_TIME = 2.0;
 
 // Debug settings
@@ -616,6 +614,7 @@ struct Ship {
     std::pair<double, double> turn_rate_range;
     double max_speed;
     double drag;
+    std::vector<std::array<double, 8>> integration_initial_states;
 
     Ship() = default;
 
@@ -660,7 +659,9 @@ struct Ship {
             + ", drag=" + std::to_string(drag) + ")";
     }
 
-    std::string repr() const { return str(); }
+    std::string repr() const {
+        return str();
+    }
 
     bool operator==(const Ship& other) const {
         return x == other.x && y == other.y && vx == other.vx && vy == other.vy
@@ -786,7 +787,9 @@ struct GameState {
         return result;
     }
 
-    std::string repr() const { return str(); }
+    std::string repr() const {
+        return str();
+    }
 
     GameState copy() const {
         std::vector<Asteroid> alive_asteroids;
@@ -872,7 +875,9 @@ struct Target {
             + ", asteroid_will_get_hit_by_my_mine=" + std::to_string(asteroid_will_get_hit_by_my_mine)
             + ", asteroid_will_get_hit_by_their_mine=" + std::to_string(asteroid_will_get_hit_by_their_mine) + ")";
     }
-    std::string repr() const { return str(); }
+    std::string repr() const {
+        return str();
+    }
     //Target copy() const { return *this; }
 };
 
@@ -940,7 +945,11 @@ struct SimState {
             + ", asteroids_pending_death=" + (asteroids_pending_death ? "..." : "None")
             + ", forecasted_asteroid_splits=" + (forecasted_asteroid_splits ? "..." : "None") + ")";
     }
-    std::string repr() const { return str(); }
+
+    std::string repr() const {
+        return str();
+    }
+
     SimState copy() const {
         return SimState(
             timestep,
@@ -1302,36 +1311,36 @@ inline double sign(double x) {
 
 // ------------------------------- TYPEDDICT EQUIVALENTS -------------------------------
 
-Asteroid create_asteroid_from_dict(nb::dict d) {
-    auto pos = nb::cast<std::pair<double, double>>(d["position"]);
-    auto vel = nb::cast<std::pair<double, double>>(d["velocity"]);
+Asteroid create_asteroid_from_dict(nanobind::dict d) {
+    auto pos = nanobind::cast<std::pair<double, double>>(d["position"]);
+    auto vel = nanobind::cast<std::pair<double, double>>(d["velocity"]);
     return Asteroid(
         pos.first, pos.second,
         vel.first, vel.second,
-        nb::cast<int64_t>(d["size"]),
-        nb::cast<double>(d["mass"]),
-        nb::cast<double>(d["radius"])
+        nanobind::cast<int64_t>(d["size"]),
+        nanobind::cast<double>(d["mass"]),
+        nanobind::cast<double>(d["radius"])
     );
 }
 
-Ship create_ship_from_compact(const nb::list& ship_list) {
+Ship create_ship_from_compact(const nanobind::list& ship_list) {
     if (ship_list.size() != 12) {
         throw std::runtime_error("Ship list must contain exactly 12 elements.");
     }
 
     return Ship(
-        nb::cast<double>(ship_list[0]),  // x
-        nb::cast<double>(ship_list[1]),  // y
-        nb::cast<double>(ship_list[2]),  // vx
-        nb::cast<double>(ship_list[3]),  // vy
-        nb::cast<double>(ship_list[4]),  // speed
-        nb::cast<double>(ship_list[5]),  // heading
-        nb::cast<double>(ship_list[6]),  // mass
-        nb::cast<double>(ship_list[7]),  // radius
-        nb::cast<int64_t>(ship_list[8]), // id
-        nb::cast<int64_t>(ship_list[9]), // team
-        nb::cast<bool>(ship_list[10]),   // is_respawning
-        nb::cast<int64_t>(ship_list[11]),// lives_remaining
+        nanobind::cast<double>(ship_list[0]),  // x
+        nanobind::cast<double>(ship_list[1]),  // y
+        nanobind::cast<double>(ship_list[2]),  // vx
+        nanobind::cast<double>(ship_list[3]),  // vy
+        nanobind::cast<double>(ship_list[4]),  // speed
+        nanobind::cast<double>(ship_list[5]),  // heading
+        nanobind::cast<double>(ship_list[6]),  // mass
+        nanobind::cast<double>(ship_list[7]),  // radius
+        nanobind::cast<int64_t>(ship_list[8]), // id
+        nanobind::cast<int64_t>(ship_list[9]), // team
+        nanobind::cast<bool>(ship_list[10]),   // is_respawning
+        nanobind::cast<int64_t>(ship_list[11]),// lives_remaining
 
         // Defaults for non-ownship ships:
         // TODO: FIX DEFAULTS!
@@ -1352,98 +1361,98 @@ Ship create_ship_from_compact(const nb::list& ship_list) {
     );
 }
 
-Ship create_ownship_from_compact(const nb::list& ship_list) {
+Ship create_ownship_from_compact(const nanobind::list& ship_list) {
     if (ship_list.size() != 28) {
         throw std::runtime_error("Ownship list must contain exactly 28 elements.");
     }
 
     return Ship(
-        nb::cast<double>(ship_list[0]),   // x
-        nb::cast<double>(ship_list[1]),   // y
-        nb::cast<double>(ship_list[2]),   // vx
-        nb::cast<double>(ship_list[3]),   // vy
-        nb::cast<double>(ship_list[4]),   // speed
-        nb::cast<double>(ship_list[5]),   // heading
-        nb::cast<double>(ship_list[6]),   // mass
-        nb::cast<double>(ship_list[7]),   // radius
-        nb::cast<int64_t>(ship_list[8]),  // id
-        nb::cast<int64_t>(ship_list[9]),  // team
-        nb::cast<bool>(ship_list[10]),    // is_respawning
-        nb::cast<int64_t>(ship_list[11]), // lives_remaining
-        nb::cast<int64_t>(ship_list[12]), // bullets_remaining
-        nb::cast<int64_t>(ship_list[13]), // mines_remaining
-        nb::cast<bool>(ship_list[14]),    // can_fire
-        nb::cast<double>(ship_list[15]),  // fire_cooldown
-        nb::cast<double>(ship_list[16]),  // fire_rate
-        nb::cast<bool>(ship_list[17]),    // can_deploy_mine
-        nb::cast<double>(ship_list[18]),  // mine_cooldown
-        nb::cast<double>(ship_list[19]),  // mine_deploy_rate
-        nb::cast<double>(ship_list[20]),  // respawn_time_left
-        nb::cast<double>(ship_list[21]),  // respawn_time
+        nanobind::cast<double>(ship_list[0]),   // x
+        nanobind::cast<double>(ship_list[1]),   // y
+        nanobind::cast<double>(ship_list[2]),   // vx
+        nanobind::cast<double>(ship_list[3]),   // vy
+        nanobind::cast<double>(ship_list[4]),   // speed
+        nanobind::cast<double>(ship_list[5]),   // heading
+        nanobind::cast<double>(ship_list[6]),   // mass
+        nanobind::cast<double>(ship_list[7]),   // radius
+        nanobind::cast<int64_t>(ship_list[8]),  // id
+        nanobind::cast<int64_t>(ship_list[9]),  // team
+        nanobind::cast<bool>(ship_list[10]),    // is_respawning
+        nanobind::cast<int64_t>(ship_list[11]), // lives_remaining
+        nanobind::cast<int64_t>(ship_list[12]), // bullets_remaining
+        nanobind::cast<int64_t>(ship_list[13]), // mines_remaining
+        nanobind::cast<bool>(ship_list[14]),    // can_fire
+        nanobind::cast<double>(ship_list[15]),  // fire_cooldown
+        nanobind::cast<double>(ship_list[16]),  // fire_rate
+        nanobind::cast<bool>(ship_list[17]),    // can_deploy_mine
+        nanobind::cast<double>(ship_list[18]),  // mine_cooldown
+        nanobind::cast<double>(ship_list[19]),  // mine_deploy_rate
+        nanobind::cast<double>(ship_list[20]),  // respawn_time_left
+        nanobind::cast<double>(ship_list[21]),  // respawn_time
         std::make_pair(
-            nb::cast<double>(ship_list[22]), // thrust_min
-            nb::cast<double>(ship_list[23])  // thrust_max
+            nanobind::cast<double>(ship_list[22]), // thrust_min
+            nanobind::cast<double>(ship_list[23])  // thrust_max
         ),
         std::make_pair(
-            nb::cast<double>(ship_list[24]), // turn_rate_min
-            nb::cast<double>(ship_list[25])  // turn_rate_max
+            nanobind::cast<double>(ship_list[24]), // turn_rate_min
+            nanobind::cast<double>(ship_list[25])  // turn_rate_max
         ),
-        nb::cast<double>(ship_list[26]), // max_speed
-        nb::cast<double>(ship_list[27])  // drag
+        nanobind::cast<double>(ship_list[26]), // max_speed
+        nanobind::cast<double>(ship_list[27])  // drag
     );
 }
 
-Ship create_ship_from_dict_legacy(nb::dict d) {
-    auto pos = d.contains("position") ? nb::cast<std::pair<double, double>>(d["position"]) : std::make_pair(0.0, 0.0);
-    auto vel = d.contains("velocity") ? nb::cast<std::pair<double, double>>(d["velocity"]) : std::make_pair(0.0, 0.0);
-    auto thrust_range = d.contains("thrust_range") ? nb::cast<std::pair<double, double>>(d["thrust_range"]) : std::make_pair(-SHIP_MAX_THRUST, SHIP_MAX_THRUST);
-    auto turn_range = d.contains("turn_rate_range") ? nb::cast<std::pair<double, double>>(d["turn_rate_range"]) : std::make_pair(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE);
+Ship create_ship_from_dict_legacy(nanobind::dict d) {
+    auto pos = d.contains("position") ? nanobind::cast<std::pair<double, double>>(d["position"]) : std::make_pair(0.0, 0.0);
+    auto vel = d.contains("velocity") ? nanobind::cast<std::pair<double, double>>(d["velocity"]) : std::make_pair(0.0, 0.0);
+    auto thrust_range = d.contains("thrust_range") ? nanobind::cast<std::pair<double, double>>(d["thrust_range"]) : std::make_pair(-SHIP_MAX_THRUST, SHIP_MAX_THRUST);
+    auto turn_range = d.contains("turn_rate_range") ? nanobind::cast<std::pair<double, double>>(d["turn_rate_range"]) : std::make_pair(-SHIP_MAX_TURN_RATE, SHIP_MAX_TURN_RATE);
 
     return Ship(
         pos.first,
         pos.second,
         vel.first,
         vel.second,
-        d.contains("speed") ? nb::cast<double>(d["speed"]) : 0.0,
-        d.contains("heading") ? nb::cast<double>(d["heading"]) : 0.0,
-        d.contains("mass") ? nb::cast<double>(d["mass"]) : 0.0,
-        d.contains("radius") ? nb::cast<double>(d["radius"]) : 0.0,
-        d.contains("id") ? nb::cast<int64_t>(d["id"]) : 0,
-        d.contains("team") ? nb::cast<int64_t>(d["team"]) : 0,
-        d.contains("is_respawning") ? nb::cast<bool>(d["is_respawning"]) : false,
-        d.contains("lives_remaining") ? nb::cast<int64_t>(d["lives_remaining"]) : 0,
-//        d.contains("deaths") ? nb::cast<int64_t>(d["deaths"]) : 0,
-        d.contains("bullets_remaining") ? nb::cast<int64_t>(d["bullets_remaining"]) : 0,
-        d.contains("mines_remaining") ? nb::cast<int64_t>(d["mines_remaining"]) : 0,
-        d.contains("can_fire") ? nb::cast<bool>(d["can_fire"]) : true,
-        d.contains("fire_cooldown") ? nb::cast<double>(d["fire_cooldown"]) : 0.0,
-        d.contains("fire_rate") ? nb::cast<double>(d["fire_rate"]) : 0.0,
-        d.contains("can_deploy_mine") ? nb::cast<bool>(d["can_deploy_mine"]) : true,
-        d.contains("mine_cooldown") ? nb::cast<double>(d["mine_cooldown"]) : 0.0,
-        d.contains("mine_deploy_rate") ? nb::cast<double>(d["mine_deploy_rate"]) : 0.0,
-        d.contains("respawn_time_left") ? nb::cast<double>(d["respawn_time_left"]) : 0.0,
-        d.contains("respawn_time") ? nb::cast<double>(d["respawn_time"]) : 0.0,
+        d.contains("speed") ? nanobind::cast<double>(d["speed"]) : 0.0,
+        d.contains("heading") ? nanobind::cast<double>(d["heading"]) : 0.0,
+        d.contains("mass") ? nanobind::cast<double>(d["mass"]) : 0.0,
+        d.contains("radius") ? nanobind::cast<double>(d["radius"]) : 0.0,
+        d.contains("id") ? nanobind::cast<int64_t>(d["id"]) : 0,
+        d.contains("team") ? nanobind::cast<int64_t>(d["team"]) : 0,
+        d.contains("is_respawning") ? nanobind::cast<bool>(d["is_respawning"]) : false,
+        d.contains("lives_remaining") ? nanobind::cast<int64_t>(d["lives_remaining"]) : 0,
+//        d.contains("deaths") ? nanobind::cast<int64_t>(d["deaths"]) : 0,
+        d.contains("bullets_remaining") ? nanobind::cast<int64_t>(d["bullets_remaining"]) : 0,
+        d.contains("mines_remaining") ? nanobind::cast<int64_t>(d["mines_remaining"]) : 0,
+        d.contains("can_fire") ? nanobind::cast<bool>(d["can_fire"]) : true,
+        d.contains("fire_cooldown") ? nanobind::cast<double>(d["fire_cooldown"]) : 0.0,
+        d.contains("fire_rate") ? nanobind::cast<double>(d["fire_rate"]) : 0.0,
+        d.contains("can_deploy_mine") ? nanobind::cast<bool>(d["can_deploy_mine"]) : true,
+        d.contains("mine_cooldown") ? nanobind::cast<double>(d["mine_cooldown"]) : 0.0,
+        d.contains("mine_deploy_rate") ? nanobind::cast<double>(d["mine_deploy_rate"]) : 0.0,
+        d.contains("respawn_time_left") ? nanobind::cast<double>(d["respawn_time_left"]) : 0.0,
+        d.contains("respawn_time") ? nanobind::cast<double>(d["respawn_time"]) : 0.0,
         thrust_range,
         turn_range,
-        d.contains("max_speed") ? nb::cast<double>(d["max_speed"]) : SHIP_MAX_SPEED,
-        d.contains("drag") ? nb::cast<double>(d["drag"]) : SHIP_DRAG
+        d.contains("max_speed") ? nanobind::cast<double>(d["max_speed"]) : SHIP_MAX_SPEED,
+        d.contains("drag") ? nanobind::cast<double>(d["drag"]) : SHIP_DRAG
     );
 }
 
-Mine create_mine_from_dict(nb::dict d) {
-    auto pos = nb::cast<std::pair<double, double>>(d["position"]);
+Mine create_mine_from_dict(nanobind::dict d) {
+    auto pos = nanobind::cast<std::pair<double, double>>(d["position"]);
     return Mine(
         pos.first, pos.second,
-        nb::cast<double>(d["mass"]),
-        nb::cast<double>(d["fuse_time"]),
-        nb::cast<double>(d["remaining_time"])
+        nanobind::cast<double>(d["mass"]),
+        nanobind::cast<double>(d["fuse_time"]),
+        nanobind::cast<double>(d["remaining_time"])
     );
 }
 
-Bullet create_bullet_from_dict(nb::dict d) {
-    auto pos = nb::cast<std::pair<double, double>>(d["position"]);
-    auto vel = nb::cast<std::pair<double, double>>(d["velocity"]);
-    double heading = nb::cast<double>(d["heading"]);
+Bullet create_bullet_from_dict(nanobind::dict d) {
+    auto pos = nanobind::cast<std::pair<double, double>>(d["position"]);
+    auto vel = nanobind::cast<std::pair<double, double>>(d["velocity"]);
+    double heading = nanobind::cast<double>(d["heading"]);
     double heading_rad = radians(heading);
     return Bullet(
         pos.first, pos.second,
@@ -1451,95 +1460,95 @@ Bullet create_bullet_from_dict(nb::dict d) {
         -BULLET_LENGTH * std::cos(heading_rad),
         -BULLET_LENGTH * std::sin(heading_rad),
         heading,
-        nb::cast<double>(d["mass"]),
+        nanobind::cast<double>(d["mass"]),
         BULLET_LENGTH
     );
 }
 
-Asteroid create_asteroid_from_compact(const nb::list& asteroid_list) {
+Asteroid create_asteroid_from_compact(const nanobind::list& asteroid_list) {
     if (asteroid_list.size() != 7) {
         throw std::runtime_error("Asteroid list must contain exactly 7 elements.");
     }
     return Asteroid(
-        nb::cast<double>(asteroid_list[0]), // x
-        nb::cast<double>(asteroid_list[1]), // y
-        nb::cast<double>(asteroid_list[2]), // vx
-        nb::cast<double>(asteroid_list[3]), // vy
-        nb::cast<int>(asteroid_list[4]),    // size
-        nb::cast<double>(asteroid_list[5]), // mass
-        nb::cast<double>(asteroid_list[6])  // radius
+        nanobind::cast<double>(asteroid_list[0]), // x
+        nanobind::cast<double>(asteroid_list[1]), // y
+        nanobind::cast<double>(asteroid_list[2]), // vx
+        nanobind::cast<double>(asteroid_list[3]), // vy
+        nanobind::cast<int>(asteroid_list[4]),    // size
+        nanobind::cast<double>(asteroid_list[5]), // mass
+        nanobind::cast<double>(asteroid_list[6])  // radius
     );
 }
 
-Bullet create_bullet_from_compact(const nb::list& bullet_list) {
+Bullet create_bullet_from_compact(const nanobind::list& bullet_list) {
     if (bullet_list.size() != 9) {
         throw std::runtime_error("Bullet list must contain exactly 9 elements.");
     }
     return Bullet(
-        nb::cast<double>(bullet_list[0]), // x
-        nb::cast<double>(bullet_list[1]), // y
-        nb::cast<double>(bullet_list[2]), // vx
-        nb::cast<double>(bullet_list[3]), // vy
-        nb::cast<double>(bullet_list[4]), // tail_dx
-        nb::cast<double>(bullet_list[5]), // tail_dy
-        nb::cast<double>(bullet_list[6]), // heading
-        nb::cast<double>(bullet_list[7]), // mass
-        nb::cast<double>(bullet_list[8])  // length
+        nanobind::cast<double>(bullet_list[0]), // x
+        nanobind::cast<double>(bullet_list[1]), // y
+        nanobind::cast<double>(bullet_list[2]), // vx
+        nanobind::cast<double>(bullet_list[3]), // vy
+        nanobind::cast<double>(bullet_list[4]), // tail_dx
+        nanobind::cast<double>(bullet_list[5]), // tail_dy
+        nanobind::cast<double>(bullet_list[6]), // heading
+        nanobind::cast<double>(bullet_list[7]), // mass
+        nanobind::cast<double>(bullet_list[8])  // length
     );
 }
 
-Mine create_mine_from_compact(const nb::list& mine_list) {
+Mine create_mine_from_compact(const nanobind::list& mine_list) {
     if (mine_list.size() != 5) {
         throw std::runtime_error("Mine list must contain exactly 5 elements.");
     }
     return Mine(
-        nb::cast<double>(mine_list[0]), // x
-        nb::cast<double>(mine_list[1]), // y
-        nb::cast<double>(mine_list[2]), // mass
-        nb::cast<double>(mine_list[3]), // fuse_time
-        nb::cast<double>(mine_list[4])  // remaining_time
+        nanobind::cast<double>(mine_list[0]), // x
+        nanobind::cast<double>(mine_list[1]), // y
+        nanobind::cast<double>(mine_list[2]), // mass
+        nanobind::cast<double>(mine_list[3]), // fuse_time
+        nanobind::cast<double>(mine_list[4])  // remaining_time
     );
 }
 
-GameState create_game_state_from_compact(nb::dict game_state_compact_dict) {
+GameState create_game_state_from_compact(nanobind::dict game_state_compact_dict) {
     // Asteroids
-    nb::list asteroid_list = nb::cast<nb::list>(game_state_compact_dict["asteroids"]);
+    nanobind::list asteroid_list = nanobind::cast<nanobind::list>(game_state_compact_dict["asteroids"]);
     std::vector<Asteroid> asteroids;
     asteroids.reserve(asteroid_list.size());
     for (auto a : asteroid_list) {
-        asteroids.push_back(create_asteroid_from_compact(nb::cast<nb::list>(a)));
+        asteroids.push_back(create_asteroid_from_compact(nanobind::cast<nanobind::list>(a)));
     }
 
     // Ships
-    nb::list ship_list = nb::cast<nb::list>(game_state_compact_dict["ships"]);
+    nanobind::list ship_list = nanobind::cast<nanobind::list>(game_state_compact_dict["ships"]);
     std::vector<Ship> ships;
     ships.reserve(ship_list.size());
     for (auto s : ship_list) {
-        ships.push_back(create_ship_from_compact(nb::cast<nb::list>(s)));
+        ships.push_back(create_ship_from_compact(nanobind::cast<nanobind::list>(s)));
     }
 
     // Bullets
-    nb::list bullet_list = nb::cast<nb::list>(game_state_compact_dict["bullets"]);
+    nanobind::list bullet_list = nanobind::cast<nanobind::list>(game_state_compact_dict["bullets"]);
     std::vector<Bullet> bullets;
     bullets.reserve(bullet_list.size());
     for (auto b : bullet_list) {
-        bullets.push_back(create_bullet_from_compact(nb::cast<nb::list>(b)));
+        bullets.push_back(create_bullet_from_compact(nanobind::cast<nanobind::list>(b)));
     }
 
     // Mines
-    nb::list mine_list = nb::cast<nb::list>(game_state_compact_dict["mines"]);
+    nanobind::list mine_list = nanobind::cast<nanobind::list>(game_state_compact_dict["mines"]);
     std::vector<Mine> mines;
     mines.reserve(mine_list.size());
     for (auto m : mine_list) {
-        mines.push_back(create_mine_from_compact(nb::cast<nb::list>(m)));
+        mines.push_back(create_mine_from_compact(nanobind::cast<nanobind::list>(m)));
     }
 
     // Map size
     std::pair<double, double> map_size = {0.0, 0.0};
     if (game_state_compact_dict.contains("map_size")) {
-        auto tup = nb::cast<nb::tuple>(game_state_compact_dict["map_size"]);
-        map_size.first = nb::cast<double>(tup[0]);
-        map_size.second = nb::cast<double>(tup[1]);
+        auto tup = nanobind::cast<nanobind::tuple>(game_state_compact_dict["map_size"]);
+        map_size.first = nanobind::cast<double>(tup[0]);
+        map_size.second = nanobind::cast<double>(tup[1]);
     }
 
     // Construct GameState
@@ -1550,47 +1559,47 @@ GameState create_game_state_from_compact(nb::dict game_state_compact_dict) {
         mines,
         map_size.first,
         map_size.second,
-        game_state_compact_dict.contains("time")              ? nb::cast<double>(game_state_compact_dict["time"]) : 0.0,
-        game_state_compact_dict.contains("delta_time")        ? nb::cast<double>(game_state_compact_dict["delta_time"]) : 0.0,
-        game_state_compact_dict.contains("frame_rate")        ? nb::cast<double>(game_state_compact_dict["frame_rate"]) : 0.0,
-        game_state_compact_dict.contains("frame")             ? nb::cast<int64_t>(game_state_compact_dict["frame"]) : 0,
-        game_state_compact_dict.contains("time_limit")        ? nb::cast<double>(game_state_compact_dict["time_limit"]) : 0.0,
-        game_state_compact_dict.contains("random_asteroid_splits") ? nb::cast<bool>(game_state_compact_dict["random_asteroid_splits"]) : false
+        game_state_compact_dict.contains("time")              ? nanobind::cast<double>(game_state_compact_dict["time"]) : 0.0,
+        game_state_compact_dict.contains("delta_time")        ? nanobind::cast<double>(game_state_compact_dict["delta_time"]) : 0.0,
+        game_state_compact_dict.contains("frame_rate")        ? nanobind::cast<double>(game_state_compact_dict["frame_rate"]) : 0.0,
+        game_state_compact_dict.contains("frame")             ? nanobind::cast<int64_t>(game_state_compact_dict["frame"]) : 0,
+        game_state_compact_dict.contains("time_limit")        ? nanobind::cast<double>(game_state_compact_dict["time_limit"]) : 0.0,
+        game_state_compact_dict.contains("random_asteroid_splits") ? nanobind::cast<bool>(game_state_compact_dict["random_asteroid_splits"]) : false
     );
 }
 
-GameState create_game_state_from_dict(nb::dict game_state_dict) {
+GameState create_game_state_from_dict(nanobind::dict game_state_dict) {
     // Asteroids
-    nb::list asteroid_list = nb::cast<nb::list>(game_state_dict["asteroids"]);
+    nanobind::list asteroid_list = nanobind::cast<nanobind::list>(game_state_dict["asteroids"]);
     std::vector<Asteroid> asteroids;
     asteroids.reserve(asteroid_list.size());
     for (auto a : asteroid_list)
-        asteroids.push_back(create_asteroid_from_dict(nb::cast<nb::dict>(a)));
+        asteroids.push_back(create_asteroid_from_dict(nanobind::cast<nanobind::dict>(a)));
 
     // Ships
-    nb::list ship_list = nb::cast<nb::list>(game_state_dict["ships"]);
+    nanobind::list ship_list = nanobind::cast<nanobind::list>(game_state_dict["ships"]);
     std::vector<Ship> ships;
     ships.reserve(ship_list.size());
     for (auto s : ship_list)
-        ships.push_back(create_ship_from_dict_legacy(nb::cast<nb::dict>(s)));
+        ships.push_back(create_ship_from_dict_legacy(nanobind::cast<nanobind::dict>(s)));
 
     // Bullets
-    nb::list bullet_list = nb::cast<nb::list>(game_state_dict["bullets"]);
+    nanobind::list bullet_list = nanobind::cast<nanobind::list>(game_state_dict["bullets"]);
     std::vector<Bullet> bullets;
     bullets.reserve(bullet_list.size());
     for (auto b : bullet_list)
-        bullets.push_back(create_bullet_from_dict(nb::cast<nb::dict>(b)));
+        bullets.push_back(create_bullet_from_dict(nanobind::cast<nanobind::dict>(b)));
 
     // Mines
-    nb::list mine_list = nb::cast<nb::list>(game_state_dict["mines"]);
+    nanobind::list mine_list = nanobind::cast<nanobind::list>(game_state_dict["mines"]);
     std::vector<Mine> mines;
     mines.reserve(mine_list.size());
     for (auto m : mine_list)
-        mines.push_back(create_mine_from_dict(nb::cast<nb::dict>(m)));
+        mines.push_back(create_mine_from_dict(nanobind::cast<nanobind::dict>(m)));
 
     // Map size
     auto map_size = game_state_dict.contains("map_size")
-        ? nb::cast<std::pair<double, double>>(game_state_dict["map_size"])
+        ? nanobind::cast<std::pair<double, double>>(game_state_dict["map_size"])
         : std::make_pair(0.0, 0.0);
 
     // Construct GameState
@@ -1601,12 +1610,12 @@ GameState create_game_state_from_dict(nb::dict game_state_dict) {
         mines,
         map_size.first,
         map_size.second,
-        game_state_dict.contains("time") ? nb::cast<double>(game_state_dict["time"]) : 0.0,
-        game_state_dict.contains("delta_time") ? nb::cast<double>(game_state_dict["delta_time"]) : 0.0,
-        game_state_dict.contains("frame_rate") ? nb::cast<double>(game_state_dict["frame_rate"]) : 0.0,
-        game_state_dict.contains("frame") ? nb::cast<int64_t>(game_state_dict["frame"]) : 0,
-        game_state_dict.contains("time_limit") ? nb::cast<double>(game_state_dict["time_limit"]) : 0.0,
-        game_state_dict.contains("random_asteroid_splits") ? nb::cast<bool>(game_state_dict["random_asteroid_splits"]) : false
+        game_state_dict.contains("time") ? nanobind::cast<double>(game_state_dict["time"]) : 0.0,
+        game_state_dict.contains("delta_time") ? nanobind::cast<double>(game_state_dict["delta_time"]) : 0.0,
+        game_state_dict.contains("frame_rate") ? nanobind::cast<double>(game_state_dict["frame_rate"]) : 0.0,
+        game_state_dict.contains("frame") ? nanobind::cast<int64_t>(game_state_dict["frame"]) : 0,
+        game_state_dict.contains("time_limit") ? nanobind::cast<double>(game_state_dict["time_limit"]) : 0.0,
+        game_state_dict.contains("random_asteroid_splits") ? nanobind::cast<bool>(game_state_dict["random_asteroid_splits"]) : false
     );
 }
 
@@ -3777,12 +3786,12 @@ inline std::vector<std::pair<int64_t, int64_t>> calculate_border_crossings(
     double time_horizon_seconds)
 {
     // Next time we cross a border (in x or y)
-    double next_x_crossing_time = inf;
-    double next_y_crossing_time = inf;
+    double next_x_crossing_time = INF;
+    double next_y_crossing_time = INF;
 
     // Time between each border crossing (based on velocity)
-    double x_crossing_interval = inf;
-    double y_crossing_interval = inf;
+    double x_crossing_interval = INF;
+    double y_crossing_interval = INF;
 
     // Current "universe" position (grid offset in wraparound space)
     int64_t universe_offset_x = 0;
@@ -4164,7 +4173,7 @@ inline std::pair<double, double> solve_quadratic(double a, double b, double c) {
                 return {0.0, 0.0};
             else
                 // No solutions
-                return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+                return {NaN, NaN};
         } else {
             // Linear equation
             double x = -c / b;
@@ -4175,7 +4184,7 @@ inline std::pair<double, double> solve_quadratic(double a, double b, double c) {
         double discriminant = b * b - 4.0 * a * c;
         if (discriminant < 0.0) {
             // No real solutions
-            return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+            return {NaN, NaN};
         }
         double sqrt_disc = std::sqrt(discriminant);
         double q = -0.5 * (b + std::copysign(sqrt_disc, b));
@@ -4204,8 +4213,8 @@ inline std::pair<double, double> solve_quadratic(double a, double b, double c) {
 // Returns the time when a point moving at (vx, vy) will fully exit the map.
 double time_until_exit(double x, double y, double vx, double vy, double map_width, double map_height) {
     // Returns the time when a point moving at (vx, vy) will fully exit the map.
-    double tx = inf;
-    double ty = inf;
+    double tx = INF;
+    double ty = INF;
 
     if (vx > 0.0) {
         tx = (map_width - x) / vx;
@@ -4225,8 +4234,8 @@ double time_until_exit(double x, double y, double vx, double vy, double map_widt
 // Returns the time when a point moving at (vx, vy) will fully enter the map.
 double time_until_enter(double x, double y, double vx, double vy, double map_width, double map_height) {
     // Returns the time when a point moving at (vx, vy) will fully enter the map.
-    double tx = -inf;
-    double ty = -inf;
+    double tx = -INF;
+    double ty = -INF;
 
     if (vx > 0.0) {
         tx = -x / vx;
@@ -4254,12 +4263,12 @@ inline std::pair<double, double> collision_prediction_slow(double ax, double ay,
         if (std::abs(delta_x) <= separation && std::abs(delta_y) <= separation && (delta_x * delta_x + delta_y * delta_y <= separation * separation))
         {
             // "collide now and forever"
-            return std::make_pair(-inf, inf);
+            return std::make_pair(-INF, INF);
         } 
         else 
         {
             // Never collide
-            return std::make_pair(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+            return std::make_pair(NaN, NaN);
         }
     } else {
         // Relative velocity
@@ -4296,14 +4305,14 @@ inline std::pair<double, double> collision_prediction(
     // Both stationary
     if (is_close_to_zero(speed_sq)) {
         if (dist_sq <= sep_sq) {
-            return std::make_pair(-inf, inf); // Overlapping forever
+            return std::make_pair(-INF, INF); // Overlapping forever
         } else {
-            return std::make_pair(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()); // Never collide
+            return std::make_pair(NaN, NaN); // Never collide
         }
     }
 
     if (dot >= 0.0 && dist_sq > sep_sq) {
-        return std::make_pair(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()); // Moving apart or tangent
+        return std::make_pair(NaN, NaN); // Moving apart or tangent
     }
 
     double cos_theta_sq = (dot * dot) / (dist_sq * speed_sq);
@@ -4311,7 +4320,7 @@ inline std::pair<double, double> collision_prediction(
     double min_sin_sq = sep_sq / dist_sq;
 
     if (sin_theta_sq > min_sin_sq) {
-        return std::make_pair(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()); // Will miss each other
+        return std::make_pair(NaN, NaN); // Will miss each other
     }
 
     double root_term = std::sqrt((sep_sq - dist_sq * sin_theta_sq) / speed_sq);
@@ -4346,11 +4355,11 @@ std::tuple<double, double> circle_circle_collision_time_interval(
     // Both stationary. Either overlapping forever or never
     if (speed_sq < 1e-12) {
         if (dist_sq <= sep_sq) {
-            return std::make_tuple(-inf, inf); // Always overlapping
+            return std::make_tuple(-INF, INF); // Always overlapping
         } else {
             return std::make_tuple(
-                std::numeric_limits<double>::quiet_NaN(),
-                std::numeric_limits<double>::quiet_NaN()
+                NaN,
+                NaN
             ); // Never collide
         }
     }
@@ -4358,8 +4367,8 @@ std::tuple<double, double> circle_circle_collision_time_interval(
     // Already outside and moving away (or tangent and moving apart)
     if (dot >= 0.0 && dist_sq > sep_sq) {
         return std::make_tuple(
-            std::numeric_limits<double>::quiet_NaN(),
-            std::numeric_limits<double>::quiet_NaN()
+            NaN,
+            NaN
         );
     }
 
@@ -4379,8 +4388,8 @@ std::tuple<double, double> circle_circle_collision_time_interval(
 
     if (sin_theta_sq > min_sin_sq) {
         return std::make_tuple(
-            std::numeric_limits<double>::quiet_NaN(),
-            std::numeric_limits<double>::quiet_NaN()
+            NaN,
+            NaN
         ); // Will miss each other
     }
 
@@ -4388,8 +4397,8 @@ std::tuple<double, double> circle_circle_collision_time_interval(
     double arg = (sep_sq - dist_sq * sin_theta_sq) / speed_sq;
     if (arg < 0.0) {
         return std::make_tuple(
-            std::numeric_limits<double>::quiet_NaN(),
-            std::numeric_limits<double>::quiet_NaN()
+            NaN,
+            NaN
         ); // No real solution
     }
 
@@ -4642,7 +4651,7 @@ double find_first_leq_zero(
     }
     */
     // Dang, couldn't find anything :(
-    return std::numeric_limits<double>::quiet_NaN();
+    return NaN;
 }
 
 double find_first_leq_zero_segmented(
@@ -4660,7 +4669,7 @@ double find_first_leq_zero_segmented(
     */
 
     if (a >= b) {
-        return std::numeric_limits<double>::quiet_NaN();  // Invalid interval
+        return NaN;  // Invalid interval
     }
 
     int n_segments = int(ceil((b - a) / max_interval_size));
@@ -4676,7 +4685,7 @@ double find_first_leq_zero_segmented(
             return result;
         }
     }
-    return std::numeric_limits<double>::quiet_NaN();  // No zero-crossing found
+    return NaN;  // No zero-crossing found
 }
 
 double find_first_leq_zero_robust_slow(
@@ -4738,7 +4747,7 @@ double find_first_leq_zero_robust_slow(
             return bisection_root(f, x0, x1);
         }
     }
-    return std::numeric_limits<double>::quiet_NaN();
+    return NaN;
 }
 
 double find_first_leq_zero_no_derivs(
@@ -4795,10 +4804,10 @@ double find_first_leq_zero_no_derivs(
                 a = mid;
             }
             if (abs(b - a) < tol) {
-                return f(b) <= 0.0 ? b : std::numeric_limits<double>::quiet_NaN();
+                return f(b) <= 0.0 ? b : NaN;
             }
         }
-        return f(b) <= 0.0 ? b : std::numeric_limits<double>::quiet_NaN();
+        return f(b) <= 0.0 ? b : NaN;
     };
 
     auto bisect_derivative_zero = [&](function<double(double)> f, double a, double b) -> double {
@@ -4854,7 +4863,7 @@ double find_first_leq_zero_no_derivs(
             return bisect_first_below_zero(f, a, t_c);
         }
     }
-    return std::numeric_limits<double>::quiet_NaN();
+    return NaN;
 }
 
 // === 1. find_time_interval_in_which_unwrapped_asteroid_is_within_main_wrap ===
@@ -4865,10 +4874,10 @@ find_time_interval_in_which_unwrapped_asteroid_is_within_main_wrap(double ast_po
     if (is_close_to_zero(ast_vel_x)) {
         if (check_coordinate_bounds(game_state, ast_pos_x, 0.0)) {
             // x coordinates are inbounds, so the asteroid will always be within the main wrap
-            x_interval = {-inf, inf};
+            x_interval = {-INF, inf};
         } else {
             // x coordinates are out of bounds, so the asteroid never gets to be within the main wrap
-            return { std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN() };
+            return {NaN, NaN};
         }
     } else {
         // x(t) = x_0 + t*vx
@@ -4885,10 +4894,10 @@ find_time_interval_in_which_unwrapped_asteroid_is_within_main_wrap(double ast_po
     if (is_close_to_zero(ast_vel_y)) {
         if (check_coordinate_bounds(game_state, 0.0, ast_pos_y)) {
             // y coordinates are inbounds, so the asteroid will always be within the main wrap
-            y_interval = { -inf, inf };
+            y_interval = { -INF, inf };
         } else {
             // y coordinates are out of bounds, so the asteroid never gets to be within the main wrap
-            return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+            return {NaN, NaN};
         }
     } else {
         // y(t) = y_0 + t*vy
@@ -4909,7 +4918,7 @@ find_time_interval_in_which_unwrapped_asteroid_is_within_main_wrap(double ast_po
     // Take the intersection of two intervals:
     if (x_interval.second < y_interval.first || y_interval.second < x_interval.first) {
         // One interval ends before the next one starts, so there's no overlap
-        return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+        return {NaN, NaN};
     } else {
         // The intervals overlap!
         // The start of the intersection is the maximum of the two start times
@@ -4947,8 +4956,8 @@ inline double predict_next_imminent_collision_time_with_asteroid(
         };
         
         if (end_old < 0.0) {
-            start_old = std::numeric_limits<double>::quiet_NaN();
-            end_old = std::numeric_limits<double>::quiet_NaN();
+            start_old = NaN;
+            end_old = NaN;
         }
 
         if (!check_equal(start_collision_time, start_old) || !check_equal(end_collision_time, end_old)) {
@@ -5066,7 +5075,7 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
         int counter = int(initial_cover_count);
         double largest_gap_midpoint = 0.0;
         double largest_gap = 0.0;
-        double gap_start = std::numeric_limits<double>::quiet_NaN();
+        double gap_start = NaN;
 
         for (const auto& [angle, marker] : angles) {
             //assert(counter >= 0); TODO reenable this!
@@ -5106,7 +5115,7 @@ analyze_gamestate_for_heuristic_maneuver(const GameState& game_state, const Ship
         }
     }
     double ship_pos_x = ship_state.x, ship_pos_y = ship_state.y, ship_vel_x = ship_state.vx, ship_vel_y = ship_state.vy;
-    double most_imminent_collision_time_s = inf;
+    double most_imminent_collision_time_s = INF;
     std::optional<Asteroid> most_imminent_asteroid;
     std::optional<double> most_imminent_asteroid_speed;
     double nearby_asteroid_total_speed = 0.0;
@@ -5184,7 +5193,7 @@ std::array<double, 4> durand_kerner_real_roots_complex(double k0, double k1, dou
     constexpr double eps = 1e-10;
 
     if (std::abs(k4) < eps) {
-        return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()}; // Not a quartic
+        return {NaN, NaN, NaN, NaN}; // Not a quartic
     }
 
     // Normalize coefficients to make the quartic monic
@@ -5245,7 +5254,7 @@ std::array<double, 4> durand_kerner_real_roots_complex(double k0, double k1, dou
         }
     }
 
-    std::array<double, 4> real_roots = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<double, 4> real_roots = {NaN, NaN, NaN, NaN};
     int real_count = 0;
 
     for (const auto& root : roots) {
@@ -5264,10 +5273,10 @@ std::array<double, 4> durand_kerner_real_roots(double k0, double k1, double k2, 
 
     if (std::abs(k4) < eps) {
         return {
-            std::numeric_limits<double>::quiet_NaN(),
-            std::numeric_limits<double>::quiet_NaN(),
-            std::numeric_limits<double>::quiet_NaN(),
-            std::numeric_limits<double>::quiet_NaN()
+            NaN,
+            NaN,
+            NaN,
+            NaN
         }; // Not a quartic
     }
 
@@ -5337,10 +5346,10 @@ std::array<double, 4> durand_kerner_real_roots(double k0, double k1, double k2, 
                     << k0 << std::endl;
         }
         return {
-            std::numeric_limits<double>::quiet_NaN(),
-            std::numeric_limits<double>::quiet_NaN(),
-            std::numeric_limits<double>::quiet_NaN(),
-            std::numeric_limits<double>::quiet_NaN()
+            NaN,
+            NaN,
+            NaN,
+            NaN
         };
     }
     // Return roots directly — no filtering of imaginary parts needed in this real-only version
@@ -5745,7 +5754,7 @@ inline std::tuple<
             // It's not feasible and it'll return NaN at the end of the function
         }
     }
-    return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+    return std::make_tuple(false, NaN, NaN, NaN, NaN, NaN, NaN);
     // feasible, shot_heading_min_rad, shot_heading_max_rad, interception_time_s + 0*future_shooting_timesteps*delta_time, intercept_x, intercept_y, asteroid_dist, asteroid_dist_during_interception
 }
 
@@ -5836,7 +5845,7 @@ inline std::tuple<
         );
     }
     // No feasible solution found.
-    return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+    return std::make_tuple(false, NaN, NaN, NaN, NaN, NaN, NaN);
     // feasible, shot_heading_error_rad, shot_heading_tolerance_rad, interception_time_s + 0*future_shooting_timesteps*delta_time, intercept_x, intercept_y, asteroid_dist, asteroid_dist_during_interception
 }
 
@@ -6181,7 +6190,7 @@ double ship_asteroid_continuous_collision_time(
     if (delta_x * delta_x + delta_y * delta_y > max_separation * max_separation) {
         // There is no possible way these could have been colliding in the time interval [time_interval_start, time_interval_end]
         // even if they were booking it away from each other in this past frame
-        return std::numeric_limits<double>::quiet_NaN();
+        return NaN;
     }
 
     // This is the function we want to root find
@@ -6297,7 +6306,7 @@ double ship_asteroid_continuous_collision_time(
                 // Try the next interval
                 root_t = find_first_leq_zero_segmented(
                     squared_separation_between_ship_and_asteroid_at_t,
-                    std::nextafter(interval_mid, inf),
+                    std::nextafter(interval_mid, INF),
                     time_interval_end
                 );
             }
@@ -6346,7 +6355,7 @@ double ship_ship_continuous_collision_time(
     if (delta_x * delta_x + delta_y * delta_y > max_separation * max_separation) {
         // There is no possible way these could have been colliding in the time interval [-delta_time, 0.0]
         // even if they were booking it away from each other in this past frame
-        return std::numeric_limits<double>::quiet_NaN();
+        return NaN;
     }
 
     // This is the function we want to root find
@@ -6518,13 +6527,13 @@ double ship_ship_continuous_collision_time(
                 // Try the next interval
                 root_t = find_first_leq_zero_segmented(
                     squared_separation_between_ships_at_t,
-                    std::nextafter(interval_mid_1, inf),
-                    std::nextafter(interval_mid_2, -inf));
+                    std::nextafter(interval_mid_1, INF),
+                    std::nextafter(interval_mid_2, -INF));
                 if (std::isnan(root_t)) {
                     // Try the last interval
                     root_t = find_first_leq_zero_segmented(
                         squared_separation_between_ships_at_t,
-                        std::nextafter(interval_mid_2, inf),
+                        std::nextafter(interval_mid_2, INF),
                         time_interval_end);
                 }
             }
@@ -6534,12 +6543,12 @@ double ship_ship_continuous_collision_time(
             root_t = find_first_leq_zero_segmented(
                 squared_separation_between_ships_at_t,
                 time_interval_start,
-                std::nextafter(interval_mid_2, -inf));
+                std::nextafter(interval_mid_2, -INF));
             if (std::isnan(root_t)) {
                 // Try the last interval
                 root_t = find_first_leq_zero_segmented(
                     squared_separation_between_ships_at_t,
-                    std::nextafter(interval_mid_2, inf),
+                    std::nextafter(interval_mid_2, INF),
                     time_interval_end);
             }
         }
@@ -6572,7 +6581,7 @@ double ship_ship_continuous_collision_time(
                 // Try the next interval
                 root_t = find_first_leq_zero_segmented(
                     squared_separation_between_ships_at_t,
-                    std::nextafter(interval_mid, inf),
+                    std::nextafter(interval_mid, INF),
                     time_interval_end
                 );
             }
@@ -6615,7 +6624,7 @@ double project_point_onto_segment_and_get_t(double x1, double y1, double x2, dou
     double dy = y2 - y1;
     double len_sq = dx * dx + dy * dy;
     if (len_sq < 1e-12) {
-        return std::numeric_limits<double>::quiet_NaN();
+        return NaN;
     }
     double px_rel = px - x1;
     double py_rel = py - y1;
@@ -6667,7 +6676,7 @@ std::pair<double, double> circle_line_collision_time_interval(
         if (circle_line_collision_discrete(a0x, a0y, b0x, b0y, 0.0, 0.0, r)) {
             return std::make_pair(-inf, inf);
         } else {
-            return std::make_pair(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+            return std::make_pair(NaN, NaN);
         }
     }
 
@@ -6703,12 +6712,12 @@ std::pair<double, double> circle_line_collision_time_interval(
     // and the circle is too large to fit through between endpoints,
     // we’re done. No possible way the further check will catch a collision!
     if (std::isnan(t0_A) && std::isnan(t0_B) && seg_len < r) {
-        return std::make_pair(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+        return std::make_pair(NaN, NaN);
     }
 
     // Get the min/max collision window from the two endpoints
     // t0 is the min of all non-nan times
-    double t0 = inf;
+    double t0 = INF;
     if (!std::isnan(t0_A)) {
         t0 = t0_A;
     }
@@ -6717,7 +6726,7 @@ std::pair<double, double> circle_line_collision_time_interval(
     }
 
     // t1 is the max of all non-nan times
-    double t1 = -inf;
+    double t1 = -INF;
     if (!std::isnan(t1_A)) {
         t1 = t1_A;
     }
@@ -6754,8 +6763,8 @@ std::pair<double, double> circle_line_collision_time_interval(
     // Guard against v_proj_n == 0. This case happens when the asteroids are stationary or moving parallel to the bullet
     double t0_mid, t1_mid;
     if (std::abs(v_proj_n) < 1e-12) {
-        t0_mid = std::numeric_limits<double>::quiet_NaN();
-        t1_mid = std::numeric_limits<double>::quiet_NaN();
+        t0_mid = NaN;
+        t1_mid = NaN;
     } else {
         // The bullet head and tails are both located at position 0 on the normal axis
         double t_ast_center = ast_proj_n / v_proj_n;
@@ -6795,7 +6804,7 @@ std::pair<double, double> circle_line_collision_time_interval(
 
     // If neither t0 nor t1 got set properly, there was no collision
     if (!(std::isfinite(t0) && std::isfinite(t1))) {
-        return std::make_pair(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+        return std::make_pair(NaN, NaN);
     }
 
     return std::make_pair(t0, t1);
@@ -7115,7 +7124,7 @@ inline std::tuple<
             return std::make_tuple(t, angle_difference_rad(theta, theta_0), timesteps_until_fire, intercept_x, intercept_y, dist(ship_position_x, ship_position_y, intercept_x, intercept_y));
         }
         // Returned tuple is (interception time in seconds from firing to hit, delta theta rad, timesteps until fire, None, intercept_x, intercept_y, dist)
-        return std::make_tuple(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), 0, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+        return std::make_tuple(NaN, NaN, 0, NaN, NaN, NaN);
     };
 
     // Naive root function
@@ -7197,7 +7206,7 @@ inline std::tuple<
     };
 
     auto turbo_rootinator_5000 = [&](double initial_guess, double tolerance = EPS, int64_t max_iterations = 4) -> double {
-        double theta_old = initial_guess, theta_new, func_value, initial_func_value = std::numeric_limits<double>::quiet_NaN();
+        double theta_old = initial_guess, theta_new, func_value, initial_func_value = NaN;
         for (int64_t j = 0; j < max_iterations; ++j) {
             func_value = root_function(theta_old);
             if (std::abs(func_value) < TAD)
@@ -7208,7 +7217,7 @@ inline std::tuple<
             double derivative_value = root_function_derivative(theta_old);
             double second_derivative_value = root_function_second_derivative(theta_old);
             double denominator = 2.0 * derivative_value * derivative_value - func_value * second_derivative_value;
-            if (denominator == 0.0) return std::numeric_limits<double>::quiet_NaN();
+            if (denominator == 0.0) return NaN;
             theta_new = theta_old - (2.0 * func_value * derivative_value) / denominator;
             // The value has jumped past the periodic boundary. Clamp it to right past the boundary just so things don't get too crazy.
             if (theta_new < -TAU / 2.0) {
@@ -7228,7 +7237,7 @@ inline std::tuple<
             }
             theta_old = theta_new;
         }
-        return std::numeric_limits<double>::quiet_NaN();
+        return NaN;
     };
 
     auto rotation_time = [](double delta_theta_rad) -> double {
@@ -7243,7 +7252,7 @@ inline std::tuple<
         double denominator_x = avx - vb * cos_theta;
         double denominator_y = avy - vb * sin_theta;
         if (denominator_x == 0.0 && denominator_y == 0.0)
-            return inf;
+            return INF;
         double t_bul;
         // At least one of the denominators is nonzero, so if we choose the one with the larger magnitude, we'll avoid division by zero as well as get the more accurate answer
         if (std::abs(denominator_x) > std::abs(denominator_y)) {
@@ -7264,7 +7273,7 @@ inline std::tuple<
 
         double denominator = avx * sin_theta - avy * cos_theta;
         if (denominator == 0.0) {
-            return inf;
+            return INF;
         } else {
             double numerator = cos_theta * (ay + avy * t_rot) - sin_theta * (ax + avx * t_rot);
             return std::max(-200000.0, std::min((numerator / denominator) * 100000.0, 200000.0));
@@ -7292,7 +7301,7 @@ inline std::tuple<
             );
         }
     } else {
-        double delta_theta_solution = std::numeric_limits<double>::quiet_NaN();
+        double delta_theta_solution = NaN;
         if (std::abs(avx) < GRAIN && std::abs(avy) < GRAIN) {
             // The asteroid is pretty much stationary. Naive solution works fine.
             delta_theta_solution = std::get<1>(naive_solution);
@@ -7302,7 +7311,7 @@ inline std::tuple<
         }
 
         if (std::isnan(delta_theta_solution)) {
-            return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), -1, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+            return std::make_tuple(false, NaN, -1, NaN, NaN, NaN, NaN);
         }
         double absolute_theta_solution = delta_theta_solution + theta_0;
         assert(-TAU / 2.0 <= delta_theta_solution && delta_theta_solution <= TAU / 2.0);
@@ -7316,7 +7325,7 @@ inline std::tuple<
 
         double t_bullet = bullet_travel_time(delta_theta_solution, t_rot);
         if (t_bullet < 0) {
-            return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), -1, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+            return std::make_tuple(false, NaN, -1, NaN, NaN, NaN, NaN);
         }
 
         double bullet_travel_dist = vb * (t_bullet + t_0);
@@ -7333,7 +7342,7 @@ inline std::tuple<
             auto discrete_solution = naive_desired_heading_calc(t_rot_ts);
             if (!std::isnan(std::get<0>(discrete_solution))) {
                 if (!(std::abs(degrees(std::get<1>(discrete_solution))) - EPS <= static_cast<double>(t_rot_ts) * SHIP_MAX_TURN_RATE_DEG_TS))
-                    return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), -1, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+                    return std::make_tuple(false, NaN, -1, NaN, NaN, NaN, NaN);
                 assert(t_rot_ts == std::get<2>(discrete_solution));
                 if (check_coordinate_bounds(game_state, std::get<3>(discrete_solution), std::get<4>(discrete_solution))) {
                     return std::make_tuple(
@@ -7349,7 +7358,7 @@ inline std::tuple<
             }
         }
     }
-    return std::make_tuple(false, std::numeric_limits<double>::quiet_NaN(), -1, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+    return std::make_tuple(false, NaN, -1, NaN, NaN, NaN, NaN);
     // The returned interception time is the time AFTER FIRING! NOT INCLUDING TURNING!
 }
 
@@ -8185,15 +8194,15 @@ public:
             // Having two mines which are freshly placed isn't as bad as a single mine that's about to blow up.
             // For each mine, as the time goes down, the danger should go up more than linearly
             if (next_extrapolated_mine_collision_times.empty()) {
-                return std::make_pair(1.0, inf);
+                return std::make_pair(1.0, INF);
             }
             if (!std::isinf(game_state.time_limit) && initial_timestep + future_timesteps + END_OF_SCENARIO_DONT_CARE_TIMESTEPS >= static_cast<int64_t>(std::floor(FPS * game_state.time_limit))) {
                 // The scenario's done so we don't care about mine safety past the end of time!
-                return std::make_pair(1.0, inf);
+                return std::make_pair(1.0, INF);
             }
             // Regardless of stationary or maneuvering, the mine safe time score is calculated the same way
             double mines_threat_level = 0.0;
-            double next_extrapolated_mine_collision_time = inf;
+            double next_extrapolated_mine_collision_time = INF;
             for (const auto& [mine_collision_time, mine_pos] : next_extrapolated_mine_collision_times) {
                 next_extrapolated_mine_collision_time = std::min(next_extrapolated_mine_collision_time, mine_collision_time);
                 // next_extrapolated_mine_collision_time = max(0, min(3, next_extrapolated_mine_collision_time))
@@ -9814,12 +9823,12 @@ public:
                     std::vector<int64_t> culled_target_idxs_for_simulation;
                     double max_interception_time_s = 0.0;
 
-                    double min_positive_shot_heading_error_rad = inf;
-                    double second_min_positive_shot_heading_error_rad = inf;
-                    double min_negative_shot_heading_error_rad = -inf;
-                    double second_min_negative_shot_heading_error_rad = -inf;
-                    double min_shot_heading_error_rad = std::numeric_limits<double>::quiet_NaN();
-                    double second_min_shot_heading_error_rad = std::numeric_limits<double>::quiet_NaN();
+                    double min_positive_shot_heading_error_rad = INF;
+                    double second_min_positive_shot_heading_error_rad = INF;
+                    double min_negative_shot_heading_error_rad = -INF;
+                    double second_min_negative_shot_heading_error_rad = -INF;
+                    double min_shot_heading_error_rad = NaN;
+                    double second_min_shot_heading_error_rad = NaN;
                     size_t len_asteroids = game_state.asteroids.size();
                     bool avoid_targeting_this_asteroid = false;
                     //bool move_on_to_next_asteroid = false;
@@ -10114,7 +10123,7 @@ public:
                                     min_shot_heading_error_rad = min_negative_shot_heading_error_rad;
                                     second_min_shot_heading_error_rad = second_min_negative_shot_heading_error_rad;
                                 }
-                                double next_target_heading_error = std::numeric_limits<double>::quiet_NaN();
+                                double next_target_heading_error = NaN;
                                 if (!fire_this_timestep && !std::isinf(min_shot_heading_error_rad)) {
                                     // We didn't fire this timestep, so we can use the min shot heading error rad to turn toward the same target and try again on the next timestep
                                     next_target_heading_error = min_shot_heading_error_rad; // This is where we're aiming for the next timestep!
@@ -10145,7 +10154,7 @@ public:
                         // Next-shot aiming, even before firing is legal
                         bool locked_in = false;
                         double asteroid_least_shot_heading_error_deg = INFINITY;
-                        double asteroid_least_shot_heading_tolerance_deg = std::numeric_limits<double>::quiet_NaN();
+                        double asteroid_least_shot_heading_tolerance_deg = NaN;
                         // Roughly predict the ship's position on the next timestep using its current heading. This isn't 100% correct but whatever, it's better than nothing.
                         
                         double ship_pred_speed = ship_state.speed;
@@ -10780,12 +10789,12 @@ public:
     //std::optional<GameStatePlotter> game_state_plotter;
     std::unordered_set<int64_t> actioned_timesteps;
     std::vector<CompletedSimulation> sims_this_planning_period; // The first sim in the list is stationary targeting, and the rest are maneuvers
-    double best_fitness_this_planning_period = -inf;
+    double best_fitness_this_planning_period = -INF;
     int64_t best_fitness_this_planning_period_index = INT_NEG_INF;
-    double second_best_fitness_this_planning_period = -inf;
+    double second_best_fitness_this_planning_period = -INF;
     int64_t second_best_fitness_this_planning_period_index = INT_NEG_INF;
     int64_t stationary_targetting_sim_index = INT_NEG_INF;
-    double current_sequence_fitness = -inf; // The fitness of the current sequence of actions we're performing
+    double current_sequence_fitness = -INF; // The fitness of the current sequence of actions we're performing
     std::unordered_map<int64_t, int64_t> last_timestep_fired_schedule = {{0, INT_NEG_INF}}; // Just pretend, to make the code simpler. If we decide to fire on frame N, it'll only show up in frame N + 1 that we fired on frame N!
     std::unordered_map<int64_t, int64_t> last_timestep_mined_schedule = {{0, INT_NEG_INF}};
     std::unordered_set<int64_t> fire_timesteps_schedule; // If a timestep is in the set, the bool value is True. Otherwise, it's false.
@@ -10809,9 +10818,9 @@ public:
     std::vector<double> outside_controller_time_intervals;
     // Stores recent iteration times for rolling average of PERFORMANCE_CONTROLLER_ROLLING_AVERAGE_FRAME_INTERVAL frames
     std::vector<double> inside_controller_iteration_time_intervals;
-    double last_entrance_time = std::numeric_limits<double>::quiet_NaN();
-    double last_exit_time = std::numeric_limits<double>::quiet_NaN();
-    double last_iteration_start_time = std::numeric_limits<double>::quiet_NaN();
+    double last_entrance_time = NaN;
+    double last_exit_time = NaN;
+    double last_iteration_start_time = NaN;
     double average_iteration_time = DELTA_TIME*0.1;
 
     // --- Ctor ---
@@ -10831,12 +10840,12 @@ public:
         //game_state_plotter.reset();
         actioned_timesteps.clear();
         sims_this_planning_period.clear();
-        best_fitness_this_planning_period = -inf;
+        best_fitness_this_planning_period = -INF;
         best_fitness_this_planning_period_index = INT_NEG_INF;
-        second_best_fitness_this_planning_period = -inf;
+        second_best_fitness_this_planning_period = -INF;
         second_best_fitness_this_planning_period_index = INT_NEG_INF;
         stationary_targetting_sim_index = INT_NEG_INF;
-        current_sequence_fitness = -inf;
+        current_sequence_fitness = -INF;
         last_timestep_fired_schedule = {{0, INT_NEG_INF}};
         last_timestep_mined_schedule = {{0, INT_NEG_INF}};
         fire_timesteps_schedule.clear();
@@ -10856,9 +10865,9 @@ public:
         // For performance controller
         outside_controller_time_intervals.clear();
         inside_controller_iteration_time_intervals.clear();
-        last_entrance_time = std::numeric_limits<double>::quiet_NaN();
-        last_exit_time = std::numeric_limits<double>::quiet_NaN();
-        last_iteration_start_time = std::numeric_limits<double>::quiet_NaN();
+        last_entrance_time = NaN;
+        last_exit_time = NaN;
+        last_iteration_start_time = NaN;
         average_iteration_time = DELTA_TIME*0.1;
         // Clear "global" variables
         explanation_messages_with_timestamps.clear();
@@ -10991,9 +11000,9 @@ public:
             } else {
                 // Continue doing the maneuver we're already doing, because we didn't find a better one to jump ship to
                 this->sims_this_planning_period.clear();
-                this->best_fitness_this_planning_period = -inf;
+                this->best_fitness_this_planning_period = -INF;
                 this->best_fitness_this_planning_period_index = INT_NEG_INF;
-                this->second_best_fitness_this_planning_period = -inf;
+                this->second_best_fitness_this_planning_period = -INF;
                 this->second_best_fitness_this_planning_period_index = INT_NEG_INF;
                 this->stationary_targetting_sim_index = INT_NEG_INF;
                 this->base_gamestate_analysis.reset();
@@ -11215,9 +11224,9 @@ public:
 
         // Reset planning bookkeeping
         this->sims_this_planning_period.clear();
-        this->best_fitness_this_planning_period = -inf;
+        this->best_fitness_this_planning_period = -INF;
         this->best_fitness_this_planning_period_index = INT_NEG_INF;
-        this->second_best_fitness_this_planning_period = -inf;
+        this->second_best_fitness_this_planning_period = -INF;
         this->second_best_fitness_this_planning_period_index = INT_NEG_INF;
         this->stationary_targetting_sim_index = INT_NEG_INF;
         this->base_gamestate_analysis.reset();
@@ -11698,7 +11707,7 @@ public:
     }
 
     std::tuple<double, double, bool, bool>
-    actions(const nb::object& ship_state_pyobj, const nb::object& game_state_pyobj) {
+    actions(const nanobind::object& ship_state_pyobj, const nanobind::object& game_state_pyobj) {
         // Method processed each time step by this controller.
 
         // Optionally reseed RNG if flag enabled
@@ -11713,8 +11722,8 @@ public:
 
         // The ship state and game states are Python objects.
         // Call the .compact property on each, to get a dictionary
-        nb::list ship_state_list = nb::cast<nb::list>(ship_state_pyobj.attr("compact"));
-        nb::dict game_state_dict = nb::cast<nb::dict>(game_state_pyobj.attr("compact"));
+        nanobind::list ship_state_list = nanobind::cast<nanobind::list>(ship_state_pyobj.attr("compact"));
+        nanobind::dict game_state_dict = nanobind::cast<nanobind::dict>(game_state_pyobj.attr("compact"));
         
         // Ingest the compact dictionaries into our own classes!
         Ship ship_state = create_ownship_from_compact(ship_state_list);
@@ -11792,9 +11801,9 @@ public:
                     this->fire_next_timestep_flag = false; // If we were planning on shooting this timestep but we unexpectedly got hit, DO NOT SHOOT! Actually even if we didn't reset this variable here, we'd only shoot after the respawn maneuver is done and then we'd miss a shot. And yes that was a bug that I fixed lmao
                     this->sims_this_planning_period.clear();
                     this->best_fitness_this_planning_period_index = INT_NEG_INF;
-                    this->best_fitness_this_planning_period = -inf;
+                    this->best_fitness_this_planning_period = -INF;
                     this->second_best_fitness_this_planning_period_index = INT_NEG_INF;
-                    this->second_best_fitness_this_planning_period = -inf;
+                    this->second_best_fitness_this_planning_period = -INF;
                     this->base_gamestate_analysis = std::nullopt;
                     unexpected_death = true;
                     iterations_boost = true;
@@ -11817,9 +11826,9 @@ public:
                     this->fire_next_timestep_flag = false; // This should be false anyway!
                     this->sims_this_planning_period.clear();
                     this->best_fitness_this_planning_period_index = INT_NEG_INF;
-                    this->best_fitness_this_planning_period = -inf;
+                    this->best_fitness_this_planning_period = -INF;
                     this->second_best_fitness_this_planning_period_index = INT_NEG_INF;
-                    this->second_best_fitness_this_planning_period = -inf;
+                    this->second_best_fitness_this_planning_period = -INF;
                     this->base_gamestate_analysis = std::nullopt;
                     iterations_boost = true;
                     unexpected_survival = true;
@@ -12131,8 +12140,8 @@ public:
 };
 
 NB_MODULE(neo_controller, m) {
-    nb::class_<NeoController>(m, "NeoController")
-        .def(nb::init<>())
+    nanobind::class_<NeoController>(m, "NeoController")
+        .def(nanobind::init<>())
         .def("actions", &NeoController::actions)
         .def_prop_ro("name", &NeoController::name)
         .def_prop_rw("ship_id", &NeoController::ship_id, &NeoController::set_ship_id)
