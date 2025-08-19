@@ -2133,11 +2133,6 @@ private:
     std::vector<size_t> mines_to_cull;
     std::vector<Asteroid> new_asteroids;
 
-    void update_asteroid(Asteroid& asteroid) {
-        asteroid.x = pymod(asteroid.x + asteroid.vx * delta_time, map_size_x);
-        asteroid.y = pymod(asteroid.y + asteroid.vy * delta_time, map_size_y);
-    }
-
     void enqueue_bullet_asteroid_collisions(
         std::vector<Bullet>& bullets,
         std::vector<Asteroid>& asteroids,
@@ -3079,6 +3074,8 @@ private:
             }
         }
     }
+
+
 
 public:
     KesslerGame(ShipState& ship_state, GameState& game_state)
@@ -4204,6 +4201,48 @@ inline std::pair<double, double> solve_quadratic(double a, double b, double c) {
     }
 }
 
+// Returns the time when a point moving at (vx, vy) will fully exit the map.
+double time_until_exit(double x, double y, double vx, double vy, double map_width, double map_height) {
+    // Returns the time when a point moving at (vx, vy) will fully exit the map.
+    double tx = inf;
+    double ty = inf;
+
+    if (vx > 0.0) {
+        tx = (map_width - x) / vx;
+    } else if (vx < 0.0) {
+        tx = -x / vx;
+    }
+
+    if (vy > 0.0) {
+        ty = (map_height - y) / vy;
+    } else if (vy < 0.0) {
+        ty = -y / vy;
+    }
+
+    return std::min(tx, ty);
+}
+
+// Returns the time when a point moving at (vx, vy) will fully enter the map.
+double time_until_enter(double x, double y, double vx, double vy, double map_width, double map_height) {
+    // Returns the time when a point moving at (vx, vy) will fully enter the map.
+    double tx = -inf;
+    double ty = -inf;
+
+    if (vx > 0.0) {
+        tx = -x / vx;
+    } else if (vx < 0.0) {
+        tx = (map_width - x) / vx;
+    }
+
+    if (vy > 0.0) {
+        ty = -y / vy;
+    } else if (vy < 0.0) {
+        ty = (map_height - y) / vy;
+    }
+
+    return std::max(tx, ty);
+}
+
 // Returns: {t_enter, t_exit} if potentially colliding, or {nan, nan} if no collision in future.
 inline std::pair<double, double> collision_prediction_slow(double ax, double ay, double vax, double vay, double ra, double bx, double by, double vbx, double vby, double rb) {
     double separation = ra + rb;
@@ -4283,6 +4322,540 @@ inline std::pair<double, double> collision_prediction(
     return std::make_pair(t_enter, t_exit);
 }
 
+// Returns (t_enter, t_exit) if the two circles will collide,
+// or (nan, nan) if there's no collision in the future.
+// Can return (-inf, inf) if the circles collide always and ever.
+std::tuple<double, double> circle_circle_collision_time_interval(
+    double ax, double ay, double vax, double vay, double ra,
+    double bx, double by, double vbx, double vby, double rb)
+{
+    // This linalg version is mathematically the same as setting up a quadratic and solving it, but is faster since it simplifies things
+
+    double separation = ra + rb;
+
+    double dx = ax - bx;
+    double dy = ay - by;
+    double dvx = vax - vbx;
+    double dvy = vay - vby;
+
+    double dist_sq = dx * dx + dy * dy;
+    double speed_sq = dvx * dvx + dvy * dvy;
+    double dot = dx * dvx + dy * dvy;
+    double sep_sq = separation * separation;
+
+    // Both stationary. Either overlapping forever or never
+    if (speed_sq < 1e-12) {
+        if (dist_sq <= sep_sq) {
+            return std::make_tuple(-inf, inf); // Always overlapping
+        } else {
+            return std::make_tuple(
+                std::numeric_limits<double>::quiet_NaN(),
+                std::numeric_limits<double>::quiet_NaN()
+            ); // Never collide
+        }
+    }
+
+    // Already outside and moving away (or tangent and moving apart)
+    if (dot >= 0.0 && dist_sq > sep_sq) {
+        return std::make_tuple(
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN()
+        );
+    }
+
+    // Avoid division by zero if exactly at same center initially
+    if (dist_sq < 1e-12) {
+        // Starts at same point
+        double root_term = std::sqrt(sep_sq / speed_sq);
+        double t_mid = 0.0;
+        return std::make_tuple(-root_term, root_term);
+    }
+
+    // sin check: if angle too wide, paths never intersect within radius band
+    double cos_theta_sq = (dot * dot) / (dist_sq * speed_sq);
+    double sin_theta_sq = std::clamp(1.0 - cos_theta_sq, 0.0, 1.0);
+    // Clamp due to floating error
+    double min_sin_sq = sep_sq / dist_sq;
+
+    if (sin_theta_sq > min_sin_sq) {
+        return std::make_tuple(
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN()
+        ); // Will miss each other
+    }
+
+    // Compute collision time interval centered around closest approach
+    double arg = (sep_sq - dist_sq * sin_theta_sq) / speed_sq;
+    if (arg < 0.0) {
+        return std::make_tuple(
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN()
+        ); // No real solution
+    }
+
+    double root_term = std::sqrt(arg);
+    double t_mid = -dot / speed_sq;
+
+    double t_enter = t_mid - root_term;
+    double t_exit  = t_mid + root_term;
+    return std::make_tuple(t_enter, t_exit);
+}
+
+double find_first_leq_zero(
+    function<tuple<double,double,double>(double)> f,
+    double a,
+    double b,
+    double tol = 1e-12,
+    int max_iterations = 80  // This is way overkill, and 30 is probably fine. But this is so rare to use more than just a few iterations, that this won't slow down the game.
+) {
+    /**
+    Finds the smallest t in [a, b] such that f(t) <= 0, using Newton's method
+    Newton's method is made to return the right endpoint, to be safe and return f(t) <= 0 and not > 0
+    This assumes the input function has continuous derivatives, and is smooth!
+
+    The function f must return a triple: (f(t), f'(t), f''(t))
+    */
+
+    // Root-finding using Newton's method, with bisection fallback if Newton update jumps out of bounds
+    auto newton_root = [&](function<tuple<double,double,double>(double)> f, double x0, double x1) -> double {
+        // It's assumed that the input function is a decreasing function, where f(x0) > 0 and f(x1) < 0
+        // We assume there's just ONE ROOT
+        // If there are multiple roots, this will only return one of them, and it's not guaranteed to return
+        // the earliest of them, which is what we need!
+        // This will find the point where f(x) == 0
+        // More precisely, it finds the smallest x such that f(x) < 0, so slightly past the root!
+        double x_low = x0, x_high = x1;
+        double x = 0.5 * (x0 + x1);  // Start in the middle
+        auto [fx, dfx, _] = f(x);    // Initial evaluation
+        for (int iter = 0; iter < max_iterations; ++iter) {
+            if (-tol < fx && fx <= 0.0) {
+                return x;  // Close enough!
+            }
+            if (abs(dfx) < tol || isnan(dfx)) {
+                // If the slope is 0 or NaN, just do a bisection step
+                double x_new = 0.5 * (x_low + x_high);
+                x = x_new;
+            } else {
+                double x_new = x - fx / dfx;  // Newton update!
+                // Make sure it's still in [x0, x1]
+                if (!(x0 <= x_new && x_new <= x1)) {
+                    // It's not, so fallback to bisection
+                    x_new = 0.5 * (x_low + x_high);
+                } else if (abs(x_new - x) < tol) {
+                    // The newton step is tiny, and has stalled.
+                    // It probably converged
+                    return x_new;
+                }
+                x = x_new;
+            }
+            // Update bounds based on sign of f(x)
+            tie(fx, dfx, ignore) = f(x);
+            if (fx > 0.0) {
+                // Bisect right
+                x_low = x;
+            } else {
+                // Bisect left
+                x_high = x;
+            }
+            // Check for convergence
+            if (abs(x_high - x_low) < tol) {
+                return x_high;
+            }
+        }
+        return x_high;  // Didn't converge, but just return x_high anyway and hope nothing goes wrong ¯\_(ツ)_/¯
+    };
+
+    // Root-finding for f'(x) using Newton's method, with bisection fallback if Newton update jumps out of bounds
+    auto newton_minimum = [&](function<tuple<double,double,double>(double)> f, double x0, double x1) -> double {
+        // It's assumed that the input function has a local minimum in [x0, x1]
+        // We're looking for the point where f'(x) == 0
+        // We assume there's just one critical point (minimum or maximum)
+        // Assume that f'(x0) < 0 and f'(x1) > 0, so this is an increasing function
+        double x_low = x0, x_high = x1;
+        double x = 0.5 * (x0 + x1);  // Start in the middle
+        auto [_, dfx, ddfx] = f(x);  // Initial evaluation
+        for (int iter = 0; iter < max_iterations; ++iter) {
+            tie(ignore, dfx, ddfx) = f(x);
+            if (abs(dfx) < tol) {
+                return x;  // Found a minimum (or stationary point)!
+            }
+            if (abs(ddfx) < tol || isnan(ddfx)) {
+                // If the second derivative is 0 or NaN, just do a bisection step
+                double x_new = 0.5 * (x_low + x_high);
+                x = x_new;
+            } else {
+                double x_new = x - dfx / ddfx;  // Newton update!
+                // Make sure it's still in [x0, x1]
+                if (!(x0 <= x_new && x_new <= x1)) {
+                    // It's not, fallback to bisection
+                    x_new = 0.5 * (x_low + x_high);
+                } else if (abs(x_new - x) < tol) {
+                    // The newton step is tiny, and has stalled.
+                    // It probably converged
+                    return x_new;
+                }
+                x = x_new;
+            }
+            // Update bounds based on sign of f'(x)
+            tie(ignore, dfx, ddfx) = f(x);
+            if (dfx > 0.0) {
+                // Bisect left
+                x_high = x;
+            } else {
+                // Bisect right
+                x_low = x;
+            }
+            // Check for convergence
+            if (abs(x_high - x_low) < tol) {
+                return x;
+            }
+        }
+        return x;  // Didn't converge, but just return x anyway and hope nothing goes wrong ¯\_(ツ)_/¯
+    };
+
+    // Classic bisection method. Slower but guaranteed if f changes sign
+    auto bisection_root = [&](function<tuple<double,double,double>(double)> f, double x0, double x1) -> double {
+        auto [f0, _, __] = f(x0);  // Cache initial f(x0)
+        auto [f1, ___, ____] = f(x1);  // Cache initial f(x1)
+        assert(f0 * f1 <= 0.0);
+        for (int iter = 0; iter < max_iterations; ++iter) {
+            double xm = 0.5 * (x0 + x1);
+            auto [fm, _, __2] = f(xm);
+            if (-tol < fm && fm <= 0.0) {
+                return xm;  // Close enough!
+            }
+            // Update the interval based on the sign of fm
+            if (f0 * fm < 0.0) {
+                x1 = xm;      // Root is in [x0, xm]
+                f1 = fm;      // f(x1) becomes f(xm)
+            } else {
+                x0 = xm;      // Root is in [xm, x1]
+                f0 = fm;      // f(x0) becomes f(xm)
+            }
+            if (abs(x1 - x0) < tol) {
+                return x1;  // Interval is tiny. return right point, which is hopefully <= 0
+            }
+        }
+        return x1;  // Didn't converge, but return our best guess
+    };
+
+    auto bisection_on_second_derivative = [&](function<tuple<double,double,double>(double)> f, double x0, double x1) -> double {
+        auto [_, __, dd0] = f(x0);
+        auto [___, ____, dd1] = f(x1);
+        assert(dd0 * dd1 <= 0.0);
+        for (int iter = 0; iter < max_iterations; ++iter) {
+            double xm = 0.5 * (x0 + x1);
+            auto [_____, ______, ddm] = f(xm);
+            if (abs(ddm) < tol) {
+                return xm;
+            }
+            if (dd0 * ddm < 0.0) {
+                // Bisect left
+                x1 = xm;
+                dd1 = ddm;
+            } else {
+                // Bisect right
+                x0 = xm;
+                dd0 = ddm;
+            }
+            if (abs(x1 - x0) < tol) {
+                return xm;
+            }
+        }
+        // Didn't converge, but return best guess
+        return 0.5 * (x0 + x1);
+    };
+
+    // Main logic
+    double fa, da, dda;
+    tie(fa, da, dda) = f(a);
+    if (fa <= 0.0) {
+        return a;  // Already satisfies condition at the left endpoint
+    }
+
+    double fb, db, ddb;
+    tie(fb, db, ddb) = f(b);
+
+    if (dda * ddb >= 0.0) {
+        // The second derivative PROBABLY does not change signs in the interval,
+        // meaning there is no inflection point and no multiple roots
+        if (fb <= 0.0) {
+            // There’s ONLY ONE root somewhere between a and b
+            return newton_root(f, a, b);
+        }
+        // If f is decreasing then increasing (da < 0, db > 0), there may be a minimum inside
+        if (da < 0.0 && db > 0.0) {
+            double t_min = newton_minimum(f, a, b);
+            auto [fmin, _, __] = f(t_min);
+            if (fmin <= 0.0) {
+                // The minimum is below zero. Find where it goes from positive to negative
+                return newton_root(f, a, t_min);
+            }
+        }
+    } else {
+        // The concavity of the function (second derivative) changes in this interval, so
+        // it's possible that the function can seem to not want to dip down,
+        // but actually it has a couple extra turning points in there, and really does dip down!
+        // This function could be cubic-shaped.
+        double t_inflect = bisection_on_second_derivative(f, a, b);
+        double fi, di, ddi;
+        tie(fi, di, ddi) = f(t_inflect);
+        if (fi <= 0.0) {
+            // We know fa is positive, so this brackets a single root!
+            return newton_root(f, a, t_inflect);
+        } else if (da < 0.0 && di > 0.0) {
+            // There's a minimum between a and the inflection point! Find it!
+            double t_min = newton_minimum(f, a, t_inflect);
+            auto [fmin, _, __] = f(t_min);
+            if (fmin <= 0.0) {
+                return newton_root(f, a, t_min);
+            }
+        }
+        if (fb <= 0.0) {
+            // We know fi is positive, so this brackets a root!
+            return newton_root(f, t_inflect, b);
+        } else if (di < 0.0 && db > 0.0) {
+            // There's a minimum between the inflection point and b! Find it!
+            double t_min = newton_minimum(f, t_inflect, b);
+            auto [fmin, _, __] = f(t_min);
+            if (fmin <= 0.0) {
+                return newton_root(f, a, t_min);  // Tempting to do Newton between t_inflect and t_min, but this is safer
+            }
+        }
+    }
+
+    // Hail Mary fallback: brute force sample the interval a bunch lol
+    // Nvm, just give up at this point. The juice is not worth the squeeze!
+    /*
+    int N = 100;  // Subdivide the interval finely
+    for (int i = 1; i <= N; ++i) {
+        double x0 = a + (b - a) * (i - 1) / N;
+        double x1 = a + (b - a) * i / N;
+        x0 = max(x0, a);
+        x1 = min(x1, b);
+        auto [f0, _, __] = f(x0);
+        auto [f1, ___, ____] = f(x1);
+        if (f0 > 0.0 && f1 <= 0.0) {
+            // We found a sign change, so apply bisection
+            return bisection_root(f, x0, x1);
+        }
+    }
+    */
+    // Dang, couldn't find anything :(
+    return std::numeric_limits<double>::quiet_NaN();
+}
+
+double find_first_leq_zero_segmented(
+    function<tuple<double,double,double>(double)> f,
+    double a,
+    double b,
+    double tol = 1e-12,
+    int max_iterations = 80,
+    double max_interval_size = 0.02
+) {
+    /**
+    Wrapper for find_first_leq_zero that segments the interval [a, b]
+    into smaller intervals of size <= max_interval_size, to improve robustness
+    for poorly-behaved functions.
+    */
+
+    if (a >= b) {
+        return std::numeric_limits<double>::quiet_NaN();  // Invalid interval
+    }
+
+    int n_segments = int(ceil((b - a) / max_interval_size));
+    double seg_size = (b - a) / n_segments;
+
+    for (int i = 0; i < n_segments; ++i) {
+        double x0 = a + i * seg_size;
+        double x1 = a + (i + 1) * seg_size;
+        x1 = min(x1, b);  // Clamp to b, just in case of floating point shenanigans
+
+        double result = find_first_leq_zero(f, x0, x1, tol, max_iterations);
+        if (!isnan(result)) {
+            return result;
+        }
+    }
+    return std::numeric_limits<double>::quiet_NaN();  // No zero-crossing found
+}
+
+double find_first_leq_zero_robust_slow(
+    function<tuple<double,double,double>(double)> f,
+    double a,
+    double b,
+    double tol = 1e-12,
+    int max_iterations = 80
+) {
+    /**
+    Finds the smallest t in [a, b] such that f(t) <= 0
+    This is used for debugging and cross-checking the fast function. It is slow!
+
+    The function f must return a triple: (f(t), f'(t), f''(t))
+    */
+
+    // Classic bisection method. Slower but guaranteed if f changes sign
+    auto bisection_root = [&](function<tuple<double,double,double>(double)> f, double x0, double x1) -> double {
+        auto [f0, _, __] = f(x0);  // Cache initial f(x0)
+        auto [f1, ___, ____] = f(x1);  // Cache initial f(x1)
+        assert(f0 * f1 <= 0.0);
+        for (int iter = 0; iter < max_iterations; ++iter) {
+            double xm = 0.5 * (x0 + x1);
+            auto [fm, _, __2] = f(xm);
+            if (-tol < fm && fm <= 0.0) {
+                return xm;  // Close enough!
+            }
+            // Update the interval based on the sign of fm
+            if (f0 * fm < 0.0) {
+                x1 = xm;      // Root is in [x0, xm]
+                f1 = fm;      // f(x1) becomes f(xm)
+            } else {
+                x0 = xm;      // Root is in [xm, x1]
+                f0 = fm;      // f(x0) becomes f(xm)
+            }
+            if (abs(x1 - x0) < tol) {
+                return x1;  // Interval is tiny. return right point, which is hopefully <= 0
+            }
+        }
+        return x1;  // Didn't converge, but return our best guess
+    };
+
+    auto [fa, da, dda] = f(a);
+    if (fa <= 0.0) {
+        return a;  // Already satisfies condition at the left endpoint
+    }
+
+    // Brute force sample a bunch of intervals
+    int N = 1000;  // Subdivide the interval finely
+    for (int i = 1; i <= N; ++i) {
+        double x0 = a + (b - a) * (i - 1) / N;
+        double x1 = a + (b - a) * i / N;
+        x0 = max(x0, a);
+        x1 = min(x1, b);
+        auto [f0, _, __] = f(x0);
+        auto [f1, ___, ____] = f(x1);
+        if (f0 > 0.0 && f1 <= 0.0) {
+            // We found a sign change, so apply bisection
+            return bisection_root(f, x0, x1);
+        }
+    }
+    return std::numeric_limits<double>::quiet_NaN();
+}
+
+double find_first_leq_zero_no_derivs(
+    function<double(double)> f,
+    double a,
+    double b,
+    double tol = 1e-12,
+    int max_iter = 40
+) {
+    /**
+    Finds the smallest t in [a, b] such that f(t) <= 0.
+    - If f(a) <= 0, returns a.
+    - If f(a) > 0 and f(b) <= 0, uses bisection to find the smallest t where f(t) <= 0
+    - If f(a) > 0 and f(b) > 0, estimates derivatives at endpoints:
+        * If derivative at a < 0 and at b > 0, searches for a minimum (critical point)
+        * If minimum dips below zero, finds the leftmost t with bisection
+    - Derivative estimation never evaluates f outside [a, b]
+    - Returns nan if no such t exists
+    */
+
+    // This is UNUSED. Kept for legacy purposes, but this is not robust or good. Please do not use this.
+
+    auto estimate_derivative = [&](function<double(double)> f, double t, double a, double b, double h = 1e-8) -> double {
+        /**
+        Numerically estimates the derivative of f at t, within [a, b]
+        - Uses central difference by default
+        - Uses forward difference at or near the left endpoint
+        - Uses backward difference at or near the right endpoint
+        - Does not evaluate f outside [a, b]
+        */
+        if (t - h <= a) {
+            // Forward difference (clamp to [a, b])
+            return (f(min(t + h, b)) - f(t)) / h;
+        } else if (t + h >= b) {
+            // Backward difference (clamp to [a, b])
+            return (f(t) - f(max(t - h, a))) / h;
+        } else {
+            // Central difference
+            return (f(t + h) - f(t - h)) / (2.0 * h);
+        }
+    };
+
+    auto bisect_first_below_zero = [&](function<double(double)> f, double a, double b) -> double {
+        /**
+        Bisection to find smallest t in [a, b] with f(t) <= 0.
+        Assumes f(a) > 0, f(b) <= 0.
+        */
+        for (int iter=0; iter<max_iter; ++iter) {
+            double mid = 0.5 * (a + b);
+            double f_mid = f(mid);
+            if (f_mid <= 0.0) {
+                b = mid;
+            } else {
+                a = mid;
+            }
+            if (abs(b - a) < tol) {
+                return f(b) <= 0.0 ? b : std::numeric_limits<double>::quiet_NaN();
+            }
+        }
+        return f(b) <= 0.0 ? b : std::numeric_limits<double>::quiet_NaN();
+    };
+
+    auto bisect_derivative_zero = [&](function<double(double)> f, double a, double b) -> double {
+        /**
+        Bisection to find t in [a, b] where derivative is approximately zero
+        Assumes derivative(a) < 0, derivative(b) > 0
+        This assumes there's no inflection points or any weirdness. The function is assumed to dip down and go back up again at the end of the interval,
+        and this looks for the critical point (minimum) in the middle of the interval
+        */
+        double left = a;
+        double right = b;
+        for (int iter = 0; iter < max_iter; ++iter) {
+            double mid = 0.5 * (left + right);
+            double d_mid = estimate_derivative(f, mid, a, b);
+            if (abs(d_mid) < tol) {
+                return mid;
+            }
+            if (d_mid > 0.0) {
+                // Bring in the right bound
+                right = mid;
+            } else {
+                // Bring in the left bound
+                left = mid;
+            }
+            if (abs(right - left) < tol) {
+                return 0.5 * (left + right);
+            }
+        }
+        return 0.5 * (left + right);
+    };
+
+    double fa = f(a);
+    if (fa <= 0.0) {
+        // Bam we have our answer
+        return a;
+    }
+
+    double fb = f(b);
+    if (fb <= 0.0) {
+        // f(a) is positive and f(b) is negative. By intermediate value theorem, at least one root exists.
+        // By the nature of our problem, only one root will exist. Not possible to have more roots.
+        return bisect_first_below_zero(f, a, b);
+    }
+
+    double da = estimate_derivative(f, a, a, b);
+    double db = estimate_derivative(f, b, a, b);
+    if (da < 0.0 && db > 0.0) {
+        // The function is positive at endpoints, but it's concave-up over this interval.
+        // It might dip down below 0 during this interval! Find the minimum, and check if it's negative.
+        double t_c = bisect_derivative_zero(f, a, b);
+        double f_tc = f(t_c);
+        if (f_tc <= 0.0) {
+            return bisect_first_below_zero(f, a, t_c);
+        }
+    }
+    return std::numeric_limits<double>::quiet_NaN();
+}
 
 // === 1. find_time_interval_in_which_unwrapped_asteroid_is_within_main_wrap ===
 inline std::pair<double, double>
@@ -5498,123 +6071,891 @@ inline bool asteroid_bullet_collision_discrete_wrong(
     return triangle_height < asteroid_radius;
 }
 
-inline bool circle_line_collision_continuous(
-    double line_x1, double line_y1,
-    double line_x2, double line_y2,  
-    double line_vx, double line_vy,
-    double circle_x, double circle_y,  
-    double circle_vx, double circle_vy,
-    double circle_r, double delta_time)
+// Returns (dx, dy) using either analytic or Taylor expansion for small omega
+// Args:
+//     v0: initial speed (units/sec)
+//     a: acceleration (units/sec^2)
+//     theta0: initial heading (radians)
+//     omega: turn rate (rad/sec)
+//     dt: t1 - t0, the time interval to integrate over (seconds)
+std::tuple<double, double> analytic_ship_movement_integration(
+    double v0, double a, double theta0, double omega, double delta_t)
 {
-    // First, do a quick bounding box rejection check
-    // Find the min/max x/y values that the bullet can take on, and then expand by the radius of the asteroid
-    double bullet_rel_vx = line_vx - circle_vx;
-    double bullet_rel_vy = line_vy - circle_vy;
+    if (std::abs(delta_t) < 1e-12) {
+        // Integrating over basically no time into the future
+        return std::make_tuple(0.0, 0.0);
+    }
+    if (std::abs(omega) < 0.15) {
+        // Omega is relatively small, and the divisions in the analytic solution are numerically unstable
+        // Use a 3rd order Taylor/Maclaurin series to get a much more accurate result near 0
+        // Without this code, with omega near 0, the ship starts teleporting due to floating point wackiness! It's funny
+        // The cutoff of 0.15 was found by testing some values for the constants,
+        // and making a plot of the absolute error between the Taylor and analytic graphs.
+        // 0.15 tends to minimize this max absolute error at below 1e-10, and is the balance point.
+        double cos_theta0 = std::cos(theta0);
+        double sin_theta0 = std::sin(theta0);
 
-    double bullet_dx = bullet_rel_vx * delta_time;
-    double bullet_dy = bullet_rel_vy * delta_time;
+        double delta_t2 = delta_t * delta_t;
+        double delta_t3 = delta_t2 * delta_t;
+        double delta_t4 = delta_t3 * delta_t;
+        double a_delta_t = a * delta_t;
 
-    double x_values[4] = {
-        line_x1,
-        line_x1 - bullet_dx,
-        line_x2,
-        line_x2 - bullet_dx
-    };
+        // Derivatives were found by taking limits as omega approaches zero, of the derivatives of the analytic solution
+        double omega0_common = delta_t * (a_delta_t / 2.0 + v0);
+        double omega0_deriv_common = delta_t2 * (a_delta_t / 3.0 + v0 / 2.0);
+        double omega0_second_deriv_common = delta_t3 * (a_delta_t / 4.0 + v0 / 3.0);
+        double omega0_third_deriv_common = delta_t4 * (a_delta_t / 5.0 + v0 / 4.0);
 
-    double y_values[4] = {
-        line_y1,
-        line_y1 - bullet_dy,
-        line_y2,
-        line_y2 - bullet_dy
-    };
+        double delta_x_omega0 = omega0_common * cos_theta0;
+        double delta_x_deriv_omega0 = -omega0_deriv_common * sin_theta0;
+        double delta_x_second_deriv_omega0 = -omega0_second_deriv_common * cos_theta0;
+        double delta_x_third_deriv_omega0 = omega0_third_deriv_common * sin_theta0;
 
-    double min_x = x_values[0];
-    double max_x = x_values[0];
-    double min_y = y_values[0];
-    double max_y = y_values[0];
-    for (int i = 1; i < 4; ++i) {
-        if (x_values[i] < min_x) min_x = x_values[i];
-        if (x_values[i] > max_x) max_x = x_values[i];
-        if (y_values[i] < min_y) min_y = y_values[i];
-        if (y_values[i] > max_y) max_y = y_values[i];
+        double delta_y_omega0 = omega0_common * sin_theta0;
+        double delta_y_deriv_omega0 = omega0_deriv_common * cos_theta0;
+        double delta_y_second_deriv_omega0 = -omega0_second_deriv_common * sin_theta0;
+        double delta_y_third_deriv_omega0 = -omega0_third_deriv_common * cos_theta0;
+
+        // Assemble Taylor polynomials and evaluate for dx and dy
+        double dx = delta_x_omega0 +
+                   omega * (delta_x_deriv_omega0 + 
+                   omega * (delta_x_second_deriv_omega0 / 2.0 + 
+                   omega * delta_x_third_deriv_omega0 / 6.0));
+        double dy = delta_y_omega0 +
+                   omega * (delta_y_deriv_omega0 + 
+                   omega * (delta_y_second_deriv_omega0 / 2.0 + 
+                   omega * delta_y_third_deriv_omega0 / 6.0));
+        return std::make_tuple(dx, dy);
+    } else {
+        // Exact analytic solution
+        // The Sympy code to set up dynamics and integrate is as follows.
+        // You may need to algebraically manipulate the result to get it into the same nice form.
+
+        // from sympy import *
+        // x0, y0, v0, theta0, omega, delta_x, delta_y, t, delta_t, a = symbols('x0 y0 v0 theta0 omega delta_x delta_y t delta_t a')
+        // v_t = v0 + a * t
+        // theta_t = theta0 + omega * t
+        // delta_x_expr = integrate(v_t * cos(theta_t), (t, 0, delta_t))
+        // delta_y_expr = integrate(v_t * sin(theta_t), (t, 0, delta_t))
+
+        double delta_theta = omega * delta_t;
+        double theta1 = theta0 + delta_theta;
+        double cos_theta0 = std::cos(theta0);
+        double cos_theta1 = std::cos(theta1);
+        double sin_theta0 = std::sin(theta0);
+        double sin_theta1 = std::sin(theta1);
+        double sin_diff = sin_theta1 - sin_theta0;
+        double cos_diff = cos_theta1 - cos_theta0;
+        double omega_reciprocal = 1.0 / omega;
+        double dx = omega_reciprocal * (v0 * sin_diff + omega_reciprocal * (a * (cos_diff + delta_theta * sin_theta1)));
+        double dy = omega_reciprocal * (-v0 * cos_diff + omega_reciprocal * (a * (sin_diff - delta_theta * cos_theta1)));
+        return std::make_tuple(dx, dy);
+    }
+}
+
+double ship_asteroid_continuous_collision_time(
+    double ship_x, double ship_y, double ship_r, double ship_speed,
+    const std::vector<std::tuple<double, double, double, double, double, double, double, double>>& ship_integration_initial_states,
+    double ast_x, double ast_y, double ast_vx, double ast_vy, double ast_r, double ast_speed,
+    double time_interval_start, double time_interval_end
+) {
+    // Given the asteroid and ship states at this instant, this function checks whether a collision
+    // between them has occurred anytime within the time interval. The current time is treated as t=0
+    // This function returns nan if not, and returns t, the earliest time of collision where time_interval_start <= t <= time_interval_end, if a collision was detected.
+
+    // The asteroid moves at constant velocity
+    // The ship can accelerate, and move in a spiral path. Integration is required to solve for its movement.
+
+    // First, we do an early rejection check. If the asteroid and ship are far enough away that with their combined velocities
+    // it is impossible that they could have collided within the past delta_time seconds, then return nan
+    // This check can be made stronger if we find the magnitude of their relative velocity, but that's more expensive to calculate compared to this conservative check
+    double max_time_diff_from_now = std::max(std::abs(time_interval_start), std::abs(time_interval_end));
+    // Find the upper bound of their combined velocities
+    // Basically because the ship could have been moving faster at the start of the interval, we integrate with the at^2/2 factor added in, with max ship accel
+    double combined_vel = std::abs(ship_speed) + (480.0 + 80.0) * 0.5 * max_time_diff_from_now + ast_speed;  // sqrt(ast_vx * ast_vx + ast_vy * ast_vy)
+    assert(ast_speed >= 0.0);
+    double delta_x = ship_x - ast_x;
+    double delta_y = ship_y - ast_y;
+    double max_separation = max_time_diff_from_now * combined_vel + ship_r + ast_r;
+    // if separation <= 0.0 then we collided, but we still go through the rest of the function to find when it first happened
+    if (delta_x * delta_x + delta_y * delta_y > max_separation * max_separation) {
+        // There is no possible way these could have been colliding in the time interval [time_interval_start, time_interval_end]
+        // even if they were booking it away from each other in this past frame
+        return std::numeric_limits<double>::quiet_NaN();
     }
 
-    if (circle_x + circle_r < min_x || circle_x - circle_r > max_x || circle_y + circle_r < min_y || circle_y - circle_r > max_y) {
+    // This is the function we want to root find
+    std::function<std::tuple<double, double, double>(double)> squared_separation_between_ship_and_asteroid_at_t =
+        [&](double t) -> std::tuple<double, double, double>
+    {
+        // Returns f(t), f'(t), f''(t)
+        assert(time_interval_start <= t && t <= time_interval_end);
+
+        // Back-extrapolate the asteroid
+        double ax = ast_x + ast_vx * t;
+        double ay = ast_y + ast_vy * t;
+        double dx_sum = 0.0;
+        double dy_sum = 0.0;
+
+        // To get the position of the ship in the past, we integrate its position backward
+        // using the integration intervals we stored in the ship state when it was integrating it forward in time.
+        // If the integral is split into multiple time segments, add them all up going backward in time,
+        // until we hit t, the end point of the integration
+
+        // Keep in mind that the start_t and end_t are reverse chronological! So it starts in the future, and ends in the past!
+        for (std::size_t i = 0; i < ship_integration_initial_states.size(); i++) {
+            double start_t = std::get<0>(ship_integration_initial_states[i]);
+            double end_t = std::get<1>(ship_integration_initial_states[i]);
+            double v0 = std::get<2>(ship_integration_initial_states[i]);
+            double a = std::get<3>(ship_integration_initial_states[i]);
+            double theta0 = std::get<4>(ship_integration_initial_states[i]);
+            double omega = std::get<5>(ship_integration_initial_states[i]);
+            double dx = std::get<6>(ship_integration_initial_states[i]);
+            double dy = std::get<7>(ship_integration_initial_states[i]);
+            assert(end_t - start_t <= 0.0);
+            if (end_t < t && t <= start_t) {
+                // We need to include this interval since t lies in the middle of it
+                std::pair<double, double> result = analytic_ship_movement_integration(v0, a, theta0, omega, t - start_t);
+                dx_sum += result.first;
+                dy_sum += result.second;
+                break;  // Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
+            } else {
+                // This interval is fully included within t. Add the full integral amount
+                assert(t <= end_t);
+                dx_sum += dx;
+                dy_sum += dy;
+            }
+        }
+        double sx = ship_x + dx_sum;
+        double sy = ship_y + dy_sum;
+        double dist_x = ax - sx;
+        double dist_y = ay - sy;
+        double rad_sum = ship_r + ast_r;
+        // If this return value is positive, the objects are not colliding. If they are negative or zero, they are.
+        double function_value = dist_x * dist_x + dist_y * dist_y - rad_sum * rad_sum;
+
+        // Find the derivative of this function. It's the derivative of the integral, so it's just the function itself!
+        // But to find the derivative, we need to know which stage of the integration it's in, because the ship's acceleration changes depending on the stage
+        double ddt_sx = 0.0;
+        double ddt_sy = 0.0;
+        double ddt2_sx = 0.0;
+        double ddt2_sy = 0.0;
+
+        for (std::size_t i = 0; i < ship_integration_initial_states.size(); i++) {
+            double start_t = std::get<0>(ship_integration_initial_states[i]);
+            double end_t = std::get<1>(ship_integration_initial_states[i]);
+            double v0 = std::get<2>(ship_integration_initial_states[i]);
+            double a = std::get<3>(ship_integration_initial_states[i]);
+            double theta0 = std::get<4>(ship_integration_initial_states[i]);
+            double omega = std::get<5>(ship_integration_initial_states[i]);
+            // double dx = std::get<6>(ship_integration_initial_states[i]);
+            // double dy = std::get<7>(ship_integration_initial_states[i]);
+
+            if (end_t <= t && t <= start_t) {
+                // Found the interval we differentiate in
+                double theta_t = theta0 + omega * (t - start_t);
+                double v_t = v0 + a * (t - start_t);
+                double sin_theta_t = std::sin(theta_t);
+                double cos_theta_t = std::cos(theta_t);
+                ddt_sx = v_t * cos_theta_t;
+                ddt_sy = v_t * sin_theta_t;
+                ddt2_sx = v_t * -sin_theta_t * omega + a * cos_theta_t;
+                ddt2_sy = v_t * cos_theta_t * omega + a * sin_theta_t;
+                break;
+            }
+        }
+
+        double deriv_dt_dist_x = ast_vx - ddt_sx;
+        double deriv_dt_dist_y = ast_vy - ddt_sy;
+        double second_deriv_dt_dist_x = -ddt2_sx;
+        double second_deriv_dt_dist_y = -ddt2_sy;
+
+        double derivative_value = 2.0 * (dist_x * deriv_dt_dist_x + dist_y * deriv_dt_dist_y);
+
+        double second_derivative_value =
+            2.0 * (dist_x * second_deriv_dt_dist_x + deriv_dt_dist_x * deriv_dt_dist_x +
+                   dist_y * second_deriv_dt_dist_y + deriv_dt_dist_y * deriv_dt_dist_y);
+
+        return std::make_tuple(function_value, derivative_value, second_derivative_value);
+    };
+
+    int ship_intervals = static_cast<int>(ship_integration_initial_states.size());
+    assert(ship_intervals <= 2);
+    double root_t;
+    if (ship_intervals == 2) {
+        // The separation function's second derivative will be discontinuous in 1 spot
+        // We need to do the root finding interval-by-interval, and not just the whole thing at once.
+        double interval_mid = std::get<1>(ship_integration_initial_states[0]);
+        //assert(time_interval_start <= interval_mid && interval_mid <= time_interval_end) // nvm this isn't true because the start of the interval can be delayed!
+        if (time_interval_start < interval_mid) {
+            root_t = find_first_leq_zero_segmented(
+                squared_separation_between_ship_and_asteroid_at_t,
+                time_interval_start,
+                std::nextafter(interval_mid, -inf)
+            );
+            if (std::isnan(root_t)) {
+                // Try the next interval
+                root_t = find_first_leq_zero_segmented(
+                    squared_separation_between_ship_and_asteroid_at_t,
+                    std::nextafter(interval_mid, inf),
+                    time_interval_end
+                );
+            }
+        } else {
+            // The start of the interval was delayed. It's just one interval then!
+            root_t = find_first_leq_zero_segmented(
+                squared_separation_between_ship_and_asteroid_at_t,
+                time_interval_start,
+                time_interval_end
+            );
+        }
+    } else {
+        root_t = find_first_leq_zero_segmented(
+            squared_separation_between_ship_and_asteroid_at_t,
+            time_interval_start,
+            time_interval_end
+        );
+    }
+    return root_t;
+}
+
+double ship_ship_continuous_collision_time(
+    double ship1_x, double ship1_y, double ship1_r, double ship1_speed,
+    const std::vector<std::tuple<double, double, double, double, double, double, double, double>>& ship1_integration_initial_states,
+    double ship2_x, double ship2_y, double ship2_r, double ship2_speed,
+    const std::vector<std::tuple<double, double, double, double, double, double, double, double>>& ship2_integration_initial_states,
+    double time_interval_start, double time_interval_end
+) {
+    // Given the two ship states at this instant, this function checks whether a collision
+    // between them has occurred anytime within the time interval
+    // This function returns nan if not, and returns t, the earliest time of collision where time_interval_start <= t <= time_interval_end, if a collision was detected.
+
+    // Both ships can accelerate and move in spiral paths. Integration is required to solve for their movements.
+
+    // First, we do an early rejection check. If the ships are far enough away that with their combined velocities
+    // it is impossible that they could have collided within the past delta_time seconds, then return nan
+    // This check can be made stronger if we find the magnitude of their relative velocity, but that's more expensive to calculate compared to this conservative check
+    double max_time_diff_from_now = std::max(std::abs(time_interval_start), std::abs(time_interval_end));
+    // Find the upper bound of their combined velocities
+    // Basically because the ships could have been moving faster at the start of the interval, we integrate with the at^2/2 factor added in, with max ship accel
+    double combined_vel = std::abs(ship1_speed) + std::abs(ship2_speed) + (480.0 + 80.0) * max_time_diff_from_now;
+    double delta_x = ship1_x - ship2_x;
+    double delta_y = ship1_y - ship2_y;
+    double max_separation = max_time_diff_from_now * combined_vel + ship1_r + ship2_r;
+    // if separation <= 0.0 then we collided, but we still go through the rest of the function to find when it first happened
+    if (delta_x * delta_x + delta_y * delta_y > max_separation * max_separation) {
+        // There is no possible way these could have been colliding in the time interval [-delta_time, 0.0]
+        // even if they were booking it away from each other in this past frame
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    // This is the function we want to root find
+    std::function<std::tuple<double, double, double>(double)> squared_separation_between_ships_at_t =
+        [&](double t) -> std::tuple<double, double, double>
+    {
+        // Returns f(t), f'(t), f''(t)
+        assert(time_interval_start <= t && t <= time_interval_end);
+
+        double dx1_sum = 0.0;
+        double dy1_sum = 0.0;
+        double dx2_sum = 0.0;
+        double dy2_sum = 0.0;
+
+        // Integrate ship 1 position backward in time
+        // Keep in mind that the start_t and end_t are reverse chronological! So it starts in the future, and ends in the past!
+        for (std::size_t i = 0; i < ship1_integration_initial_states.size(); i++) {
+            double start_t = std::get<0>(ship1_integration_initial_states[i]);
+            double end_t = std::get<1>(ship1_integration_initial_states[i]);
+            double v0 = std::get<2>(ship1_integration_initial_states[i]);
+            double a  = std::get<3>(ship1_integration_initial_states[i]);
+            double theta0 = std::get<4>(ship1_integration_initial_states[i]);
+            double omega = std::get<5>(ship1_integration_initial_states[i]);
+            double dx = std::get<6>(ship1_integration_initial_states[i]);
+            double dy = std::get<7>(ship1_integration_initial_states[i]);
+            assert(end_t - start_t <= 0.0);
+            if (end_t < t && t <= start_t) {
+                std::pair<double, double> result = analytic_ship_movement_integration(v0, a, theta0, omega, t - start_t);
+                dx1_sum += result.first;
+                dy1_sum += result.second;
+                break;  // Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
+            } else {
+                assert(t <= end_t);
+                dx1_sum += dx;
+                dy1_sum += dy;
+            }
+        }
+
+        // Integrate ship 2 position backward in time
+        for (std::size_t i = 0; i < ship2_integration_initial_states.size(); i++) {
+            double start_t = std::get<0>(ship2_integration_initial_states[i]);
+            double end_t = std::get<1>(ship2_integration_initial_states[i]);
+            double v0 = std::get<2>(ship2_integration_initial_states[i]);
+            double a  = std::get<3>(ship2_integration_initial_states[i]);
+            double theta0 = std::get<4>(ship2_integration_initial_states[i]);
+            double omega = std::get<5>(ship2_integration_initial_states[i]);
+            double dx = std::get<6>(ship2_integration_initial_states[i]);
+            double dy = std::get<7>(ship2_integration_initial_states[i]);
+            assert(end_t - start_t <= 0.0);
+            if (end_t < t && t <= start_t) {
+                std::pair<double, double> result = analytic_ship_movement_integration(v0, a, theta0, omega, t - start_t);
+                dx2_sum += result.first;
+                dy2_sum += result.second;
+                break;
+            } else {
+                assert(t <= end_t);
+                dx2_sum += dx;
+                dy2_sum += dy;
+            }
+        }
+
+        double sx1 = ship1_x + dx1_sum;
+        double sy1 = ship1_y + dy1_sum;
+        double sx2 = ship2_x + dx2_sum;
+        double sy2 = ship2_y + dy2_sum;
+
+        double dist_x = sx2 - sx1;
+        double dist_y = sy2 - sy1;
+        double rad_sum = ship1_r + ship2_r;
+
+        // If this return value is positive, the objects are not colliding. If they are negative or zero, they are.
+        double function_value = dist_x * dist_x + dist_y * dist_y - rad_sum * rad_sum;
+
+        // Find the derivative of this function. It's the derivative of the integral, so it's just the function itself!
+        // But to find the derivative, we need to know which stage of the integration it's in, because the ship's acceleration changes depending on the stage
+        double ddt_sx1 = 0.0;
+        double ddt_sy1 = 0.0;
+        double ddt2_sx1 = 0.0;
+        double ddt2_sy1 = 0.0;
+
+        // Compute derivatives for ship 1
+        for (std::size_t i = 0; i < ship1_integration_initial_states.size(); i++) {
+            double start_t = std::get<0>(ship1_integration_initial_states[i]);
+            double end_t = std::get<1>(ship1_integration_initial_states[i]);
+            double v0 = std::get<2>(ship1_integration_initial_states[i]);
+            double a  = std::get<3>(ship1_integration_initial_states[i]);
+            double theta0 = std::get<4>(ship1_integration_initial_states[i]);
+            double omega = std::get<5>(ship1_integration_initial_states[i]);
+            if (end_t <= t && t <= start_t) {
+                // Found the interval we differentiate in
+                double theta_t = theta0 + omega * (t - start_t);
+                double v_t = v0 + a * (t - start_t);
+                double sin_theta_t = std::sin(theta_t);
+                double cos_theta_t = std::cos(theta_t);
+                ddt_sx1 = v_t * cos_theta_t;
+                ddt_sy1 = v_t * sin_theta_t;
+                ddt2_sx1 = v_t * -sin_theta_t * omega + a * cos_theta_t;
+                ddt2_sy1 = v_t * cos_theta_t * omega + a * sin_theta_t;
+                break;
+            }
+        }
+
+        double ddt_sx2 = 0.0;
+        double ddt_sy2 = 0.0;
+        double ddt2_sx2 = 0.0;
+        double ddt2_sy2 = 0.0;
+        // Compute derivatives for ship 2
+        for (std::size_t i = 0; i < ship2_integration_initial_states.size(); i++) {
+            double start_t = std::get<0>(ship2_integration_initial_states[i]);
+            double end_t = std::get<1>(ship2_integration_initial_states[i]);
+            double v0 = std::get<2>(ship2_integration_initial_states[i]);
+            double a  = std::get<3>(ship2_integration_initial_states[i]);
+            double theta0 = std::get<4>(ship2_integration_initial_states[i]);
+            double omega = std::get<5>(ship2_integration_initial_states[i]);
+            if (end_t <= t && t <= start_t) {
+                // Found the interval we differentiate in
+                double theta_t = theta0 + omega * (t - start_t);
+                double v_t = v0 + a * (t - start_t);
+                double sin_theta_t = std::sin(theta_t);
+                double cos_theta_t = std::cos(theta_t);
+                ddt_sx2 = v_t * cos_theta_t;
+                ddt_sy2 = v_t * sin_theta_t;
+                ddt2_sx2 = v_t * -sin_theta_t * omega + a * cos_theta_t;
+                ddt2_sy2 = v_t * cos_theta_t * omega + a * sin_theta_t;
+                break;
+            }
+        }
+
+        // Derivatives of the distance vector (ship2 - ship1)
+        double deriv_dt_dist_x = ddt_sx2 - ddt_sx1;
+        double deriv_dt_dist_y = ddt_sy2 - ddt_sy1;
+
+        // Second derivatives of the distance vector
+        double second_deriv_dt_dist_x = ddt2_sx2 - ddt2_sx1;
+        double second_deriv_dt_dist_y = ddt2_sy2 - ddt2_sy1;
+
+        // Derivative of the function (chain rule)
+        double derivative_value = 2.0 * (dist_x * deriv_dt_dist_x + dist_y * deriv_dt_dist_y);
+
+        // Second derivative (product rule + chain rule)
+        double second_derivative_value =
+            2.0 * (dist_x * second_deriv_dt_dist_x + deriv_dt_dist_x * deriv_dt_dist_x +
+                   dist_y * second_deriv_dt_dist_y + deriv_dt_dist_y * deriv_dt_dist_y);
+
+        return std::make_tuple(function_value, derivative_value, second_derivative_value);
+    };
+
+    int ship1_intervals = static_cast<int>(ship1_integration_initial_states.size());
+    int ship2_intervals = static_cast<int>(ship2_integration_initial_states.size());
+    assert(ship1_intervals <= 2 && ship2_intervals <= 2);
+    double root_t;
+    if (ship1_intervals == 2 && ship2_intervals == 2) {
+        // The separation function's second derivative will be discontinuous in 2 spots
+        // We need to do the root finding interval-by-interval, and not just the whole thing at once.
+        double interval_mid_1 = std::get<1>(ship1_integration_initial_states[0]);  // end_t
+        double interval_mid_2 = std::get<1>(ship2_integration_initial_states[0]);  // end_t
+        if (interval_mid_1 > interval_mid_2) {
+            // Fix interval order
+            double temp = interval_mid_1;
+            interval_mid_1 = interval_mid_2;
+            interval_mid_2 = temp;
+        }
+        if (time_interval_start <= interval_mid_1 && interval_mid_1 <= interval_mid_2 && interval_mid_2 <= time_interval_end) {
+            root_t = find_first_leq_zero_segmented(
+                squared_separation_between_ships_at_t,
+                time_interval_start,
+                std::nextafter(interval_mid_1, -inf));
+            if (std::isnan(root_t)) {
+                // Try the next interval
+                root_t = find_first_leq_zero_segmented(
+                    squared_separation_between_ships_at_t,
+                    std::nextafter(interval_mid_1, inf),
+                    std::nextafter(interval_mid_2, -inf));
+                if (std::isnan(root_t)) {
+                    // Try the last interval
+                    root_t = find_first_leq_zero_segmented(
+                        squared_separation_between_ships_at_t,
+                        std::nextafter(interval_mid_2, inf),
+                        time_interval_end);
+                }
+            }
+        }
+        else if (interval_mid_1 <= time_interval_start && time_interval_start <= interval_mid_2 && interval_mid_2 <= time_interval_end) {
+            // Start got delayed, so there's only 2 intervals
+            root_t = find_first_leq_zero_segmented(
+                squared_separation_between_ships_at_t,
+                time_interval_start,
+                std::nextafter(interval_mid_2, -inf));
+            if (std::isnan(root_t)) {
+                // Try the last interval
+                root_t = find_first_leq_zero_segmented(
+                    squared_separation_between_ships_at_t,
+                    std::nextafter(interval_mid_2, inf),
+                    time_interval_end);
+            }
+        }
+        else {
+            // Start got SUPER delayed, so there's only one interval
+            assert(interval_mid_1 <= interval_mid_2 && interval_mid_2 <= time_interval_start && time_interval_start <= time_interval_end);
+            root_t = find_first_leq_zero_segmented(
+                squared_separation_between_ships_at_t,
+                time_interval_start,
+                time_interval_end
+            );
+        }
+    }
+    else if (ship1_intervals == 2 || ship2_intervals == 2) {
+        // The separation function's second derivative will be discontinuous in 1 spot
+        // We need to do the root finding interval-by-interval, and not just the whole thing at once.
+        double interval_mid;
+        if (ship1_intervals == 2) {
+            interval_mid = std::get<1>(ship1_integration_initial_states[0]);
+        } else {
+            interval_mid = std::get<1>(ship2_integration_initial_states[0]);
+        }
+        //assert(time_interval_start <= interval_mid && interval_mid <= time_interval_end);
+        if (time_interval_start < interval_mid) {
+            root_t = find_first_leq_zero_segmented(
+                squared_separation_between_ships_at_t,
+                time_interval_start,
+                std::nextafter(interval_mid, -inf));
+            if (std::isnan(root_t)) {
+                // Try the next interval
+                root_t = find_first_leq_zero_segmented(
+                    squared_separation_between_ships_at_t,
+                    std::nextafter(interval_mid, inf),
+                    time_interval_end
+                );
+            }
+        }
+        else {
+            // The start got delayed, so that there's only one valid interval now
+            root_t = find_first_leq_zero_segmented(
+                squared_separation_between_ships_at_t,
+                time_interval_start,
+                time_interval_end
+            );
+        }
+    }
+    else {
+        root_t = find_first_leq_zero_segmented(
+            squared_separation_between_ships_at_t,
+            time_interval_start,
+            time_interval_end
+        );
+    }
+    return root_t;
+}
+
+double project_point_onto_segment_and_get_t(double x1, double y1, double x2, double y2, double px, double py) {
+    /*
+    Projects point P onto the infinite line defined by segment A(x1, y1) -> B(x2, y2),
+    and returns the parametric position t such that:
+
+        (x, y) = (1 - t) * (x1, y1) + t * (x2, y2)
+
+    - t = 0 corresponds to point A
+    - t = 1 corresponds to point B
+    - t < 0 means the projection falls before A (outside the segment)
+    - t > 1 means the projection falls after B (outside the segment)
+
+    Note: The result is not clamped to [0, 1]. This is intentional!!
+    If the segment is degenerate (length close to 0), returns NaN.
+    */
+    double dx = x2 - x1;
+    double dy = y2 - y1;
+    double len_sq = dx * dx + dy * dy;
+    if (len_sq < 1e-12) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    double px_rel = px - x1;
+    double py_rel = py - y1;
+    double t = (px_rel * dx + py_rel * dy) / len_sq;
+    return t;
+}
+
+std::pair<double, double> circle_line_collision_time_interval(
+    double ax, // Line seg start
+    double ay,
+    double bx, // Line seg end
+    double by,
+    double vx, // Line vel
+    double vy,
+    double cx, // Circle center
+    double cy,
+    double cvx, // Circle vel
+    double cvy,
+    double r // Circle radius
+) {
+    /*
+    Figure out when a moving line segment and moving circle are actually colliding.
+    Returns (nan, nan) if nothing happens at all.
+
+    Idea: Use the circle's frame of reference
+    Freeze the circle at the origin, and pretend the segment is the only thing moving
+    Figure out when the segment's head or tail individually collides with the circle
+    Also check the case of when the middle of the bullet hits first.
+    You won't miss collisions if you don't check for that (since the bullet is shorter than the asteroid diameter),
+    but the time will be wrong since it hits the edge before it hits the ends.
+    In the end, we want to know the interval where any part of the segment is inside the circle.
+    If nothing ever collides, return (nan, nan).
+    */
+
+    double r_sq = r * r;
+
+    // Relative velocity: put the circle at rest, move the segment at (line_vel - circle_vel)
+    double rvx = vx - cvx;
+    double rvy = vy - cvy;
+
+    // A/B relative to the (now stationary) circle center
+    double a0x = ax - cx;
+    double a0y = ay - cy;
+    double b0x = bx - cx;
+    double b0y = by - cy;
+
+    // In case there is zero relative motion, check whether they collide never or always
+    if (std::abs(rvx) < 1e-12 && std::abs(rvy) < 1e-12) {
+        if (circle_line_collision_discrete(a0x, a0y, b0x, b0y, 0.0, 0.0, r)) {
+            return std::make_pair(-inf, inf);
+        } else {
+            return std::make_pair(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+        }
+    }
+
+    // Direction and length of the segment
+    double seg_dx = b0x - a0x;
+    double seg_dy = b0y - a0y;
+    double seg_len = std::sqrt(seg_dx * seg_dx + seg_dy * seg_dy); // Should be 12.0 for a bullet, but calculate it to be general, and to allow for "virtual bullets"
+
+    // Degenerate segment, just a point
+    if (seg_len == 0.0) {
+        seg_dx = 0.0;
+        seg_dy = 0.0;
+    }
+
+    // First figure out when the segment's two endpoints hit the circle (if ever)
+    // For endpoint A
+    double k0 = a0x * a0x + a0y * a0y - r_sq;
+    double k1 = 2.0 * (rvx * a0x + rvy * a0y);
+    double k2 = rvx * rvx + rvy * rvy;
+
+    double t0_A, t1_A;
+    std::tie(t0_A, t1_A) = solve_quadratic(k2, k1, k0);
+
+    // For endpoint B
+    double q0 = b0x * b0x + b0y * b0y - r_sq;
+    double q1 = 2.0 * (rvx * b0x + rvy * b0y);
+    double q2 = k2;
+
+    double t0_B, t1_B;
+    std::tie(t0_B, t1_B) = solve_quadratic(q2, q1, q0);
+
+    // If nothing ever collides at either endpoint,
+    // and the circle is too large to fit through between endpoints,
+    // we’re done. No possible way the further check will catch a collision!
+    if (std::isnan(t0_A) && std::isnan(t0_B) && seg_len < r) {
+        return std::make_pair(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+    }
+
+    // Get the min/max collision window from the two endpoints
+    // t0 is the min of all non-nan times
+    double t0 = inf;
+    if (!std::isnan(t0_A)) {
+        t0 = t0_A;
+    }
+    if (!std::isnan(t0_B) && t0_B < t0) {
+        t0 = t0_B;
+    }
+
+    // t1 is the max of all non-nan times
+    double t1 = -inf;
+    if (!std::isnan(t1_A)) {
+        t1 = t1_A;
+    }
+    if (!std::isnan(t1_B) && t1_B > t1) {
+        t1 = t1_B;
+    }
+
+    // Check the case where the segment middle collides before the head/tail does
+    // To handle that, find the normal (perpendicular) direction to the segment and project velocity there.
+    double nx, ny;
+    if (seg_len > 0.0) {
+        nx = seg_dy / seg_len;
+        ny = -seg_dx / seg_len;
+    } else {
+        // No direction if it's just a point, so skip
+        nx = 0.0;
+        ny = 0.0;
+    }
+
+    // Project relative velocity on normal
+    double v_proj_n = nx * rvx + ny * rvy;
+    // Flip flop the normal to always work in the positive direction
+    if (v_proj_n < 0.0) {
+        nx *= -1.0;
+        ny *= -1.0;
+        v_proj_n *= -1.0;
+    }
+
+    // Project from A to origin (circle at origin) onto normal
+    double r_a0_to_center_x = -a0x;
+    double r_a0_to_center_y = -a0y;
+    double ast_proj_n = r_a0_to_center_x * nx + r_a0_to_center_y * ny;
+
+    // Guard against v_proj_n == 0. This case happens when the asteroids are stationary or moving parallel to the bullet
+    double t0_mid, t1_mid;
+    if (std::abs(v_proj_n) < 1e-12) {
+        t0_mid = std::numeric_limits<double>::quiet_NaN();
+        t1_mid = std::numeric_limits<double>::quiet_NaN();
+    } else {
+        // The bullet head and tails are both located at position 0 on the normal axis
+        double t_ast_center = ast_proj_n / v_proj_n;
+        // The time it takes for the relative bullet vel to travel the radius of the asteroid along normal axis
+        double t_diff_ast_radius = r / v_proj_n;
+
+        t0_mid = t_ast_center - t_diff_ast_radius;
+        t1_mid = t_ast_center + t_diff_ast_radius;
+
+        // Just because the times exist (which they pretty much always do), doesn’t mean the bullet actually collides with the circle there (which it very rarely does)
+        // Need to project the circle center onto the two lines and clamp them to the bounds of the other two lines
+        double a0x_t0m = a0x + rvx * t0_mid;
+        double a0y_t0m = a0y + rvy * t0_mid;
+        double b0x_t0m = b0x + rvx * t0_mid;
+        double b0y_t0m = b0y + rvy * t0_mid;
+        double t_proj_0 = project_point_onto_segment_and_get_t(a0x_t0m, a0y_t0m, b0x_t0m, b0y_t0m, 0.0, 0.0);
+
+        double a0x_t1m = a0x + rvx * t1_mid;
+        double a0y_t1m = a0y + rvy * t1_mid;
+        double b0x_t1m = b0x + rvx * t1_mid;
+        double b0y_t1m = b0y + rvy * t1_mid;
+        double t_proj_1 = project_point_onto_segment_and_get_t(a0x_t1m, a0y_t1m, b0x_t1m, b0y_t1m, 0.0, 0.0);
+
+        // Only count these times if the projection is inside the segment at all (t in [0, 1])
+        if (0.0 <= t_proj_0 && t_proj_0 <= 1.0) {
+            // This is a legit "middle-of-segment" first contact
+            // Add an eps to make this assertion easier. Due to floating point imprecision, it can fail without that! Just suuuuuuper rare.
+            assert(t0_mid <= t0 + 1e-12);
+            t0 = t0_mid;
+        }
+        if (0.0 <= t_proj_1 && t_proj_1 <= 1.0) {
+            // This is a legit "middle-of-segment" last contact
+            assert(t1_mid + 1e-12 >= t1);
+            t1 = t1_mid;
+        }
+    }
+
+    // If neither t0 nor t1 got set properly, there was no collision
+    if (!(std::isfinite(t0) && std::isfinite(t1))) {
+        return std::make_pair(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+    }
+
+    return std::make_pair(t0, t1);
+}
+
+double project_origin_onto_segment_dist_sq(double x1, double y1, double x2, double y2) {
+    // Given a segment from (x1, y1) to (x2, y2), project the origin (0, 0)
+    // onto this segment and return the squared distance from the origin
+    // to the closest point on the segment.
+    double dx = x2 - x1;
+    double dy = y2 - y1;
+    double len_sq = dx * dx + dy * dy;
+
+    // If the endpoints are basically the same point,
+    // just return squared dist to the (degenerate) endpoint.
+    if (len_sq < 1e-12) {
+        return x1 * x1 + y1 * y1;
+    }
+
+    // Compute the projection parameter t of the origin onto the segment,
+    // where t = 0 yields (x1, y1) and t = 1 yields (x2, y2).
+    // Clamp t to [0, 1] to stay on the segment.
+    double t = -(x1 * dx + y1 * dy) / len_sq;
+    t = std::clamp(t, 0.0, 1.0);
+
+    // Compute the closest point's coordinates.
+    double px = x1 + t * dx;
+    double py = y1 + t * dy;
+
+    // Return the squared distance from the origin to this closest point.
+    return px * px + py * py;
+}
+
+bool circle_line_collision_continuous(
+    double ax0,  // One end of line segment at t = 0
+    double ay0,
+    double bx0,  // The other end of line segment at t = 0
+    double by0,
+    double line_vel_x,  // Velocity of line in u/s
+    double line_vel_y,
+    double circle_x,  // Initial position of circle
+    double circle_y,
+    double circle_vel_x,  // Velocity of circle
+    double circle_vel_y,
+    double circle_radius,
+    double delta_time  // Duration of a frame
+) {
+    // Returns whether a moving circle and line segment collided within the time interval [-delta_time, 0]
+
+    // First, do a quick bounding box rejection check
+    // Find the min/max x/y values that the bullet can take on, and then expand by the radius of the asteroid
+    // This code can be written MUCH cleaner by creating a list and using max and min on it, however this unrolled version is many times faster when compiled with mypyc
+    // This code is the most called function in the game, so speed is crucial
+    // Find the min and max x and y coordinates that any endpoint of the line segment can take on over the past frame
+
+    // X
+    double vx = (line_vel_x - circle_vel_x) * delta_time;  // Per frame velocities
+    double min_x, max_x;
+    if (ax0 < bx0) {
+        if (vx >= 0.0) {
+            min_x = ax0 - vx;
+            max_x = bx0;
+        } else {
+            min_x = ax0;
+            max_x = bx0 - vx;
+        }
+    } else {
+        if (vx >= 0.0) {
+            min_x = bx0 - vx;
+            max_x = ax0;
+        } else {
+            min_x = bx0;
+            max_x = ax0 - vx;
+        }
+    }
+
+    // If there's no overlap in the interval that the line segment takes on, and the interval the circle takes on, no collision is possible
+    if (circle_x + circle_radius < min_x || circle_x - circle_radius > max_x) {
+        return false;
+    }
+
+    // Y
+    double vy = (line_vel_y - circle_vel_y) * delta_time;
+    double min_y, max_y;
+    if (ay0 < by0) {
+        if (vy >= 0.0) {
+            min_y = ay0 - vy;
+            max_y = by0;
+        } else {
+            min_y = ay0;
+            max_y = by0 - vy;
+        }
+    } else {
+        if (vy >= 0.0) {
+            min_y = by0 - vy;
+            max_y = ay0;
+        } else {
+            min_y = by0;
+            max_y = ay0 - vy;
+        }
+    }
+
+    // If there's no overlap in the interval that the line segment takes on, and the interval the circle takes on, no collision is possible
+    if (circle_y + circle_radius < min_y || circle_y - circle_radius > max_y) {
         return false;
     }
 
     // The key insight is that, from the frame of reference of the asteroid, the bullet's path over the previous frame covers the shape of a parallelogram
     // So we can simplify this problem down to a stationary collision check between a circle centered at the origin, and a parallelogram
+
     // Fix frame of reference to circle
     // a and b are the head and tail of the bullet
-    double ax = line_x1 - circle_x;
-    double ay = line_y1 - circle_y;
-    double bx = line_x2 - circle_x;
-    double by = line_y2 - circle_y;
-    double vx = bullet_dx; // Per frame velocities
-    double vy = bullet_dy;
+    double ax = ax0 - circle_x;
+    double ay = ay0 - circle_y;
+    double bx = bx0 - circle_x;
+    double by = by0 - circle_y;
+    // We also use vx and vy which we calculated earlier
     // c and d are the head and tails of the bullet, delta_time in the past, forming the other two points of the parallelogram
     double cx = ax - vx;
     double cy = ay - vy;
     double dx = bx - vx;
     double dy = by - vy;
-    double rad_sq = circle_r * circle_r;
+
+    double rad_sq = circle_radius * circle_radius;
+
     // Check whether any of the vertices of the parallelogram are within the circle
     // Actually this is redundant, since if we project and clamp and just check those, it will cover the cases where the corner is the closest
     // This might be a fast enough rejection check for it to be worth doing anyway
-    //if ax*ax + ay*ay <= rad_sq || bx*bx + by*by <= rad_sq || cx*cx + cy*cy <= rad_sq || dx*dx + dy*dy <= rad_sq:
+    //if ax * ax + ay * ay <= rad_sq or bx * bx + by * by <= rad_sq or cx * cx + cy * cy <= rad_sq or dx * dx + dy * dy <= rad_sq:
     //    return True
 
     // Project the point (0, 0), the center of the circle, onto each of the edges of the parallelogram
-    auto project_origin_onto_segment_dist_sq = [](double x1, double y1, double x2, double y2) -> double {
-        // Given a segment from (x1, y1) to (x2, y2), project the origin (0, 0)
-        // onto this segment and return the squared distance from the origin
-        // to the closest point on the segment.
-        double dx = x2 - x1;
-        double dy = y2 - y1;
-        double len_sq = dx * dx + dy * dy;
-        // If the endpoints are basically the same point,
-        // just return squared dist to the (degenerate) endpoint.
-        if (len_sq < 1e-12) {
-            return x1 * x1 + y1 * y1;
-        }
-        // Compute the projection parameter t of the origin onto the segment,
-        // where t=0 yields (x1, y1) and t=1 yields (x2, y2).
-        // Clamp t to [0, 1] to stay on the segment.
-        double t = -(x1 * dx + y1 * dy) / len_sq;
-        if (t < 0.0) {
-            t = 0.0;
-        }
-        if (t > 1.0) {
-            t = 1.0;
-        }
-        // Compute the closest point's coordinates.
-        double px = x1 + t * dx;
-        double py = y1 + t * dy;
-        // Return the squared distance from the origin to this closest point.
-        return px * px + py * py;
-    };
 
     // Check whether any of these projected points with clamping are within the circle. If yes, there's a collision.
     if (
-        project_origin_onto_segment_dist_sq(ax, ay, bx, by) <= rad_sq || // A - B
-        project_origin_onto_segment_dist_sq(cx, cy, dx, dy) <= rad_sq || // C - D
-        project_origin_onto_segment_dist_sq(ax, ay, cx, cy) <= rad_sq || // A - C
-        project_origin_onto_segment_dist_sq(bx, by, dx, dy) <= rad_sq    // B - D
+        project_origin_onto_segment_dist_sq(ax, ay, bx, by) <= rad_sq ||  // A - B
+        project_origin_onto_segment_dist_sq(cx, cy, dx, dy) <= rad_sq ||  // C - D
+        project_origin_onto_segment_dist_sq(ax, ay, cx, cy) <= rad_sq ||  // A - C
+        project_origin_onto_segment_dist_sq(bx, by, dx, dy) <= rad_sq      // B - D
     ) {
         return true;
     }
 
     // If still no collision, then the only way this can still be a collision is if the circle is completely contained within the parallelogram,
     // which is impossible in this case because the bullet is too short for an asteroid to fit between its ends.
-    // But for completeness, for the general solution, you can uncomment the following code which checks whether the origin is within the parallelogram using a cross product orientation checker
-    /*
-    auto is_origin_in_parallelogram = [](double ax, double ay, double bx, double by, double cx, double cy, double dx, double dy) -> bool {
+    // BUT we're now using a virtual bullet to do clamping, and this "virtual bullet" is super long, so we need this!
+    // Check whether the origin is within the parallelogram using a cross product orientation checker
+
+    auto is_origin_in_parallelogram = [](double ax, double ay,
+                                         double bx, double by,
+                                         double cx, double cy,
+                                         double dx, double dy) -> bool {
         auto cross = [](double xa, double ya, double xb, double yb) -> double {
-            return xa*yb - ya*xb;
+            return xa * yb - ya * xb;
         };
-        double corners[4][2] = { {ax, ay}, {bx, by}, {dx, dy}, {cx, cy} };
-        double sign = 0;
+
+        double corners[4][2] = {{ax, ay}, {bx, by}, {dx, dy}, {cx, cy}};
+        bool sign_set = false;
+        bool sign = false;
+
         for (int i = 0; i < 4; ++i) {
             double x0 = corners[i][0], y0 = corners[i][1];
             double x1 = corners[(i + 1) % 4][0], y1 = corners[(i + 1) % 4][1];
@@ -5626,21 +6967,87 @@ inline bool circle_line_collision_continuous(
             if (cp == 0.0) {
                 continue;  // Origin is on the edge, consider inside
             }
-            if (sign == 0) {
-                sign = (cp > 0.0) ? 1.0 : -1.0;
+            if (!sign_set) {
+                sign = cp > 0.0;
+                sign_set = true;
             } else {
-                if ((cp > 0.0) != (sign > 0.0)) {
+                if ((cp > 0.0) != sign) {
                     return false;
                 }
             }
         }
         return true;
     };
-    if (is_origin_in_parallelogram(ax, ay, bx, by, cx, cy, dx, dy)) {
-        return true;
+
+    double delta_x = ax - bx;
+    double delta_y = ay - by;
+    double seg_len_sq = delta_x * delta_x + delta_y * delta_y;
+    if (seg_len_sq < rad_sq) {
+        // The line segment (one side of the parallelogram) is too short to contain the circle completely
+        // so there's no possible collision here
+        return false;
+    } else {
+        // It's possible for the parallelogram to completely contain the circle, so we check for that case
+        return is_origin_in_parallelogram(ax, ay, bx, by, cx, cy, dx, dy);
     }
-    */
-    return false;
+}
+
+bool circle_line_collision_discrete(
+    double ax, double ay, 
+    double bx, double by, 
+    double cx, double cy, 
+    double radius
+) {
+    // Accurate version of the discrete collision check
+
+    // Quick rejection check:
+    // Check if circle edge is within the outer bounds of the line segment (offset for radius)
+    double x_min = std::min(ax, bx) - radius;
+    double x_max = std::max(ax, bx) + radius;
+    if (cx < x_min || cx > x_max) {
+        return false;
+    }
+    double y_min = std::min(ay, by) - radius;
+    double y_max = std::max(ay, by) + radius;
+    if (cy < y_min || cy > y_max) {
+        return false;
+    }
+
+    // This works by taking the circle's center, and projecting it onto the line segment's line, and clamping it to the line segment.
+    // This process will yield the point on the line segment that is closest to the circle's center.
+    // We can then check whether this point is inside the circle.
+
+    // Fix frame of reference to the circle center. Shift the segment so the circle is at the origin
+    ax = ax - cx;
+    ay = ay - cy;
+    bx = bx - cx;
+    by = by - cy;
+
+    // Now project the origin (0, 0), the center of the circle, onto the segment A-B
+    double dx = bx - ax;
+    double dy = by - ay;
+    double len_sq = dx * dx + dy * dy;
+
+    double dist_sq;
+    // If the segment is degenerate (very short), just use the distance to one of the endpoints
+    if (len_sq < 1e-12) {
+        dist_sq = ax * ax + ay * ay;
+    } else {
+        // Compute projection parameter t of origin onto line defined by segment A-B
+        // Clamp t to [0, 1] to project onto the actual segment
+        double t = -(ax * dx + ay * dy) / len_sq;
+        t = std::clamp(t, 0.0, 1.0);
+
+        // Compute closest point on segment to the circle's center (which is now at origin)
+        double px = ax + t * dx;
+        double py = ay + t * dy;
+
+        // Compute squared distance from circle center (origin) to this point
+        dist_sq = px * px + py * py;
+    }
+
+    // If the squared distance of the closest point on line segment to the center of circle is less than or equal to the squared radius, there is a collision
+    return dist_sq <= radius * radius;
 }
 
 inline std::tuple<
