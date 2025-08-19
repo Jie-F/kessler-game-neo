@@ -532,9 +532,9 @@ def circle_line_collision_time_interval(
         t1_mid = nan
     else:
         # The bullet head and tails are both located at position 0 on the normal axis
-        t_ast_center = ast_proj_n / v_proj_n if v_proj_n != 0.0 else inf
+        t_ast_center = ast_proj_n / v_proj_n
         # The time it takes for the relative bullet vel to travel the radius of the asteroid along normal axis
-        t_diff_ast_radius = r / v_proj_n if v_proj_n != 0.0 else inf
+        t_diff_ast_radius = r / v_proj_n
 
         t0_mid = t_ast_center - t_diff_ast_radius
         t1_mid = t_ast_center + t_diff_ast_radius
