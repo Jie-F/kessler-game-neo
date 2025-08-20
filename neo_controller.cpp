@@ -614,7 +614,7 @@ struct Ship {
     std::pair<double, double> turn_rate_range;
     double max_speed;
     double drag;
-    std::vector<std::array<double, 8>> integration_initial_states;
+    std::vector<std::tuple<double, double, double, double, double, double, double, double>> integration_initial_states;
 
     Ship() = default;
 
@@ -634,6 +634,40 @@ struct Ship {
           respawn_time_left(respawn_time_left), respawn_time(respawn_time),
           thrust_range(thrust_range), turn_rate_range(turn_rate_range),
           max_speed(max_speed), drag(drag) {}
+
+    std::pair<double, double> get_past_position(double delta_time, std::pair<double, double> map_size) {
+        // We have recorded how we did the forward integration, so we use that history to do the backward integration.
+        // Accumulate the pieces of the integral
+        double dx_sum = 0.0;
+        double dy_sum = 0.0;
+        // To get the position of the ship in the past, we integrate its position backward
+        // using the integration intervals we stored in the ship state when it was integrating it forward in time.
+        // If the integral is split into multiple time segments, add them all up going backward in time,
+        // until we hit delta_time, the end point of the integration
+
+        // Keep in mind that the start_t and end_t are reverse chronological! So it starts in the future, and ends in the past!
+        for (const auto& ship_initial_state : integration_initial_states) {
+            auto [start_t, end_t, v0, a, theta0, omega, dx, dy] = ship_initial_state;
+            assert(end_t - start_t <= 0.0);
+            if (end_t < delta_time && delta_time <= start_t) {
+                // We need to include this interval since t lies in the middle of it
+                auto [dx, dy] = analytic_ship_movement_integration(v0, a, theta0, omega, delta_time - start_t);
+                dx_sum += dx;
+                dy_sum += dy;
+                assert(delta_time - start_t <= 0.0);
+                break;  // Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
+            } else {
+                // This interval is fully included within t. Add the full integral amount
+                assert(delta_time <= end_t);
+                dx_sum += dx;
+                dy_sum += dy;
+                assert(end_t - start_t <= 0.0);
+            }
+        }
+        return std::make_pair(pymod(x + dx_sum, map_size.first), pymod(y + dy_sum, map_size.second));
+    }
+
+    //std::pair<
 
     std::string str() const {
         return "Ship(x=" + std::to_string(x) + ", y=" + std::to_string(y)
@@ -6087,12 +6121,10 @@ inline bool asteroid_bullet_collision_discrete_wrong(
 //     theta0: initial heading (radians)
 //     omega: turn rate (rad/sec)
 //     dt: t1 - t0, the time interval to integrate over (seconds)
-std::tuple<double, double> analytic_ship_movement_integration(
-    double v0, double a, double theta0, double omega, double delta_t)
-{
+std::pair<double, double> analytic_ship_movement_integration(double v0, double a, double theta0, double omega, double delta_t) {
     if (std::abs(delta_t) < 1e-12) {
         // Integrating over basically no time into the future
-        return std::make_tuple(0.0, 0.0);
+        return std::make_pair(0.0, 0.0);
     }
     if (std::abs(omega) < 0.15) {
         // Omega is relatively small, and the divisions in the analytic solution are numerically unstable
@@ -6134,7 +6166,7 @@ std::tuple<double, double> analytic_ship_movement_integration(
                    omega * (delta_y_deriv_omega0 + 
                    omega * (delta_y_second_deriv_omega0 / 2.0 + 
                    omega * delta_y_third_deriv_omega0 / 6.0));
-        return std::make_tuple(dx, dy);
+        return std::make_pair(dx, dy);
     } else {
         // Exact analytic solution
         // The Sympy code to set up dynamics and integrate is as follows.
@@ -6158,7 +6190,7 @@ std::tuple<double, double> analytic_ship_movement_integration(
         double omega_reciprocal = 1.0 / omega;
         double dx = omega_reciprocal * (v0 * sin_diff + omega_reciprocal * (a * (cos_diff + delta_theta * sin_theta1)));
         double dy = omega_reciprocal * (-v0 * cos_diff + omega_reciprocal * (a * (sin_diff - delta_theta * cos_theta1)));
-        return std::make_tuple(dx, dy);
+        return std::make_pair(dx, dy);
     }
 }
 
@@ -6212,21 +6244,14 @@ double ship_asteroid_continuous_collision_time(
         // until we hit t, the end point of the integration
 
         // Keep in mind that the start_t and end_t are reverse chronological! So it starts in the future, and ends in the past!
-        for (std::size_t i = 0; i < ship_integration_initial_states.size(); i++) {
-            double start_t = std::get<0>(ship_integration_initial_states[i]);
-            double end_t = std::get<1>(ship_integration_initial_states[i]);
-            double v0 = std::get<2>(ship_integration_initial_states[i]);
-            double a = std::get<3>(ship_integration_initial_states[i]);
-            double theta0 = std::get<4>(ship_integration_initial_states[i]);
-            double omega = std::get<5>(ship_integration_initial_states[i]);
-            double dx = std::get<6>(ship_integration_initial_states[i]);
-            double dy = std::get<7>(ship_integration_initial_states[i]);
+        for (const auto& state : ship_integration_initial_states) {
+            auto [start_t, end_t, v0, a, theta0, omega, dx, dy] = state;
             assert(end_t - start_t <= 0.0);
             if (end_t < t && t <= start_t) {
                 // We need to include this interval since t lies in the middle of it
-                std::pair<double, double> result = analytic_ship_movement_integration(v0, a, theta0, omega, t - start_t);
-                dx_sum += result.first;
-                dy_sum += result.second;
+                auto [dx, dy] = analytic_ship_movement_integration(v0, a, theta0, omega, t - start_t);
+                dx_sum += dx;
+                dy_sum += dy;
                 break;  // Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
             } else {
                 // This interval is fully included within t. Add the full integral amount
@@ -6250,15 +6275,8 @@ double ship_asteroid_continuous_collision_time(
         double ddt2_sx = 0.0;
         double ddt2_sy = 0.0;
 
-        for (std::size_t i = 0; i < ship_integration_initial_states.size(); i++) {
-            double start_t = std::get<0>(ship_integration_initial_states[i]);
-            double end_t = std::get<1>(ship_integration_initial_states[i]);
-            double v0 = std::get<2>(ship_integration_initial_states[i]);
-            double a = std::get<3>(ship_integration_initial_states[i]);
-            double theta0 = std::get<4>(ship_integration_initial_states[i]);
-            double omega = std::get<5>(ship_integration_initial_states[i]);
-            // double dx = std::get<6>(ship_integration_initial_states[i]);
-            // double dy = std::get<7>(ship_integration_initial_states[i]);
+        for (const auto& state : ship_integration_initial_states) {
+            auto [start_t, end_t, v0, a, theta0, omega, /*dx*/, /*dy*/] = state;
 
             if (end_t <= t && t <= start_t) {
                 // Found the interval we differentiate in
@@ -6383,9 +6401,9 @@ double ship_ship_continuous_collision_time(
             double dy = std::get<7>(ship1_integration_initial_states[i]);
             assert(end_t - start_t <= 0.0);
             if (end_t < t && t <= start_t) {
-                std::pair<double, double> result = analytic_ship_movement_integration(v0, a, theta0, omega, t - start_t);
-                dx1_sum += result.first;
-                dy1_sum += result.second;
+                auto [dx, dy] = analytic_ship_movement_integration(v0, a, theta0, omega, t - start_t);
+                dx1_sum += dx;
+                dy1_sum += dy;
                 break;  // Break since no more full intervals will lie beyond this, as the integral is assumed to be from 0 to t, where t <= 0
             } else {
                 assert(t <= end_t);
@@ -6406,9 +6424,9 @@ double ship_ship_continuous_collision_time(
             double dy = std::get<7>(ship2_integration_initial_states[i]);
             assert(end_t - start_t <= 0.0);
             if (end_t < t && t <= start_t) {
-                std::pair<double, double> result = analytic_ship_movement_integration(v0, a, theta0, omega, t - start_t);
-                dx2_sum += result.first;
-                dy2_sum += result.second;
+                auto [dx, dy] = analytic_ship_movement_integration(v0, a, theta0, omega, t - start_t);
+                dx2_sum += dx;
+                dy2_sum += dy;
                 break;
             } else {
                 assert(t <= end_t);
