@@ -200,10 +200,10 @@ def circle_circle_collision_time_interval(
     # sin check: if angle too wide, paths never intersect within radius band
     cos_theta_sq = (dot * dot) / (dist_sq * speed_sq)
     sin_theta_sq = 1.0 - cos_theta_sq
-    # Clamp due to floating error
+    # Clamp due to floating point error
     if sin_theta_sq < 0.0:
         sin_theta_sq = 0.0
-    if sin_theta_sq > 1.0:
+    elif sin_theta_sq > 1.0:
         sin_theta_sq = 1.0
     min_sin_sq = sep_sq / dist_sq
 
@@ -211,11 +211,11 @@ def circle_circle_collision_time_interval(
         return nan, nan  # Will miss each other
 
     # Compute collision time interval centered around closest approach
-    arg = (sep_sq - dist_sq * sin_theta_sq) / speed_sq
-    if arg < 0.0:
+    discriminant = (sep_sq - dist_sq * sin_theta_sq) / speed_sq
+    if discriminant < 0.0:
         return nan, nan  # No real solution
 
-    root_term = sqrt(arg)
+    root_term = sqrt(discriminant)
     t_mid = -dot / speed_sq
 
     t_enter = t_mid - root_term

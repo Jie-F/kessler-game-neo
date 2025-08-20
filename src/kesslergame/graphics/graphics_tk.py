@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright © 2022 Thales. All Rights Reserved.
+# Copyright © 2025 Thales. All Rights Reserved.
 # NOTICE: This file is subject to the license agreement defined in file 'LICENSE', which is part of
 # this source code package.
 
@@ -83,10 +83,11 @@ class GraphicsTK(KesslerGraphics):
                           "playerShip2_orange.png",
                           "playerShip3_orange.png"]
 
-        img_list: list[str] = []
-        for file in os.listdir(self.img_dir):
-            if file.endswith(".png") or file.endswith(".jpg"):
-                img_list.append(file)
+        supported_image_exts = tuple(ext.lower() for ext in Image.registered_extensions())
+        img_list: list[str] = [
+            file for file in os.listdir(self.img_dir)
+            if file.lower().endswith(supported_image_exts)
+        ]
         img_list2 = self.sort_list(default_images, img_list)
         self.image_paths = [os.path.join(self.img_dir, img) for img in img_list2]
 
@@ -211,7 +212,7 @@ class GraphicsTK(KesslerGraphics):
         if self.show_lives:
             team_info += "Lives: " + str(team.lives_remaining) + "\n"
         if self.show_accuracy:
-            team_info += "Accuracy: " + str(round(team.accuracy * 100, 1)) + "\n"
+            team_info += "Accuracy: " + str(round(team.confirmed_accuracy * 100, 1)) + "\n"
         if self.show_asteroids_hit:
             team_info += "Asteroids Hit: " + str(team.asteroids_hit) + "\n"
         if self.show_shots_fired:

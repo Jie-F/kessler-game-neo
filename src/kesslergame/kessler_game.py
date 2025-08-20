@@ -1135,13 +1135,13 @@ class KesslerGame:
                 prev = time.perf_counter()
 
                 # --- UPDATE SCORE CLASS -----------------------------------------------------------------------------------
-                self.score.update(self.ships, self.sim_time, self.perf_dict['controller_times'])
+                self.score.update(self.ships, self.bullets, self.sim_time, self.perf_dict['controller_times'])
 
                 # Update performance tracker with score timing
                 self.perf_dict['score_update'] += time.perf_counter() - prev
                 prev = time.perf_counter()
             else:
-                self.score.update(self.ships, self.sim_time)
+                self.score.update(self.ships, self.bullets, self.sim_time)
 
             # --- UPDATE GRAPHICS --------------------------------------------------------------------------------------
             if self.sim_frame % self.frame_skip == 0:

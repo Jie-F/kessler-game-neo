@@ -21,15 +21,18 @@ class Team:
         self.mine_asteroid_hits: int = 0
         self.mine_ship_hits: int = 0
 
+        self.shots_fired: int = 0
+        self.bullets_missed: int = 0
+        self.bullets_remaining: int = 0
+        self.live_bullets: int = 0
+        self.mines_dropped: int = 0
+        self.mines_remaining: int = 0
+
         # Death statistics
         self.asteroid_deaths: int = 0
         self.ship_deaths: int = 0
         self.mine_deaths: int = 0
 
-        self.shots_fired: int = 0
-        self.bullets_remaining: int = 0
-        self.mines_dropped: int = 0
-        self.mines_remaining: int = 0
         self.eval_times: list[float] = []
         self.lives_remaining: int = 0
 
@@ -47,7 +50,15 @@ class Team:
 
     @property
     def accuracy(self) -> float:
+        # This is the ratio of the bullets hit, to the total number of bullets that were fired from the ships
         return self.bullet_asteroid_hits / self.shots_fired if self.shots_fired != 0 else 0.0
+
+    @property
+    def confirmed_accuracy(self) -> float:
+        # This is the ratio of bullets hit, to the total number of inactive bullets (either left the map or hit)
+        # This is better for a live display of accuracy, so bullets en-route to an asteroid do not hurt the accuracy
+        inactive_bullets = self.shots_fired - self.live_bullets
+        return self.bullet_asteroid_hits / inactive_bullets if inactive_bullets != 0 else 0.0
 
     @property
     def fraction_total_asteroids_hit(self) -> float:

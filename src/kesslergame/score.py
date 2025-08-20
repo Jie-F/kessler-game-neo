@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .ship import Ship
+from .bullet import Bullet
 from .scenario import Scenario
 from .team import Team
 from .controller import KesslerController
@@ -34,8 +35,13 @@ class Score:
             else:
                 team.total_bullets = -1
 
-    def update(self, ships: list[Ship], sim_time: float, controller_perf: list[float] | None = None) -> None:
+    def update(self, ships: list[Ship], bullets: list[Bullet], sim_time: float, controller_perf: list[float] | None = None) -> None:
         self.sim_time = sim_time
+        # Count number of live bullets per ship
+        live_bullets_dict: dict[int, int] = {}
+        for bullet in bullets:
+            live_bullets_dict[bullet.owner.id] = live_bullets_dict.get(bullet.owner.id, 0) + 1
+
         for team in self.teams:
             bullet_asteroid_hits = 0
             ship_asteroid_hits = 0
@@ -43,7 +49,8 @@ class Score:
             mine_asteroid_hits = 0
             mine_ship_hits = 0
             shots = 0
-            bullets = 0
+            bullets_remaining = 0
+            live_bullets = 0
             mines_dropped = 0
             mines = 0
             asteroid_deaths = 0
@@ -52,20 +59,21 @@ class Score:
             lives = 0
 
             for idx, ship in enumerate(ships):
-                if team.team_id == ship.team:
+                if ship.team == team.team_id:
                     bullet_asteroid_hits += ship.bullet_asteroid_hits
                     ship_asteroid_hits += ship.ship_asteroid_hits
                     ship_ship_hits += ship.ship_ship_hits
                     mine_asteroid_hits += ship.mine_asteroid_hits
                     mine_ship_hits += ship.mine_ship_hits
                     shots += ship.bullets_shot
-                    bullets += ship.bullets_remaining
+                    bullets_remaining += ship.bullets_remaining
                     mines_dropped += ship.mines_dropped
                     mines += ship.mines_remaining
                     asteroid_deaths += ship.asteroid_deaths
                     ship_deaths += ship.ship_deaths
                     mine_deaths += ship.mine_deaths
                     lives += ship.lives
+                    live_bullets += live_bullets_dict.get(ship.id, 0)
                     # Assume that the ships list and controller_perf lists are in the same consistent order
                     if controller_perf is not None and controller_perf[idx] > 0:
                         team.eval_times.append(controller_perf[idx])
@@ -76,13 +84,14 @@ class Score:
             team.mine_asteroid_hits = mine_asteroid_hits
             team.mine_ship_hits = mine_ship_hits
             team.shots_fired = shots
-            team.bullets_remaining = bullets
+            team.bullets_remaining = bullets_remaining
             team.mines_dropped = mines_dropped
             team.mines_remaining = mines
             team.asteroid_deaths = asteroid_deaths
             team.ship_deaths = ship_deaths
             team.mine_deaths = mine_deaths
             team.lives_remaining = lives
+            team.live_bullets = live_bullets
 
     def finalize(self, sim_time: float, stop_reason: StopReason, ships: list[Ship]) -> None:
         self.sim_time = sim_time
