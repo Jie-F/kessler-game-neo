@@ -18,6 +18,7 @@ from ..score import Score
 from ..scenario import Scenario
 from ..team import Team
 from ..settings_dicts import UISettingsDict
+from .._version import __version__
 
 
 class GraphicsTK(KesslerGraphics):
@@ -65,7 +66,7 @@ class GraphicsTK(KesslerGraphics):
 
         # create and center main window
         self.window = Tk()
-        self.window.title('Kessler')
+        self.window.title(f'Kessler v{__version__}')
         screen_width = self.window.winfo_screenwidth()
         screen_height = self.window.winfo_screenheight()
         center_x = int(screen_width / 2 - self.window_width / 2)

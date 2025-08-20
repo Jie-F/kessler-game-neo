@@ -34,6 +34,7 @@
 - Sanitize Scenarios to remove numpy types, and only use builtin Python types
 - For PEP 517/518 compliance, unified setup.py and setup_mypyc.py and use "python -m build --wheel" to build wheels instead of "python setup_mypyc.py bdist_wheel"
 - Updated Tkinter graphics to display "confirmed accuracy" which ignores live bullets in accuracy calculation
+- Add version number to Tk graphics window title
 
 ## [2.4.0] - 28 July 2025
 - Fixed building MyPyC compiled wheels, so compiled modules are now actually being run to provide a 4-10X+ speed benefit over interpreted
