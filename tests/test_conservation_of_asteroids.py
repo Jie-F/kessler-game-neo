@@ -23,7 +23,7 @@ FPS_OVERRIDE = args.fps
 TRIALS = args.trials if args.trials is not None else (1 if rand_seed is not None else 100000000000)
 
 WIDTH, HEIGHT = 1000, 800
-TIME_LIMIT_OVERRIDE = inf
+TIME_LIMIT_DEFAULT = inf
 COMPETITION_SAFE_MODE = False
 
 thrust_range = (-480.0, 480.0)
@@ -166,7 +166,7 @@ for i in range(TRIALS):
         'realtime_multiplier': 1.0 if GRAPHICS else 0.0,
         'frame_skip': 1,
         'graphics_obj': None,
-        'time_limit': TIME_LIMIT_OVERRIDE,
+        'time_limit': TIME_LIMIT_DEFAULT,
         'perf_tracker': False,
         "competition_safe_mode": COMPETITION_SAFE_MODE,
         'UI_settings': {'ships': True, 'lives_remaining': True, 'accuracy': True,
@@ -186,8 +186,8 @@ for i in range(TRIALS):
         total_hits = sum(team.asteroids_hit for team in score.teams)
         if total_hits != expected_hits:
             logging.info(f"{seed} - MISMATCH: expected {expected_hits}, got {total_hits}")
-            print(f"Trial={i}, seed={seed} -> MISMATCH (expected {expected_hits}, got {total_hits})")
+            print(f"Asteroid Conservation Test Trial={i}/{TRIALS}, seed={seed} -> MISMATCH (expected {expected_hits}, got {total_hits})")
         else:
-            print(f"Trial={i}, seed={seed} -> PASSED (hits={total_hits})")
+            print(f"Asteroid Conservation Test Trial={i}/{TRIALS}, seed={seed} -> PASSED (hits={total_hits})")
     else:
-        print(f"Trial={i}, seed={seed} -> Did not end with no_asteroids (reason={score.stop_reason})")
+        print(f"Asteroid Conservation Test Trial={i}/{TRIALS}, seed={seed} -> Did not end with no_asteroids (reason={score.stop_reason})")

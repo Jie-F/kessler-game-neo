@@ -21,7 +21,7 @@ GRAPHICS = rand_seed is not None and not args.nogui
 FPS_OVERRIDE = 30
 
 TRIALS = args.trials if args.trials is not None else (1 if rand_seed is not None else 100000000000)
-TIME_LIMIT_OVERRIDE = inf # Nvm it's not actually an override. Just used if the scenario has no time limit defined.
+TIME_LIMIT_DEFAULT = inf
 COMPETITION_SAFE_MODE = True
 WIDTH = 1000
 HEIGHT = 800
@@ -134,7 +134,7 @@ for i in range(TRIALS):
         seed = rand_seed
     random.seed(seed)
 
-    print(f"Controller Exception Test Trial={i}, seed={seed}")
+    print(f"Controller Exception Test Trial={i}/{TRIALS}, seed={seed}")
 
     num_ships = random.randint(1, 6)
     scenario = Scenario(name=f"Trial {i}",
@@ -155,7 +155,7 @@ for i in range(TRIALS):
         'realtime_multiplier': 1.0 if GRAPHICS else 0.0,
         'frame_skip': 1,
         'graphics_obj': None,
-        'time_limit': TIME_LIMIT_OVERRIDE,
+        'time_limit': TIME_LIMIT_DEFAULT,
         'perf_tracker': False,
         "competition_safe_mode": COMPETITION_SAFE_MODE,
         'UI_settings': {'ships': True, 'lives_remaining': True, 'accuracy': True,

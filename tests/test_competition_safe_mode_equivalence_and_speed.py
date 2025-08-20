@@ -23,7 +23,7 @@ GRAPHICS = rand_seed is not None and not args.nogui
 FPS = 30
 
 TRIALS = args.trials if args.trials is not None else (1 if rand_seed is not None else 100000000000)
-TIME_LIMIT_OVERRIDE = inf
+TIME_LIMIT_DEFAULT = inf
 WIDTH = 1000
 HEIGHT = 800
 
@@ -285,7 +285,7 @@ for i in range(TRIALS):
             'realtime_multiplier': 1.0 if GRAPHICS else 0.0,
             'frame_skip': 1,
             'graphics_obj': None,
-            'time_limit': TIME_LIMIT_OVERRIDE,
+            'time_limit': TIME_LIMIT_DEFAULT,
             'perf_tracker': False,
             'frequency': FPS,
             "competition_safe_mode": mode,
@@ -331,11 +331,11 @@ for i in range(TRIALS):
     t_on = timings[True]
     t_off = timings[False]
     speedup = t_on / t_off if t_off > 0.0 else (1.0 if t_on == 0.0 and t_off == 0.0 else float('inf'))
-    print(f'Trial={i} seed={seed} - SafeMode OFF: {t_off:.2f}s, ON: {t_on:.2f}s, Speedup: {speedup:.2f}X (should be >1.0 if safe mode off is faster)')
+    print(f'Trial={i}/{TRIALS} seed={seed} - SafeMode OFF: {t_off:.2f}s, ON: {t_on:.2f}s, Speedup: {speedup:.2f}X (should be >1.0 if safe mode off is faster)')
 
     if not all_passed:
-        print(f"[ERROR] Trial={i} Seed={seed} -- see log {log_filename}")
+        print(f"[ERROR] Trial={i}/{TRIALS} Seed={seed} -- see log {log_filename}")
     else:
-        print(f"[PASS] Trial={i} Seed={seed} -- all frames MATCH")
+        print(f"[PASS] Trial={i}/{TRIALS} Seed={seed} -- all frames MATCH")
 
 print(f'Done! Log saved at {log_filename}')
