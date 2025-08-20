@@ -20,7 +20,7 @@ args = parser.parse_args()
 rand_seed = args.seed
 GRAPHICS = rand_seed is not None and not args.nogui
 FPS_OVERRIDE = args.fps
-TRIALS = args.trials if args.trials is not None else 100000000000
+TRIALS = args.trials if args.trials is not None else (1 if rand_seed is not None else 100000000000)
 
 WIDTH, HEIGHT = 1000, 800
 TIME_LIMIT_OVERRIDE = inf
@@ -39,7 +39,7 @@ class FlushFileHandler(logging.FileHandler):
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - SEED: %(message)s',
+    format='%(asctime)s - %(message)s',
     handlers=[FlushFileHandler(log_filename, mode='w')]
 )
 

@@ -724,8 +724,10 @@ class KesslerGame:
                     raise RuntimeError("Controller and ship ID do not match")
 
                 # Generate game_state info to send to controller
+                ship_state_to_controller: ShipState
                 game_state_to_controller: GameState
                 if self.competition_safe_mode:
+                    ship_state_to_controller = ShipState(ship.ownstate.copy())
                     # Must recreate GameState object, so competitors do not accidentally or maliciously modify the true game state
                     game_state_to_controller = GameState(
                         # Game entities
@@ -746,6 +748,7 @@ class KesslerGame:
                         competition_safe_mode=self.competition_safe_mode
                     )
                 else:
+                    ship_state_to_controller = ShipState(ship.ownstate)
                     assert self.game_state is not None
                     game_state_to_controller = self.game_state
 
@@ -754,7 +757,7 @@ class KesslerGame:
 
                 try:
                     # Attempt to get and validate controller actions
-                    proposed = controllers[ship_idx].actions(ShipState(ship.ownstate), game_state_to_controller)
+                    proposed = controllers[ship_idx].actions(ship_state_to_controller, game_state_to_controller)
 
                     if not isinstance(proposed, (list, tuple)) or len(proposed) != 4:
                         raise ValueError(f"Controller {ship_idx} returned invalid action tuple: {proposed!r}")

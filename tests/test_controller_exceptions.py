@@ -20,7 +20,7 @@ rand_seed = args.seed
 GRAPHICS = rand_seed is not None and not args.nogui
 FPS_OVERRIDE = 30
 
-TRIALS = args.trials if args.trials is not None else 100000000000
+TRIALS = args.trials if args.trials is not None else (1 if rand_seed is not None else 100000000000)
 TIME_LIMIT_OVERRIDE = inf # Nvm it's not actually an override. Just used if the scenario has no time limit defined.
 COMPETITION_SAFE_MODE = True
 WIDTH = 1000
