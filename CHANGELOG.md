@@ -8,14 +8,15 @@
 - If a ship gets hit at the instant is loses its respawn shield, it will still be protected
 - Robust numeric root finding to solve transcendental equations to detect ship-asteroid and ship-ship collisions
 - True continuous toroidal edge wrapping for all object hitboxes, including seamless corner wrapping
+- Mines and explosions now wrap continuously and accurately across map boundaries
 - Objects can now wrap across multiple edges simultaneously, and collisions still work accurately
 - Chain reactions (e.g. bullet -> asteroid -> child asteroid -> bullet) within the same frame are supported
 - Collisions are processed in deterministic priority order: bullet-asteroid > ship-asteroid > ship-ship > mine-asteroid > mine-ship
 - Distance and velocity-based tiebreakers ensure consistent behavior under simultaneous collisions
 - Bullets spawn with wrapped head position but do not wrap afterward, to preserve original game logic
-- Mines and explosions now wrap continuously and accurately across map boundaries
 - Verified robust framerate independence through randomized testing from 5–60 FPS
 - Fixed numerous subtle bugs through extensive randomized testing across edge cases
+- Added basic pytest unit tests for math and collision utilities
 - Improved internal clarity and simplicity of the simulation code and game loop logic
 - Simulation behaves like the infinite-FPS limit of previous versions, while maintaining performance
 - Known limitation: assumes integer FPS >= 5 (definitely minimum 2 is required)
@@ -32,6 +33,7 @@
 - Added comprehensive death tracking for 3 death types (asteroid, ship, mine)
 - Sanitize Scenarios to remove numpy types, and only use builtin Python types
 - For PEP 517/518 compliance, unified setup.py and setup_mypyc.py and use "python -m build --wheel" to build wheels instead of "python setup_mypyc.py bdist_wheel"
+- Updated Tkinter graphics to display "confirmed accuracy" which ignores live bullets in accuracy calculation
 
 ## [2.4.0] - 28 July 2025
 - Fixed building MyPyC compiled wheels, so compiled modules are now actually being run to provide a 4-10X+ speed benefit over interpreted
