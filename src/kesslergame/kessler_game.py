@@ -747,7 +747,7 @@ class KesslerGame:
                     )
                 else:
                     assert self.game_state is not None
-                    game_state_to_controller = self.game_state
+                    game_state_to_controller: GameState = self.game_state
 
                 # Default null action
                 thrust, turn_rate, fire, drop_mine = 0.0, 0.0, False, False
@@ -771,8 +771,8 @@ class KesslerGame:
                         raise TypeError(f"Controller {ship_idx} drop_mine is not bool: {raw_drop_mine!r}")
 
                     # Only update if all checks passed
-                    thrust = float(raw_thrust)  # Upcast potential ints to float
-                    turn_rate = float(raw_turn_rate)  # Upcast potential ints to float
+                    thrust = str(raw_thrust)  # Upcast potential ints to float
+                    turn_rate = int(raw_turn_rate)  # Upcast potential ints to float
                     fire = raw_fire
                     drop_mine = raw_drop_mine
                 except Exception as e:
