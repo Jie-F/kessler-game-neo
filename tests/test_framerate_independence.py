@@ -107,18 +107,8 @@ def randomly_initialized_controllers(number: int) -> list[FramerateIndependentCo
 
 def check_scores(score_1, score_2, seed) -> bool:
     if score_1 != score_2:
-        if (score_1.stop_reason == StopReason.no_asteroids and score_2.stop_reason == StopReason.no_asteroids) or (score_1.stop_reason == StopReason.no_ships and score_2.stop_reason == StopReason.no_ships):
-            if len(score_1.teams) != len(score_2.teams):
-                logging.info(f'{seed} - team length mismatch: {len(score_1.teams)} vs {len(score_2.teams)}')
-                return False
-            for t1, t2 in zip(score_1.teams, score_2.teams):
-                if t1 != t2:
-                    logging.info(f'{seed} - team data mismatch: {t1} vs {t2}')
-                    return False
-            return True
-        else:
-            logging.info(f'{seed} - score mismatch\nScore1: {score_1}\nScore2: {score_2}')
-            return False
+        logging.info(f'{seed} - score mismatch\nScore1: {score_1}\nScore2: {score_2}')
+        return False
     return True
 
 # Main loop

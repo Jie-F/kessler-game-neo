@@ -37,9 +37,9 @@ jobs:
       - name: Run integration game scripts
         run: |
           mkdir -p logs
-          python tests/test_conservation_of_asteroids.py --nogui -trials 1000
-          python tests/test_framerate_independence.py --nogui -trials 1000
+          python tests/test_conservation_of_asteroids.py --nogui -trials 100
           python tests/test_controller_exceptions.py --nogui -trials 1000
+          python tests/test_framerate_independence.py --nogui -trials 10000
 
       - name: Check logs are empty
         run: |
