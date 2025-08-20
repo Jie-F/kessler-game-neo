@@ -84,7 +84,7 @@ class ExceptionalController(KesslerController):
 
     @property
     def name(self) -> str:
-        return "Exceptional"
+        return "Exceptional Controller"
 
 def random_ship_states(number: int) -> list[dict]:
     ship_states = []
@@ -134,12 +134,7 @@ for i in range(TRIALS):
         seed = rand_seed
     random.seed(seed)
 
-    framerate1 = random.randint(5, 60)
-    framerate2 = framerate1
-    while framerate1 == framerate2:
-        framerate2 = random.randint(5, 60)
-
-    print(f"Trial={i}, seed={seed}, framerates: {framerate1} and {framerate2}")
+    print(f"Controller Exception Test Trial={i}, seed={seed}")
 
     num_ships = random.randint(1, 6)
     scenario = Scenario(name=f"Trial {i}",

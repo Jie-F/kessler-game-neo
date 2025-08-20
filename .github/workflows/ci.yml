@@ -37,16 +37,16 @@ jobs:
       - name: Run integration game scripts
         run: |
           mkdir -p logs
-          python tests/test_conservation_of_asteroids.py --nogui -trials 100
-          python tests/test_framerate_independence.py --nogui -trials 100
-          python tests/test_controller_exceptions.py --nogui -trials 100
+          python tests/test_conservation_of_asteroids.py --nogui -trials 1000
+          python tests/test_framerate_independence.py --nogui -trials 1000
+          python tests/test_controller_exceptions.py --nogui -trials 1000
 
       - name: Check logs are empty
         run: |
           shopt -s nullglob
-          files=(logs/*.log)
+          files=(*.log)
           if [ ${#files[@]} -eq 0 ]; then
-            echo "No log files found!"
+            echo "No log files found in current working directory!"
             exit 1
           fi
           for logfile in "${files[@]}"; do
