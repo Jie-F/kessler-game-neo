@@ -151,7 +151,7 @@ def analytic_ship_movement_integration(v0: float, a: float, theta0: float, omega
         sin_diff = sin_theta1 - sin_theta0
         cos_diff = cos_theta1 - cos_theta0
         omega_reciprocal = 1.0 / omega
-        dx = omega_reciprocal * (-v0 * sin_diff + omega_reciprocal * (a * (cos_diff + delta_theta * sin_theta1)))
+        dx = omega_reciprocal * (v0 * sin_diff + omega_reciprocal * (a * (cos_diff + delta_theta * sin_theta1)))
         dy = omega_reciprocal * (-v0 * cos_diff + omega_reciprocal * (a * (sin_diff - delta_theta * cos_theta1)))
     return dx, dy
 
@@ -187,7 +187,7 @@ def circle_circle_collision_time_interval(
             return nan, nan  # Never collide
 
     # Already outside and moving away (or tangent and moving apart)
-    if dot >= 0.0 and dist_sq < sep_sq:
+    if dot >= 0.0 and dist_sq > sep_sq:
         return nan, nan
 
     # Avoid division by zero if exactly at same center initially
@@ -228,7 +228,7 @@ def find_first_leq_zero(
     a: float,
     b: float,
     tol: float = 1e-12,
-    max_iterations: int = 5  # This is way overkill, and 30 is probably fine. But this is so rare to use more than just a few iterations, that this won't slow down the game.
+    max_iterations: int = 80  # This is way overkill, and 30 is probably fine. But this is so rare to use more than just a few iterations, that this won't slow down the game.
 ) -> float:
     """
     Finds the smallest t in [a, b] such that f(t) <= 0, using Newton's method
